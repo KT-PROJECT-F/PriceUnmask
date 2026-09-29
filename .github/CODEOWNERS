@@ -1,0 +1,4 @@
+# Every file is owned by the mentor, so no PR can land on dev or main
+# without the mentor's approval (the rulesets require code owner review).
+# Replace MENTOR_GITHUB_USERNAME with your GitHub username (keep the @).
+*    @yaswanthtechie

@@ -5,6 +5,7 @@ genuine, uncertain, likely inflated, or not enough data yet.
 
 - How it is built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - How we work (branches, PRs): [CONTRIBUTING.md](CONTRIBUTING.md)
+- Week 1 working guide (daily rhythm, PRs, reviews, common errors): [docs/WEEK-1-GUIDE.md](docs/WEEK-1-GUIDE.md)
 
 ## Quick start
 

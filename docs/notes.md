@@ -4,4 +4,4 @@ Record decisions here as you make them (date, decision, why, alternatives consid
 and at the end: what we would improve with more time.
 saidivya: analysis-ml
 
-Sujitha: analysis-rules
+I am a CSE engineering student learning Python and web development.

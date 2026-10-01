@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "name": "Demo Bluetooth Speaker (stable)",
+    "url": "https://example.com/p/demo-001",
+    "currency": "INR",
+    "latest_price_minor": 179900,
+    "lowest_price_minor": 174900,
+    "trust_label": "genuine"
+  },
+  {
+    "id": 2,
+    "name": "Demo Running Shoes (real drop)",
+    "url": "https://example.com/p/demo-002",
+    "currency": "INR",
+    "latest_price_minor": 279900,
+    "lowest_price_minor": 269900,
+    "trust_label": "genuine"
+  },
+  {
+    "id": 3,
+    "name": "Demo Air Fryer (fake discount)",
+    "url": "https://example.com/p/demo-003",
+    "currency": "INR",
+    "latest_price_minor": 104900,
+    "lowest_price_minor": null,
+    "trust_label": "likely_inflated"
+  }
+]

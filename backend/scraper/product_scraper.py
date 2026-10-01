@@ -7,6 +7,9 @@ against saved HTML files with zero network calls.
 
 from dataclasses import dataclass
 from datetime import datetime
+#####
+import requests
+from backend.config import settings
 
 
 @dataclass(frozen=True)
@@ -35,7 +38,19 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 def fetch_html(url: str) -> str:
     """GET with our User-Agent, a timeout, 2 retries with backoff, and respect for
     robots.txt. Raise a clear exception on 4xx/5xx."""
-    raise NotImplementedError
+    ########################
+    response = requests.get(
+        url,
+        headers={"User-Agent": settings.scrape_user_agent},
+        timeout=10,
+    )
+
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"Failed to fetch {url}: HTTP {response.status_code}"
+        )
+
+    return response.text
 
 
 def scrape(url: str) -> list[ScrapedProduct]:

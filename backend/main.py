@@ -12,6 +12,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend.db.database import init_db
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from backend.db.database import get_db
+from backend.db.models import Product
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -29,14 +33,11 @@ app = FastAPI(title="PriceUnmask API", version="0.1.0", lifespan=lifespan)
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
-
-# TODO(API track): add the endpoints listed in docs/ARCHITECTURE.md section 5:
-#   GET  /api/products?search=
-#   GET  /api/products/{product_id}
-#   GET  /api/products/{product_id}/history
-#   GET  /api/products/{product_id}/trust-score
-#   GET  /api/scrape-runs
-#   POST /api/scrape/run
+ 
+@app.get("/api/products")
+def get_products(db: Session = Depends(get_db)):
+    products = db.query(Product).all()
+    return products 
 
 
 # Mount the dashboard LAST so it does not shadow /api routes.

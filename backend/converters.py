@@ -1,4 +1,6 @@
-import pandas as pd 
+import pandas as pd
+
+
 def snapshots_to_dataframe(snapshots):
     columns = [
         "product_id",

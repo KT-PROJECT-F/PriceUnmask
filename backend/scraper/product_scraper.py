@@ -7,6 +7,7 @@ against saved HTML files with zero network calls.
 
 from dataclasses import dataclass
 from datetime import datetime
+
 #####
 import requests
 from backend.config import settings
@@ -46,9 +47,7 @@ def fetch_html(url: str) -> str:
     )
 
     if response.status_code >= 400:
-        raise RuntimeError(
-            f"Failed to fetch {url}: HTTP {response.status_code}"
-        )
+        raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
     return response.text
 

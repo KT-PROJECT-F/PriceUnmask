@@ -41,9 +41,7 @@ def test_fetch_html_uses_user_agent_and_timeout():
 
     mock_get.assert_called_once_with(
         "https://example.com",
-      headers={
-            "User-Agent": "PriceUnmaskBot/0.1 (learning project; contact: you@example.com)"
-      },
+        headers={"User-Agent": "PriceUnmaskBot/0.1 (learning project; contact: you@example.com)"},
         timeout=10,
     )
 
@@ -65,12 +63,11 @@ def test_fetch_html_raises_on_404():
         try:
             fetch_html("https://example.com/missing")
         except RuntimeError as exc:
-            assert str(exc) == (
-                "Failed to fetch https://example.com/missing: HTTP 404"
-            )
+            assert str(exc) == ("Failed to fetch https://example.com/missing: HTTP 404")
         else:
             raise AssertionError("Expected RuntimeError")
-        
+
+
 def test_fetch_html_raises_on_500():
     fake_response = type(
         "FakeResponse",
@@ -88,8 +85,6 @@ def test_fetch_html_raises_on_500():
         try:
             fetch_html("https://example.com/server-error")
         except RuntimeError as exc:
-            assert str(exc) == (
-                "Failed to fetch https://example.com/server-error: HTTP 500"
-            )
+            assert str(exc) == ("Failed to fetch https://example.com/server-error: HTTP 500")
         else:
             raise AssertionError("Expected RuntimeError")

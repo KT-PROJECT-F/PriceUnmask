@@ -4,7 +4,7 @@ Rule: no other module writes raw SQLAlchemy queries. Scheduler, API and analysis
 call these functions. That keeps the schema changeable in one place.
 Signatures below are the contract; bodies are the DB owner's first task.
 """
-from sqlalchemy import select
+
 from collections.abc import Sequence
 from datetime import datetime
 
@@ -52,10 +52,10 @@ def get_history(
     session: Session, product_id: int, since: datetime | None = None
 ) -> Sequence[PriceSnapshot]:
     """Snapshots for one product, oldest first."""
-    stmt=(select(PriceSnapshot).where(PriceSnapshot.product_id==product_id))
+    stmt = select(PriceSnapshot).where(PriceSnapshot.product_id == product_id)
     if since is not None:
         stmt = stmt.where(PriceSnapshot.timescraped_at >= since)
-        stmt=stmt.order_by(PriceSnapshot.scraped_at.asc())
+        stmt = stmt.order_by(PriceSnapshot.scraped_at.asc())
     return session.scalars(stmt).all()
 
 

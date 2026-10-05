@@ -39,7 +39,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 def fetch_html(url: str) -> str:
     """GET with our User-Agent, a timeout, 2 retries with backoff, and respect for
     robots.txt. Raise a clear exception on 4xx/5xx."""
-    
+
     response = requests.get(
         url,
         headers={"User-Agent": settings.scrape_user_agent},

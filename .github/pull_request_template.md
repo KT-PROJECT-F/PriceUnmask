@@ -4,9 +4,15 @@ Closes #<!-- issue number -->
 
 <!-- 2 or 3 sentences. What changed and why. -->
 
-## Module
+# Module
 
-- [ ] scraper  - [ ] scheduler  - [ ] db  - [ ] analysis  - [ ] api  - [ ] frontend  - [ ] tests/docs
+- [ ] scraper
+- [ ] scheduler
+- [ ] db
+- [ ] analysis
+- [ ] api
+- [ ] frontend
+- [ ] tests/docs
 
 ## How I tested it
 

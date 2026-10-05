@@ -2,8 +2,9 @@ import pytest
 
 from backend.scraper.product_scraper import parse_price_to_minor
 
+
 @pytest.mark.parametrize(
-    ("text","expected"),
+    ("text", "expected"),
     [
         ("£51.77", 5177),
         ("£52", 5200),

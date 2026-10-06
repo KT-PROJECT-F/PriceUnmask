@@ -40,6 +40,14 @@ class TrustScore:
 
 
 def compute_signals(history: pd.DataFrame) -> TrustSignals:
+    """Compute basic Trust Score signals from price history.
+
+    Raises:
+        ValueError: If history is empty.
+    """
+    if history.empty:
+        raise ValueError("history must contain at least one row")
+
     snapshot_count = len(history)
 
     first_time = history["scraped_at"].iloc[0]

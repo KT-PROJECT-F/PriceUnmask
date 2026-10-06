@@ -92,3 +92,16 @@ def test_compute_signals_today_is_lowest() -> None:
 
     assert signals.lowest_price_minor == 800
     assert signals.pct_above_lowest == 0.0
+
+
+def test_compute_signals_empty_history() -> None:
+    history = pd.DataFrame(
+        columns=[
+            "scraped_at",
+            "current_price_minor",
+            "original_price_minor",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="history must contain at least one row"):
+        compute_signals(history)

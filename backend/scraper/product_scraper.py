@@ -50,7 +50,8 @@ def fetch_html(url: str) -> str:
     if response.status_code >= 400:
         raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
-    if response.encoding is None:
+    # No charset in the header: requests guesses ISO-8859-1 and "£" becomes "Â£".
+    if "charset" not in response.headers.get("Content-Type", "").lower():
         response.encoding = response.apparent_encoding
 
     return response.text

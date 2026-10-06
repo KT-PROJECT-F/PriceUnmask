@@ -1,103 +1,85 @@
 import pytest
 
 from backend.config import settings
-from backend.scraper.product_scraper import fetch_html
+from backend.scraper.product_scraper import FETCH_TIMEOUT_SECONDS, fetch_html
 
 
 class FakeResponse:
+    """Behaves like requests: no charset in Content-Type -> encoding ISO-8859-1."""
+
     def __init__(
         self,
-        status_code=200,
-        text="",
-        content=b"",
-        encoding=None,
-        apparent_encoding="utf-8",
-        headers=None,
-    ):
+        status_code: int = 200,
+        body: str = "",
+        content_type: str = "text/html; charset=utf-8",
+    ) -> None:
         self.status_code = status_code
-        self.text = text
-        self.content = content
-        self.encoding = encoding
-        self.apparent_encoding = apparent_encoding
-        self.headers = headers or {}
+        self.content = body.encode("utf-8")
+        self.headers = {"Content-Type": content_type}
+        self.encoding = "utf-8" if "charset=utf-8" in content_type else "ISO-8859-1"
+        self.apparent_encoding = "utf-8"
+
+    @property
+    def text(self) -> str:
+        return self.content.decode(self.encoding)
 
 
-def test_fetch_html_success(monkeypatch):
-    fake_response = FakeResponse(text="<html><body>Test Product</body></html>")
-
-    monkeypatch.setattr(
-        "backend.scraper.product_scraper.requests.get",
-        lambda *args, **kwargs: fake_response,
-    )
-
-    html = fetch_html("https://example.com")
-
-    assert html == "<html><body>Test Product</body></html>"
-
-
-def test_fetch_html_uses_user_agent_and_timeout(monkeypatch):
-    fake_response = FakeResponse(text="<html>OK</html>")
-    captured = {}
-
-    def fake_get(*args, **kwargs):
-        captured["args"] = args
-        captured["kwargs"] = kwargs
-        return fake_response
+def use_fake(monkeypatch, response: FakeResponse, calls: list | None = None) -> None:
+    def fake_get(url, **kwargs):
+        if calls is not None:
+            calls.append((url, kwargs))
+        return response
 
     monkeypatch.setattr(
         "backend.scraper.product_scraper.requests.get",
         fake_get,
     )
 
+
+def test_success(monkeypatch) -> None:
+    use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"))
+    assert fetch_html("https://example.com") == "<html>OK</html>"
+
+
+def test_user_agent_and_timeout(monkeypatch) -> None:
+    calls: list = []
+    use_fake(monkeypatch, FakeResponse(body="ok"), calls)
     fetch_html("https://example.com")
 
-    assert captured["args"] == ("https://example.com",)
-    assert captured["kwargs"] == {
-        "headers": {"User-Agent": settings.scrape_user_agent},
-        "timeout": 10,
-    }
+    _, kwargs = calls[0]
+
+    assert kwargs["headers"]["User-Agent"] == settings.scrape_user_agent
+    assert kwargs["timeout"] == FETCH_TIMEOUT_SECONDS
 
 
-def test_fetch_html_raises_on_404(monkeypatch):
-    monkeypatch.setattr(
-        "backend.scraper.product_scraper.requests.get",
-        lambda *args, **kwargs: FakeResponse(status_code=404),
+@pytest.mark.parametrize("status", [404, 500])
+def test_error_status_raises(monkeypatch, status: int) -> None:
+    use_fake(monkeypatch, FakeResponse(status_code=status))
+
+    with pytest.raises(RuntimeError, match=f"HTTP {status}"):
+        fetch_html("https://example.com/x")
+
+
+def test_pound_sign_survives_without_charset(monkeypatch) -> None:
+    use_fake(
+        monkeypatch,
+        FakeResponse(
+            body="<p>£51.77</p>",
+            content_type="text/html",
+        ),
     )
 
-    with pytest.raises(RuntimeError, match="HTTP 404"):
-        fetch_html("https://example.com/missing")
-
-
-def test_fetch_html_raises_on_500(monkeypatch):
-    monkeypatch.setattr(
-        "backend.scraper.product_scraper.requests.get",
-        lambda *args, **kwargs: FakeResponse(status_code=500),
-    )
-
-    with pytest.raises(RuntimeError, match="HTTP 500"):
-        fetch_html("https://example.com/server-error")
-
-
-def test_fetch_html_handles_missing_charset(monkeypatch):
-    fake_response = FakeResponse(
-        content="£51.77".encode(),
-        encoding=None,
-        apparent_encoding="utf-8",
-        headers={"Content-Type": "text/html"},
-    )
-
-    @property
-    def text(self):
-        return self.content.decode(self.encoding or "utf-8")
-
-    FakeResponse.text = text
-
-    monkeypatch.setattr(
-        "backend.scraper.product_scraper.requests.get",
-        lambda *args, **kwargs: fake_response,
-    )
-
-    html = fetch_html("https://example.com")
+    html = fetch_html("https://books.toscrape.com")
 
     assert "£51.77" in html
     assert "Â£" not in html
+
+
+def test_fake_garbles_like_requests_without_fix() -> None:
+    assert (
+        "Â£"
+        in FakeResponse(
+            body="£",
+            content_type="text/html",
+        ).text
+    )

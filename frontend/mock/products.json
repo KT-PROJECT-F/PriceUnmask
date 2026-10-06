@@ -19,11 +19,11 @@
   },
   {
     "id": 3,
-    "name": "Demo Air Fryer (fake discount)",
+    "name": "Demo Air Fryer (no price history)",
     "url": "https://example.com/p/demo-003",
-    "currency": "INR",
-    "latest_price_minor": 104900,
+    "currency": null,
+    "latest_price_minor": null,
     "lowest_price_minor": null,
-    "trust_label": "likely_inflated"
+    "trust_label": null
   }
 ]

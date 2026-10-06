@@ -1,9 +1,15 @@
-// Frontend track starts here. First task: fetch /api/health and show the result.
+// Load mock products and render product cards with prices and trust labels.
+const productStatus = document.getElementById("product-status");
 
-const app = document.getElementById("app");
+const trustLabels = {
+  genuine: "Genuine",
+  uncertain: "Uncertain",
+  likely_inflated: "Likely inflated",
+  insufficient_data: "Insufficient data"
+};
 
 function formatPrice(price, currency) {
-  if (price === null || price === undefined) {
+  if (price === null || price === undefined || !currency) {
     return "—";
   }
 
@@ -32,7 +38,8 @@ function createProductCard(product) {
 
   const trustLabel = document.createElement("p");
   trustLabel.textContent =
-    "Trust Label: " + (product.trust_label ?? "Unknown");
+    "Trust Label: " +
+    (trustLabels[product.trust_label] ?? "Not available");
   trustLabel.className = "trust-label";
 
   card.append(name, latestPrice, lowestPrice, trustLabel);
@@ -41,12 +48,10 @@ function createProductCard(product) {
 }
 
 async function loadProducts() {
-  app.replaceChildren();
+  const grid = document.createElement("section");
+  grid.className = "product-grid";
 
-  const status = document.createElement("p");
-  status.textContent = "Loading...";
-  status.id = "status";
-  app.append(status);
+  productStatus.textContent = "Loading products...";
 
   try {
     const response = await fetch("mock/products.json");
@@ -57,20 +62,21 @@ async function loadProducts() {
 
     const products = await response.json();
 
-    const grid = document.createElement("section");
-    grid.className = "product-grid";
+    if (!Array.isArray(products)) {
+      throw new Error("Invalid product data");
+    }
 
     products.forEach((product) => {
       grid.append(createProductCard(product));
     });
 
-    app.replaceChildren(grid);
+    document.getElementById("app").append(grid);
+    productStatus.textContent = "";
   } catch (error) {
-    status.textContent =
+    productStatus.textContent =
       "Unable to load products. Please try again later.";
     console.error(error);
   }
 }
 
 loadProducts();
-

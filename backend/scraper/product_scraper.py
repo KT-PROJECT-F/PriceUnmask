@@ -7,12 +7,17 @@ against saved HTML files with zero network calls.
 
 from dataclasses import dataclass
 from datetime import datetime
+from time import sleep
+from urllib.parse import urljoin
+from urllib.robotparser import RobotFileParser
 
 import requests
 
 from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
+MAX_RETRIES = 2
+BACKOFF_SECONDS = 1
 
 
 @dataclass(frozen=True)
@@ -39,22 +44,54 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
 
 def fetch_html(url: str) -> str:
-    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect for
-    robots.txt. Raise a clear exception on 4xx/5xx."""
-    response = requests.get(
-        url,
+    """GET with our User-Agent, timeout, retries, backoff, and robots.txt."""
+    robots_url = urljoin(url, "/robots.txt")
+    robots_response = requests.get(
+        robots_url,
         headers={"User-Agent": settings.scrape_user_agent},
         timeout=FETCH_TIMEOUT_SECONDS,
     )
 
-    if response.status_code >= 400:
-        raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+    if robots_response.status_code == 404:
+        robots_allowed = True
+    elif robots_response.status_code >= 400:
+        raise RuntimeError(
+            f"Failed to fetch robots.txt for {url}: HTTP {robots_response.status_code}"
+        )
+    else:
+        parser = RobotFileParser()
+        parser.parse(robots_response.text.splitlines())
+        robots_allowed = parser.can_fetch(settings.scrape_user_agent, url)
 
-    # No charset in the header: requests guesses ISO-8859-1 and "£" becomes "Â£".
-    if "charset" not in response.headers.get("Content-Type", "").lower():
-        response.encoding = response.apparent_encoding
+    if not robots_allowed:
+        raise RuntimeError(f"robots.txt disallows fetching {url}")
 
-    return response.text
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = requests.get(
+                url,
+                headers={"User-Agent": settings.scrape_user_agent},
+                timeout=FETCH_TIMEOUT_SECONDS,
+            )
+        except (requests.Timeout, requests.ConnectionError):
+            if attempt == MAX_RETRIES:
+                raise
+            sleep(BACKOFF_SECONDS * (2**attempt))
+            continue
+
+        if response.status_code >= 400:
+            if response.status_code not in (500, 503) or attempt == MAX_RETRIES:
+                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+
+            sleep(BACKOFF_SECONDS * (2**attempt))
+            continue
+
+        if "charset" not in response.headers.get("Content-Type", "").lower():
+            response.encoding = response.apparent_encoding
+
+        return response.text
+
+    raise RuntimeError(f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts")
 
 
 def scrape(url: str) -> list[ScrapedProduct]:

@@ -12,6 +12,31 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
+from backend.scraper.product_scraper import ScrapedProduct
+
+
+def start_scrape_run(session: Session) -> ScrapeRun:
+    """Insert a ScrapeRun with status 'running' and return it."""
+    raise NotImplementedError
+
+
+def finish_scrape_run(
+    session: Session,
+    run: ScrapeRun,
+    status: str,
+    products_seen: int,
+    error: str | None = None,
+) -> None:
+    """Set finished_at, status, products_seen, error_message."""
+    raise NotImplementedError
+
+
+def upsert_product_and_snapshot(
+    session: Session, source: str, item: ScrapedProduct, run: ScrapeRun
+) -> PriceSnapshot:
+    """Find-or-create the Product (by source + external_id), update name/url/last_seen_at,
+    then append one PriceSnapshot. Never updates an existing snapshot."""
+    raise NotImplementedError
 
 
 def list_products(
@@ -55,14 +80,7 @@ def get_history(
     return session.scalars(statement).all()
 
 
-def list_scrape_runs(
-    session: Session,
-    limit: int | None = None,
-) -> Sequence[ScrapeRun]:
-    """Return scrape runs newest first."""
-    statement = select(ScrapeRun).order_by(ScrapeRun.started_at.desc())
-
-    if limit is not None:
-        statement = statement.limit(limit)
-
+def list_scrape_runs(session: Session, limit: int = 20) -> Sequence[ScrapeRun]:
+    """Most recent runs first."""
+    statement = select(ScrapeRun).order_by(ScrapeRun.started_at.desc()).limit(limit)
     return session.scalars(statement).all()

@@ -16,6 +16,8 @@ import pandas as pd
 Label = Literal["genuine", "uncertain", "likely_inflated", "insufficient_data"]
 
 MIN_SNAPSHOTS = 6  # below this we refuse to score; say "insufficient_data" honestly
+SPIKE_WINDOW_DAYS = 7
+SPIKE_THRESHOLD_PCT = 50.0
 
 
 @dataclass
@@ -56,15 +58,51 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 
     lowest_price_minor = int(history["current_price_minor"].min())
 
-    today_price = int(history["current_price_minor"].iloc[-1])
+    prices = history["current_price_minor"]
+    today_price = int(prices.iloc[-1])
 
     pct_above_lowest = (today_price - lowest_price_minor) / lowest_price_minor * 100
 
-    mean_price = history["current_price_minor"].mean()
-    std_price = history["current_price_minor"].std()
+    mean_price = prices.mean()
+    std_price = prices.std()
 
     volatility_pct = (
         0.0 if mean_price == 0 or pd.isna(std_price) else (std_price / mean_price) * 100
+    )
+
+    latest_original_price = history["original_price_minor"].iloc[-1]
+    claimed_discount_pct = (
+        float((latest_original_price - today_price) / latest_original_price * 100)
+        if pd.notna(latest_original_price) and latest_original_price > 0
+        else None
+    )
+
+    prior_median = prices.iloc[:-1].median()
+    real_discount_vs_median_pct = (
+        float((prior_median - today_price) / prior_median * 100)
+        if pd.notna(prior_median) and prior_median > 0
+        else None
+    )
+
+    timestamps = history["scraped_at"]
+    latest_time = timestamps.iloc[-1]
+    spike_cutoff = latest_time - pd.Timedelta(days=SPIKE_WINDOW_DAYS)
+    baseline_prices = prices.loc[timestamps < spike_cutoff]
+    recent_prices = prices.loc[(timestamps >= spike_cutoff) & (timestamps < latest_time)]
+    if baseline_prices.empty or recent_prices.empty:
+        spike_pct = None
+    else:
+        baseline_median = baseline_prices.median()
+        spike_pct = (
+            float((recent_prices.max() - baseline_median) / baseline_median * 100)
+            if baseline_median > 0
+            else None
+        )
+    spike_before_discount = (
+        claimed_discount_pct is not None
+        and claimed_discount_pct > 0
+        and spike_pct is not None
+        and spike_pct >= SPIKE_THRESHOLD_PCT
     )
 
     return TrustSignals(
@@ -73,10 +111,10 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
         lowest_price_minor=lowest_price_minor,
         pct_above_lowest=float(pct_above_lowest),
         volatility_pct=float(volatility_pct),
-        spike_before_discount=False,
-        spike_pct=None,
-        claimed_discount_pct=None,
-        real_discount_vs_median_pct=None,
+        spike_before_discount=spike_before_discount,
+        spike_pct=spike_pct,
+        claimed_discount_pct=claimed_discount_pct,
+        real_discount_vs_median_pct=real_discount_vs_median_pct,
     )
 
 

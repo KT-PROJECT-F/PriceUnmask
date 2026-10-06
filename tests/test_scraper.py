@@ -1,6 +1,33 @@
+from datetime import UTC
+from pathlib import Path
+
 import pytest
 
-from backend.scraper.product_scraper import parse_price_to_minor
+from backend.scraper.product_scraper import (
+    parse_listing,
+    parse_price_to_minor,
+)
+
+
+def test_parse_listing_sample_page():
+    html = Path("data/snapshots/sample_books_page1.html").read_text(encoding="utf-8")
+    products = parse_listing(html, "https://books.toscrape.com/")
+
+    assert len(products) == 20
+
+    first = products[0]
+
+    assert first.external_id == "a-light-in-the-attic"
+    assert first.name == "A Light in the Attic"
+    assert first.url == (
+        "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html"
+    )
+
+    assert first.current_price_minor == 5177
+    assert first.in_stock is True
+    assert first.currency == "GBP"
+    assert first.original_price_minor is None
+    assert first.scraped_at.tzinfo is UTC
 
 
 @pytest.mark.parametrize(

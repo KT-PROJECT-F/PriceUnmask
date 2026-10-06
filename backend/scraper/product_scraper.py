@@ -7,9 +7,11 @@ against saved HTML files with zero network calls.
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from urllib.parse import urljoin
 
 import requests
+from bs4 import BeautifulSoup
 
 from backend.config import settings
 
@@ -49,9 +51,67 @@ def parse_price_to_minor(text: str) -> int | None:
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse one listing page. Skip (and log) cards with missing name or price;
-    never crash the whole page because one card is weird."""
-    raise NotImplementedError
+    # Convert the HTML string into a BeautifulSoup object
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Store all scraped products
+    products = []
+
+    # Find every product card on the listing page
+    for card in soup.select("article.product_pod"):
+        # Find the product link/name
+        link = card.select_one("h3 a")
+
+        # Find the product price
+        price_element = card.select_one(".price_color")
+
+        # Find the availability information
+        availability_element = card.select_one(".availability")
+
+        # Skip this product if any required element is missing
+        if not link or not price_element or not availability_element:
+            continue
+
+        # Get the product's relative URL from the HTML
+        relative_url = link.get("href", "")
+
+        # Convert the relative URL into a complete URL
+        url = urljoin(base_url, relative_url)
+
+        # Use the last part of the URL as the product ID
+        external_id = url.rstrip("/").split("/")[-2].rsplit("_", 1)[0]
+
+        # Get the product name from the title attribute or link text
+        name = link.get("title") or link.get_text(strip=True)
+
+        # Get the price as text
+        price_text = price_element.get_text(strip=True)
+
+        # Convert the price into minor currency units
+        price_minor = parse_price_to_minor(price_text)
+
+        # Get availability text and clean extra spaces
+        availability = availability_element.get_text(" ", strip=True)
+
+        # Check whether the product is currently in stock
+        in_stock = "In stock" in availability
+
+        # Create a ScrapedProduct object and add it to the list
+        products.append(
+            ScrapedProduct(
+                external_id=external_id,
+                name=name,
+                url=url,
+                current_price_minor=price_minor,
+                original_price_minor=None,
+                in_stock=in_stock,
+                currency="GBP",
+                scraped_at=datetime.now(UTC),
+            )
+        )
+
+    # Return all products found on the page
+    return products
 
 
 def fetch_html(url: str) -> str:

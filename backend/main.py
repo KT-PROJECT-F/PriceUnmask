@@ -3,6 +3,7 @@ FastAPI app. Owner: API track.
 
 API lives under /api. The frontend folder is served at / by the same server.
 """
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -32,6 +33,7 @@ app = FastAPI(
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
 
 @app.get("/api/products")
 def get_products(db: Session = Depends(get_db)):  # noqa: B008

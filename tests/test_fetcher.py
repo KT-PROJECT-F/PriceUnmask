@@ -23,9 +23,7 @@ class FakeResponse:
 
 
 def test_fetch_html_success(monkeypatch):
-    fake_response = FakeResponse(
-        text="<html><body>Test Product</body></html>"
-    )
+    fake_response = FakeResponse(text="<html><body>Test Product</body></html>")
 
     monkeypatch.setattr(
         "backend.scraper.product_scraper.requests.get",

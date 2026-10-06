@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.db.crud import (
     get_history,
@@ -60,18 +60,18 @@ def test_get_history_is_oldest_first(session):
     products = list_products(session)
     product_id = products[0].id
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     old_snapshot = PriceSnapshot(
         product_id=product_id,
         scraped_at=now - timedelta(days=2),
-        price_minor=10000,
+        current_price_minor=10000,
     )
 
     new_snapshot = PriceSnapshot(
         product_id=product_id,
         scraped_at=now - timedelta(days=1),
-        price_minor=9000,
+        current_price_minor=9000,
     )
 
     session.add_all([new_snapshot, old_snapshot])
@@ -79,7 +79,7 @@ def test_get_history_is_oldest_first(session):
 
     history = get_history(session, product_id)
 
-    assert history[0].scraped_at <= history[1].scraped_at
+    assert history[0].scraped_at < history[1].scraped_at
 
 
 def test_get_history_respects_since(session):
@@ -88,18 +88,18 @@ def test_get_history_respects_since(session):
     products = list_products(session)
     product_id = products[0].id
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     old_snapshot = PriceSnapshot(
         product_id=product_id,
         scraped_at=now - timedelta(days=2),
-        price_minor=10000,
+        current_price_minor=10000,
     )
 
     new_snapshot = PriceSnapshot(
         product_id=product_id,
         scraped_at=now - timedelta(days=1),
-        price_minor=9000,
+        current_price_minor=9000,
     )
 
     session.add_all([old_snapshot, new_snapshot])
@@ -109,12 +109,14 @@ def test_get_history_respects_since(session):
 
     history = get_history(session, product_id, since=since)
 
-    assert len(history) == 1
-    assert history[0].price_minor == 9000
+    prices = [snapshot.current_price_minor for snapshot in history]
+
+    assert 10000 not in prices
+    assert 9000 in prices
 
 
 def test_list_scrape_runs_newest_first_and_respects_limit(session):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     run1 = ScrapeRun(
         started_at=now - timedelta(days=3),

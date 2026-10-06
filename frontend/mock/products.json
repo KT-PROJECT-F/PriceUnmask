@@ -21,9 +21,9 @@
     "id": 3,
     "name": "Demo Air Fryer (no price history)",
     "url": "https://example.com/p/demo-003",
-    "currency": null,
+    "currency": "INR",
     "latest_price_minor": null,
     "lowest_price_minor": null,
-    "trust_label": null
+    "trust_label": "insufficient_data"
   }
 ]

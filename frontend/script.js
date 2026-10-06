@@ -13,10 +13,15 @@ function formatPrice(price, currency) {
     return "—";
   }
 
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: currency
-  }).format(price / 100);
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currency
+    }).format(price / 100);
+  } catch (error) {
+    console.error("Bad currency", currency, error);
+    return "—";
+  }
 }
 
 function createProductCard(product) {
@@ -64,6 +69,11 @@ async function loadProducts() {
 
     if (!Array.isArray(products)) {
       throw new Error("Invalid product data");
+    }
+
+    if (products.length === 0) {
+      productStatus.textContent = "No products yet.";
+      return;
     }
 
     products.forEach((product) => {

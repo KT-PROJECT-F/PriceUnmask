@@ -1,90 +1,105 @@
-from unittest.mock import patch
+import pytest
 
+from backend.config import settings
 from backend.scraper.product_scraper import fetch_html
 
 
-def test_fetch_html_success():
-    fake_response = type(
-        "FakeResponse",
-        (),
-        {
-            "status_code": 200,
-            "text": "<html><body>Test Product</body></html>",
-        },
-    )()
-
-    with patch(
-        "backend.scraper.product_scraper.requests.get",
-        return_value=fake_response,
-    ) as mock_get:
-        html = fetch_html("https://example.com")
-
-    assert html == "<html><body>Test Product</body></html>"
-    mock_get.assert_called_once()
+class FakeResponse:
+    def __init__(
+        self,
+        status_code=200,
+        text="",
+        content=b"",
+        encoding=None,
+        apparent_encoding="utf-8",
+        headers=None,
+    ):
+        self.status_code = status_code
+        self.text = text
+        self.content = content
+        self.encoding = encoding
+        self.apparent_encoding = apparent_encoding
+        self.headers = headers or {}
 
 
-def test_fetch_html_uses_user_agent_and_timeout():
-    fake_response = type(
-        "FakeResponse",
-        (),
-        {
-            "status_code": 200,
-            "text": "<html>OK</html>",
-        },
-    )()
-
-    with patch(
-        "backend.scraper.product_scraper.requests.get",
-        return_value=fake_response,
-    ) as mock_get:
-        fetch_html("https://example.com")
-
-    mock_get.assert_called_once_with(
-        "https://example.com",
-        headers={"User-Agent": "PriceUnmaskBot/0.1 (learning project; contact: you@example.com)"},
-        timeout=10,
+def test_fetch_html_success(monkeypatch):
+    fake_response = FakeResponse(
+        text="<html><body>Test Product</body></html>"
     )
 
-
-def test_fetch_html_raises_on_404():
-    fake_response = type(
-        "FakeResponse",
-        (),
-        {
-            "status_code": 404,
-            "text": "Not Found",
-        },
-    )()
-
-    with patch(
+    monkeypatch.setattr(
         "backend.scraper.product_scraper.requests.get",
-        return_value=fake_response,
-    ):
-        try:
-            fetch_html("https://example.com/missing")
-        except RuntimeError as exc:
-            assert str(exc) == ("Failed to fetch https://example.com/missing: HTTP 404")
-        else:
-            raise AssertionError("Expected RuntimeError")
+        lambda *args, **kwargs: fake_response,
+    )
+
+    html = fetch_html("https://example.com")
+
+    assert html == "<html><body>Test Product</body></html>"
 
 
-def test_fetch_html_raises_on_500():
-    fake_response = type(
-        "FakeResponse",
-        (),
-        {
-            "status_code": 500,
-            "text": "Server Error",
-        },
-    )()
+def test_fetch_html_uses_user_agent_and_timeout(monkeypatch):
+    fake_response = FakeResponse(text="<html>OK</html>")
+    captured = {}
 
-    with patch(
+    def fake_get(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return fake_response
+
+    monkeypatch.setattr(
         "backend.scraper.product_scraper.requests.get",
-        return_value=fake_response,
-    ):
-        try:
-            fetch_html("https://example.com/server-error")
-        except RuntimeError as exc:
-            assert str(exc) == ("Failed to fetch https://example.com/server-error: HTTP 500")
-        else:
-            raise AssertionError("Expected RuntimeError")
+        fake_get,
+    )
+
+    fetch_html("https://example.com")
+
+    assert captured["args"] == ("https://example.com",)
+    assert captured["kwargs"] == {
+        "headers": {"User-Agent": settings.scrape_user_agent},
+        "timeout": 10,
+    }
+
+
+def test_fetch_html_raises_on_404(monkeypatch):
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        lambda *args, **kwargs: FakeResponse(status_code=404),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 404"):
+        fetch_html("https://example.com/missing")
+
+
+def test_fetch_html_raises_on_500(monkeypatch):
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        lambda *args, **kwargs: FakeResponse(status_code=500),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        fetch_html("https://example.com/server-error")
+
+
+def test_fetch_html_handles_missing_charset(monkeypatch):
+    fake_response = FakeResponse(
+        content="£51.77".encode(),
+        encoding=None,
+        apparent_encoding="utf-8",
+        headers={"Content-Type": "text/html"},
+    )
+
+    @property
+    def text(self):
+        return self.content.decode(self.encoding or "utf-8")
+
+    FakeResponse.text = text
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        lambda *args, **kwargs: fake_response,
+    )
+
+    html = fetch_html("https://example.com")
+
+    assert "£51.77" in html
+    assert "Â£" not in html

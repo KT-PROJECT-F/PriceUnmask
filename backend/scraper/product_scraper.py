@@ -12,6 +12,8 @@ import requests
 
 from backend.config import settings
 
+FETCH_TIMEOUT_SECONDS = 10
+
 
 @dataclass(frozen=True)
 class ScrapedProduct:
@@ -42,11 +44,14 @@ def fetch_html(url: str) -> str:
     response = requests.get(
         url,
         headers={"User-Agent": settings.scrape_user_agent},
-        timeout=10,
+        timeout=FETCH_TIMEOUT_SECONDS,
     )
 
     if response.status_code >= 400:
         raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+
+    if response.encoding is None:
+        response.encoding = response.apparent_encoding
 
     return response.text
 

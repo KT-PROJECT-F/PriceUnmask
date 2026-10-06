@@ -52,6 +52,8 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 
     pct_above_lowest = ((today_price - lowest_price_minor) / lowest_price_minor) * 100
 
+    print(type(pct_above_lowest))
+
     mean_price = history["current_price_minor"].mean()
     std_price = history["current_price_minor"].std()
 

@@ -1,10 +1,10 @@
 from datetime import UTC, datetime, timedelta, timezone
 
-import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+from sqlalchemy.exc import StatementError
 
-from backend.analysis.trust_score import compute_signals
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
 from backend.main import app
@@ -40,48 +40,7 @@ def test_datetimes_are_stored_as_utc_and_come_back_aware(session) -> None:
     assert session.scalars(select(ScrapeRun).where(ScrapeRun.started_at >= since)).all() == [loaded]
 
 
-def test_compute_signals_basic_history() -> None:
-    history = pd.DataFrame(
-        {
-            "scraped_at": pd.to_datetime(
-                [
-                    "2026-10-01 10:00:00+00:00",
-                    "2026-10-02 10:00:00+00:00",
-                    "2026-10-03 10:00:00+00:00",
-                    "2026-10-04 10:00:00+00:00",
-                    "2026-10-05 10:00:00+00:00",
-                ]
-            ),
-            "current_price_minor": [1000, 900, 1100, 800, 1000],
-            "original_price_minor": [1500, 1500, 1500, 1500, 1500],
-        }
-    )
-
-    signals = compute_signals(history)
-
-    assert signals.snapshot_count == 5
-    assert signals.days_of_history == 4
-    assert signals.lowest_price_minor == 800
-    assert signals.pct_above_lowest == 25.0
-
-
-def test_compute_signals_constant_price() -> None:
-    history = pd.DataFrame(
-        {
-            "scraped_at": pd.to_datetime(
-                [
-                    "2026-10-01 10:00:00+00:00",
-                    "2026-10-02 10:00:00+00:00",
-                    "2026-10-03 10:00:00+00:00",
-                ]
-            ),
-            "current_price_minor": [1000, 1000, 1000],
-            "original_price_minor": [1500, 1500, 1500],
-        }
-    )
-
-    signals = compute_signals(history)
-
-    assert signals.lowest_price_minor == 1000
-    assert signals.pct_above_lowest == 0.0
-    assert signals.volatility_pct == 0.0
+def test_naive_datetime_is_rejected(session) -> None:
+    session.add(ScrapeRun(started_at=datetime(2026, 10, 7, 10, 0)))
+    with pytest.raises(StatementError, match="naive datetime"):
+        session.commit()

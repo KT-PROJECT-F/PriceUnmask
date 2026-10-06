@@ -52,15 +52,13 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 
     first_time = history["scraped_at"].iloc[0]
     last_time = history["scraped_at"].iloc[-1]
-    days_of_history = (last_time - first_time).total_seconds() / 86400
+    days_of_history = (last_time - first_time) / pd.Timedelta(days=1)
 
     lowest_price_minor = int(history["current_price_minor"].min())
 
-    today_price = history["current_price_minor"].iloc[-1]
+    today_price = int(history["current_price_minor"].iloc[-1])
 
-    pct_above_lowest = ((today_price - lowest_price_minor) / lowest_price_minor) * 100
-
-    print(type(pct_above_lowest))
+    pct_above_lowest = (today_price - lowest_price_minor) / lowest_price_minor * 100
 
     mean_price = history["current_price_minor"].mean()
     std_price = history["current_price_minor"].std()
@@ -70,11 +68,11 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     )
 
     return TrustSignals(
-        days_of_history=days_of_history,
+        days_of_history=float(days_of_history),
         snapshot_count=snapshot_count,
         lowest_price_minor=lowest_price_minor,
-        pct_above_lowest=pct_above_lowest,
-        volatility_pct=volatility_pct,
+        pct_above_lowest=float(pct_above_lowest),
+        volatility_pct=float(volatility_pct),
         spike_before_discount=False,
         spike_pct=None,
         claimed_discount_pct=None,

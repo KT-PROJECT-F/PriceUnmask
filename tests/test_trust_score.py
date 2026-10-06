@@ -29,7 +29,10 @@ def test_compute_signals_basic_history() -> None:
     assert signals.pct_above_lowest == 25.0
 
     # Check the exact expected value based on your implementation.
-    assert signals.volatility_pct == pytest.approx(11.87, rel=1e-2)
+    # mean 960, sample std ≈ 114.02 -> 114.02 / 960 ≈ 11.877%
+    assert signals.volatility_pct == pytest.approx(11.877, abs=0.001)
+    assert type(signals.pct_above_lowest) is float
+    assert type(signals.volatility_pct) is float
 
 
 def test_compute_signals_constant_price() -> None:

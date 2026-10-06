@@ -124,7 +124,7 @@ Review buddies (review each other's PRs before the mentor): 1 and 2, 3 and 4, 5 
 | M1 Collecting | by Fri 9 Oct | Scraper + crud + scheduler on `dev`; collector running | |
 | M2 Features | 1 to 14 Oct | Trust score, anomaly, all endpoints, grid + chart, each on fake data | `dev -> main` v0.1 |
 | M3 Integration | 15 to 24 Oct | Everything on real collected data; error handling pass | `dev -> main` v0.2 |
-| M4 Hardening | 25 to 31 Oct | Tests, README, notes.md, demo | `dev -> main` v1.0 |
+| | M4 Hardening | 25 to 31 Oct | Tests, README, design notes, demo | `dev -> main` v1.0 |
 
 Fri 2 Oct (Gandhi Jayanti) is a holiday. Week 1 practice site: https://books.toscrape.com
 (prices never change there, so the real shop for history is chosen at the end of Week 1).

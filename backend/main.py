@@ -81,7 +81,6 @@ def get_product_history(
     history = crud.get_history(session, product_id, since=since)
 
     return converters.history_to_out(product, history)
-    return converters.history_to_out(product, history)
 
 
 @app.get("/api/scrape-runs", response_model=list[ScrapeRunOut])

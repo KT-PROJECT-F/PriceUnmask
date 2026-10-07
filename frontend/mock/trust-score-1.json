@@ -1,0 +1,15 @@
+{
+  "product_id": 1,
+  "score": 92,
+  "label": "genuine",
+  "reasons": [
+    "Current price is consistent with the product's price history.",
+    "No unusual price increase was detected."
+  ],
+  "signals": {
+    "price_stability": 0.92,
+    "discount_consistency": 0.88,
+    "anomaly_detected": false
+  },
+  "anomaly_note": null
+}

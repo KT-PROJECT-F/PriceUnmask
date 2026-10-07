@@ -15,15 +15,15 @@
     "currency": "INR",
     "latest_price_minor": 279900,
     "lowest_price_minor": 269900,
-    "trust_label": "genuine"
+    "trust_label": "uncertain"
   },
   {
     "id": 3,
-    "name": "Demo Air Fryer (no price history)",
+    "name": "Demo Air Fryer (fake discount)",
     "url": "https://example.com/p/demo-003",
     "currency": "INR",
-    "latest_price_minor": null,
-    "lowest_price_minor": null,
-    "trust_label": "insufficient_data"
+    "latest_price_minor": 104900,
+    "lowest_price_minor": 96900,
+    "trust_label": "likely_inflated"
   }
 ]

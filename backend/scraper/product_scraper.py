@@ -36,18 +36,26 @@ class ScrapedProduct:
 
 
 def parse_price_to_minor(text: str) -> int | None:
-    """'Rs. 1,299.50' / 'Γé╣1,299' / '1299' -> 129950 / 129900 / 129900. None if unparseable."""
+    """'Rs. 1,299.50' / '£1,299' / '₹1,299' / '1299' -> minor units."""
     if not isinstance(text, str):
         return None
+
     value = text.strip()
     if not value:
         return None
-    value = re.sub(r"^(?:Rs\.?|Γé╣|┬ú)\s*", "", value, flags=re.IGNORECASE)
+
+    value = re.sub(
+        r"^(?:Rs\.?|[\u00a3\u20b9])\s*",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
     value = value.replace(",", "").strip()
 
     match = re.fullmatch(r"(\d+)(?:\.(\d{1,2}))?", value)
     if not match:
         return None
+
     whole = match.group(1)
     decimal = match.group(2) or ""
 

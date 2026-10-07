@@ -39,6 +39,8 @@ def list_products(
     search: str | None = Query(default=None),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> list[ProductOut]:
+    # Direct lookup by ID can return inactive products.
+    # The list endpoint only returns active products.
     products = crud.list_products(session, search=search)
 
     return [converters.product_to_out(product, product.snapshots) for product in products]
@@ -58,8 +60,7 @@ def get_product(
 
 
 # TODO(API track): add the endpoints listed in docs/ARCHITECTURE.md section 5:
-#   GET  /api/products?search=
-#   GET  /api/products/{product_id}
+
 #   GET  /api/products/{product_id}/history
 #   GET  /api/products/{product_id}/trust-score
 #   GET  /api/scrape-runs

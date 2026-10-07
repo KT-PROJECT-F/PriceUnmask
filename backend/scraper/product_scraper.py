@@ -1,6 +1,7 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
 Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+
 Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
 against saved HTML files with zero network calls.
 """
@@ -19,7 +20,6 @@ from backend.config import settings
 FETCH_TIMEOUT_SECONDS = 10
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
-
 RETRY_STATUSES = {500, 502, 503, 504}
 
 
@@ -112,7 +112,6 @@ def fetch_html(url: str) -> str:
         except (requests.Timeout, requests.ConnectionError):
             if attempt == MAX_RETRIES:
                 raise
-
             sleep(BACKOFF_SECONDS * (2**attempt))
             continue
 

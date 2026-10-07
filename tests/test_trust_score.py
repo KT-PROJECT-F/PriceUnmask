@@ -2,9 +2,14 @@ import pandas as pd
 import pytest
 from sqlalchemy.orm import Session
 
-from backend.analysis.trust_score import TrustSignals, compute_signals
+from backend.analysis.trust_score import (
+    MIN_SNAPSHOTS,
+    TrustSignals,
+    compute_signals,
+    compute_trust_score,
+)
 from backend.db.models import Product
-from backend.devtools.seed_fake_data import seed
+from backend.devtools.seed_fake_data import DAYS, SNAPSHOTS_PER_DAY, _series, seed
 
 
 def test_compute_signals_basic_history() -> None:
@@ -345,3 +350,74 @@ def test_compute_signals_detects_seeded_fake_discount_but_not_stable_product(
     assert fake_discount.spike_pct is not None
     assert fake_discount.spike_pct >= 50.0
     assert stable.spike_before_discount is False
+
+
+def seeded_history(kind: str) -> pd.DataFrame:
+    prices = _series(kind, DAYS * SNAPSHOTS_PER_DAY)
+    return pd.DataFrame(
+        {
+            "scraped_at": pd.date_range(
+                "2026-10-01 00:00:00+00:00",
+                periods=len(prices),
+                freq="4h",
+            ),
+            "current_price_minor": [price for price, _ in prices],
+            "original_price_minor": [original for _, original in prices],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_label"),
+    [
+        ("stable", "genuine"),
+        ("real_drop", "genuine"),
+        ("fake_discount", "likely_inflated"),
+    ],
+)
+def test_compute_trust_score_classifies_seeded_patterns(
+    kind: str,
+    expected_label: str,
+) -> None:
+    score = compute_trust_score(seeded_history(kind))
+
+    assert score.label == expected_label
+    assert score.score is not None
+
+
+def test_compute_trust_score_requires_at_least_six_snapshots() -> None:
+    score = compute_trust_score(seeded_history("stable").iloc[: MIN_SNAPSHOTS - 1])
+
+    assert score.score is None
+    assert score.label == "insufficient_data"
+    assert score.signals is None
+    assert score.reasons
+    assert "5 price snapshots" in score.reasons[0]
+    assert "at least 6" in score.reasons[0]
+
+
+@pytest.mark.parametrize("kind", ["stable", "real_drop", "fake_discount"])
+def test_compute_trust_score_is_bounded_for_seeded_patterns(kind: str) -> None:
+    score = compute_trust_score(seeded_history(kind))
+
+    assert score.score is not None
+    assert 0 <= score.score <= 100
+
+
+@pytest.mark.parametrize("kind", ["stable", "real_drop", "fake_discount"])
+def test_compute_trust_score_reasons_are_full_sentences(kind: str) -> None:
+    score = compute_trust_score(seeded_history(kind))
+
+    assert score.reasons
+    assert all(reason.endswith(".") for reason in score.reasons)
+
+
+def test_compute_trust_score_explains_seeded_fake_discount_warnings() -> None:
+    score = compute_trust_score(seeded_history("fake_discount"))
+
+    assert score.label == "likely_inflated"
+    assert score.score is not None
+    assert score.score < 40
+    assert any("rose sharply" in reason for reason in score.reasons)
+    assert any("advertised discount" in reason for reason in score.reasons)
+    assert any("volatility" in reason for reason in score.reasons)

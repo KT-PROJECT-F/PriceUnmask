@@ -3,6 +3,9 @@
 Rule: no other module writes raw SQLAlchemy queries. Scheduler, API and analysis
 call these functions. That keeps the schema changeable in one place.
 Signatures below are the contract; bodies are the DB owner's first task.
+
+Write functions commit their own changes. Callers should not rely on an additional
+commit after calling these functions.
 """
 
 from collections.abc import Sequence
@@ -53,8 +56,10 @@ def upsert_product_and_snapshot(
     item: ScrapedProduct,
     run: ScrapeRun,
 ) -> PriceSnapshot:
-    """Create or update a product and append a new price snapshot."""
+    """Create or update a product and append a new price snapshot.
 
+    Never updates an existing snapshot.
+    """
     statement = select(Product).where(
         Product.source == source,
         Product.external_id == item.external_id,
@@ -68,6 +73,7 @@ def upsert_product_and_snapshot(
             external_id=item.external_id,
             name=item.name,
             url=item.url,
+            currency=item.currency,
             is_active=True,
             last_seen_at=item.scraped_at,
         )

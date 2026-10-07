@@ -1,0 +1,27 @@
+[
+  {
+    "date": "2026-09-28",
+    "current_price_minor": 79900,
+    "original_price_minor": null
+  },
+  {
+    "date": "2026-09-30",
+    "current_price_minor": 79900,
+    "original_price_minor": null
+  },
+  {
+    "date": "2026-10-02",
+    "current_price_minor": 104900,
+    "original_price_minor": 149900
+  },
+  {
+    "date": "2026-10-04",
+    "current_price_minor": 104900,
+    "original_price_minor": 149900
+  },
+  {
+    "date": "2026-10-07",
+    "current_price_minor": 104900,
+    "original_price_minor": 149900
+  }
+]

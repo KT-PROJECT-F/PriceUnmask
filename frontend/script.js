@@ -4,7 +4,7 @@ const app = document.getElementById("app");
 const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
 const searchBox = document.getElementById("search-box");
-
+let priceHistoryChart = null;
 const trustLabels = {
   genuine: "Genuine",
   uncertain: "Uncertain",
@@ -129,6 +129,122 @@ async function loadTrustScore(productId) {
   return trustScore;
 }
 
+// Load price-history data for the selected product.
+async function loadPriceHistory(productId) {
+  const response = await fetch(
+    `mock/price-history-${productId}.json`
+  );
+
+  if (!response.ok) {
+    throw new Error("Could not load price history");
+  }
+
+  const history = await response.json();
+
+  if (
+    !Array.isArray(history) ||
+    !history.every(
+      (item) =>
+        typeof item.date === "string" &&
+        typeof item.current_price_minor === "number" &&
+        Number.isFinite(item.current_price_minor) &&
+        (
+          item.original_price_minor === null ||
+          (
+            typeof item.original_price_minor === "number" &&
+            Number.isFinite(item.original_price_minor)
+          )
+        )
+    )
+  ) {
+    throw new Error("Invalid price history data");
+  }
+
+  return history;
+}
+
+// Render the selected product's price history.
+function renderPriceHistoryChart(canvas, history, currency) {
+  if (priceHistoryChart) {
+    priceHistoryChart.destroy();
+    priceHistoryChart = null;
+  }
+
+  const formatRupees = (minorUnits) =>
+    formatPrice(minorUnits, currency);
+
+  priceHistoryChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: history.map((item) => item.date),
+      datasets: [
+        {
+          label: "Current Price",
+          data: history.map(
+            (item) => item.current_price_minor / 100
+          ),
+          borderColor: "#2563eb",
+          backgroundColor: "#2563eb",
+          tension: 0.2,
+        },
+        {
+          label: "Original Price",
+          data: history.map((item) =>
+            item.original_price_minor === null
+              ? null
+              : item.original_price_minor / 100
+          ),
+          borderColor: "#dc2626",
+          backgroundColor: "#dc2626",
+          tension: 0.2,
+          spanGaps: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback(value) {
+              return formatRupees(value * 100);
+            },
+          },
+        },
+      },
+      plugins: {
+        tooltip: {
+        backgroundColor: "#1f2937",
+        titleColor: "#ffffff",
+        bodyColor: "#ffffff",
+        borderColor: "#9ca3af",
+        borderWidth: 1,
+        padding: 12,
+        displayColors: true,
+        callbacks: {
+          label(context) {
+            const value = context.parsed.y;
+
+            if (value === null) {
+              return `${context.dataset.label}: No data`;
+            }
+
+            return `${context.dataset.label}: ${formatRupees(
+              value * 100
+            )}`;
+          },
+        },
+      },
+      },
+    },
+  });
+}
+
 function buildDetailContent(product, trustScore) {
   const elements = [];
 
@@ -203,12 +319,22 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(reasonsHeading, reasonsList);
 
-  const chartPlaceholder = document.createElement("div");
-  chartPlaceholder.className = "price-chart-placeholder";
-  chartPlaceholder.textContent =
-    "Price chart — coming next working day";
+  const chartContainer = document.createElement("div");
+  chartContainer.className = "price-chart-container";
 
-  elements.push(chartPlaceholder);
+  const chartHeading = document.createElement("h3");
+  chartHeading.textContent = "Price History";
+
+  const chartCanvas = document.createElement("canvas");
+  chartCanvas.id = "price-history-chart";
+  chartCanvas.setAttribute(
+    "aria-label",
+    `Price history chart for ${product.name}`
+  );
+  chartCanvas.setAttribute("role", "img");
+
+  chartContainer.append(chartHeading, chartCanvas);
+  elements.push(chartContainer);
 
   return elements;
 }
@@ -257,7 +383,10 @@ async function showProductDetail(product, showGrid) {
   app.append(detail);
 
   try {
-    const trustScore = await loadTrustScore(product.id);
+    const [trustScore, history] = await Promise.all([
+      loadTrustScore(product.id),
+      loadPriceHistory(product.id),
+    ]);
 
     // Avoid rendering if this detail view has already been removed.
     if (!detail.isConnected) {
@@ -266,6 +395,14 @@ async function showProductDetail(product, showGrid) {
 
     loadingMessage.remove();
     detail.append(...buildDetailContent(product, trustScore));
+    const chartCanvas = detail.querySelector("#price-history-chart");
+    if (chartCanvas) {
+      renderPriceHistoryChart(
+        chartCanvas,
+        history,
+        product.currency
+      );
+    }
     detail.setAttribute("aria-busy", "false");
 
     const title = detail.querySelector("#product-detail-title");
@@ -294,6 +431,10 @@ async function showProductDetail(product, showGrid) {
 }
 
 function showProductGrid(grid, products, onSelect) {
+  if (priceHistoryChart) {
+    priceHistoryChart.destroy();
+    priceHistoryChart = null;
+  }
   const detail = app.querySelector(".product-detail");
 
   if (detail) {

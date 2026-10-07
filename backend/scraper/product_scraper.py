@@ -71,7 +71,9 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
 def fetch_html(url: str) -> str:
     """Fetch a page with a User-Agent, timeout, retries, and robots.txt."""
+
     robots_url = urljoin(url, "/robots.txt")
+
     headers = {"User-Agent": settings.scrape_user_agent}
 
     robots_response = requests.get(
@@ -82,13 +84,17 @@ def fetch_html(url: str) -> str:
 
     if robots_response.status_code == 404:
         robots_allowed = True
+
     elif robots_response.status_code >= 400:
         raise RuntimeError(
             f"Failed to fetch robots.txt for {url}: HTTP {robots_response.status_code}"
         )
+
     else:
         parser = RobotFileParser()
+
         parser.parse(robots_response.text.splitlines())
+
         robots_allowed = parser.can_fetch(settings.scrape_user_agent, url)
 
     if not robots_allowed:
@@ -101,11 +107,13 @@ def fetch_html(url: str) -> str:
                 headers=headers,
                 timeout=FETCH_TIMEOUT_SECONDS,
             )
+
         except (requests.Timeout, requests.ConnectionError):
             if attempt == MAX_RETRIES:
                 raise
 
             sleep(BACKOFF_SECONDS * (2**attempt))
+
             continue
 
         if response.status_code >= 400:
@@ -116,6 +124,7 @@ def fetch_html(url: str) -> str:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             sleep(BACKOFF_SECONDS * (2**attempt))
+
             continue
 
         if "charset" not in response.headers.get("Content-Type", "").lower():

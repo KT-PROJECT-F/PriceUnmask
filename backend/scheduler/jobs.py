@@ -3,12 +3,15 @@
 Run the collector with:  python -m backend.scheduler.jobs
 """
 
+import logging
+
 from backend.config import settings
 from backend.db import crud
-from backend.db.database import SessionLocal  # noqa: F401  (used once implemented)
+from backend.db.database import SessionLocal
 from backend.scraper.product_scraper import scrape
 
 SOURCE_KEY = "demo-shop"  # change when the target site is chosen
+logger = logging.getLogger(__name__)
 
 
 def run_scrape_cycle() -> int:
@@ -22,15 +25,16 @@ def run_scrape_cycle() -> int:
     with SessionLocal() as session:
         run = crud.start_scrape_run(session)
         try:
-            products = scrape(settings.scrape_target_url, source=SOURCE_KEY)
+            products = scrape(settings.scrape_target_url)
             count = 0
             for prod in products:
-                crud.upsert_product_and_snapshot(session, prod)
+                crud.upsert_product_and_snapshot(session, SOURCE_KEY, prod, run)
                 count += 1
             crud.finish_scrape_run(session, run, status="success", products_seen=count)
             return count
-        except Exception as e:
-            crud.finish_scrape_run(session, run, status="failed", products_seen=0, error=str(e))
+        except Exception as exc:
+            logger.exception("Scrape cycle failed")
+            crud.finish_scrape_run(session, run, status="failed", products_seen=0, error=str(exc))
             return 0
 
 

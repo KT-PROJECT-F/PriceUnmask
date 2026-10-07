@@ -37,3 +37,38 @@ header {
 #product-status {
   padding: 16px;
 }
+
+.trust-badge {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.4rem;
+  font-weight: 700;
+}
+
+.trust-badge-genuine {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.trust-badge-uncertain {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.trust-badge-likely_inflated {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.trust-badge-insufficient_data {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.price-chart-placeholder {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 2px dashed #9ca3af;
+  border-radius: 0.5rem;
+  text-align: center;
+}

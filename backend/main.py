@@ -8,10 +8,14 @@ so there is no CORS setup and one command runs everything:
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
-from backend.db.database import init_db
+from backend import converters
+from backend.db import crud
+from backend.db.database import get_session, init_db
+from backend.schemas import ProductOut
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -30,9 +34,33 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/products", response_model=list[ProductOut])
+def list_products(
+    search: str | None = Query(default=None),
+    session: Session = Depends(get_session),  # noqa: B008
+) -> list[ProductOut]:
+    # Direct lookup by ID can return inactive products.
+    # The list endpoint only returns active products.
+    products = crud.list_products(session, search=search)
+
+    return [converters.product_to_out(product, product.snapshots) for product in products]
+
+
+@app.get("/api/products/{product_id}", response_model=ProductOut)
+def get_product(
+    product_id: int,
+    session: Session = Depends(get_session),  # noqa: B008
+) -> ProductOut:
+    product = crud.get_product(session, product_id)
+
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return converters.product_to_out(product, product.snapshots)
+
+
 # TODO(API track): add the endpoints listed in docs/ARCHITECTURE.md section 5:
-#   GET  /api/products?search=
-#   GET  /api/products/{product_id}
+
 #   GET  /api/products/{product_id}/history
 #   GET  /api/products/{product_id}/trust-score
 #   GET  /api/scrape-runs

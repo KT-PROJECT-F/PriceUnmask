@@ -81,7 +81,7 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 
     prior_median = prices.iloc[:-1].median()
     real_discount_vs_median_pct = (
-        float((prior_median - today_price) / prior_median * 100)
+        max(0.0, float((prior_median - today_price) / prior_median * 100))
         if pd.notna(prior_median) and prior_median > 0
         else None
     )

@@ -289,6 +289,20 @@ def test_compute_signals_real_discount_uses_median_of_earlier_prices() -> None:
     assert signals.real_discount_vs_median_pct == 50.0
 
 
+def test_compute_signals_real_discount_is_zero_when_price_exceeds_prior_median() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=5, tz="UTC"),
+            "current_price_minor": [2000, 2100, 1900, 2000, 2500],
+            "original_price_minor": [None] * 5,
+        }
+    )
+
+    signals = compute_signals(history)
+
+    assert signals.real_discount_vs_median_pct == 0.0
+
+
 def test_compute_signals_spike_is_not_reported_without_enough_history() -> None:
     history = pd.DataFrame(
         {

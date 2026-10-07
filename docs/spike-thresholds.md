@@ -7,7 +7,7 @@ Date: 2026-10-06
 - **Spike before discount:** The product's highest price in the seven days before the latest continuous claimed-discount period began was at least 50% above the median price before that window.
 - **Spike percentage:** The percent by which the highest price in that seven-day window exceeds the earlier median price.
 - **Claimed discount:** The latest strikethrough price's percentage reduction from the latest current price.
-- **Real discount vs median:** The latest current price's percentage reduction from the median of all earlier recorded prices, excluding the latest snapshot.
+- **Real discount vs median:** The latest current price's percentage reduction from the median of all earlier recorded prices, excluding the latest snapshot; prices at or above the median report 0% rather than a negative discount.
 
 ## Decision
 

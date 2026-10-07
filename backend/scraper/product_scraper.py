@@ -109,11 +109,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
         url_path = url.rstrip("/").split("/")
         filename = url_path[-1]
-        slug = (
-            url_path[-2]
-            if filename == "index.html" and len(url_path) >= 2
-            else filename
-        )
+        slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
         external_id = slug.rsplit("_", 1)[0]
 
         # This site sells in GBP; a rupee sign or "Rs" means INR.
@@ -151,17 +147,13 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
             timeout=FETCH_TIMEOUT_SECONDS,
         )
     except requests.RequestException as exc:
-        raise RuntimeError(
-            f"Could not fetch robots.txt for {url}: {exc}"
-        ) from exc
+        raise RuntimeError(f"Could not fetch robots.txt for {url}: {exc}") from exc
 
     if response.status_code == 404:
         return True
 
     if response.status_code >= 400:
-        raise RuntimeError(
-            f"robots.txt returned HTTP {response.status_code} for {url}"
-        )
+        raise RuntimeError(f"robots.txt returned HTTP {response.status_code} for {url}")
 
     parser = RobotFileParser()
     parser.parse(response.text.splitlines())
@@ -194,14 +186,10 @@ def fetch_html(url: str) -> str:
 
         if response.status_code >= 400:
             if response.status_code not in RETRY_STATUSES:
-                raise RuntimeError(
-                    f"Failed to fetch {url}: HTTP {response.status_code}"
-                )
+                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             if attempt == MAX_RETRIES:
-                raise RuntimeError(
-                    f"Failed to fetch {url}: HTTP {response.status_code}"
-                )
+                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             sleep(BACKOFF_SECONDS * (2**attempt))
             continue
@@ -212,9 +200,7 @@ def fetch_html(url: str) -> str:
 
         return response.text
 
-    raise RuntimeError(
-        f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts"
-    )
+    raise RuntimeError(f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts")
 
 
 def scrape(url: str) -> list[ScrapedProduct]:

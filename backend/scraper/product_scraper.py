@@ -5,8 +5,15 @@ Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
 against saved HTML files with zero network calls.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
+
+import requests
+
+from backend.config import settings
+
+FETCH_TIMEOUT_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -23,7 +30,22 @@ class ScrapedProduct:
 
 def parse_price_to_minor(text: str) -> int | None:
     """'Rs. 1,299.50' / '₹1,299' / '1299' -> 129950 / 129900 / 129900. None if unparseable."""
-    raise NotImplementedError
+    if not isinstance(text, str):
+        return None
+    value = text.strip()
+    if not value:
+        return None
+    value = re.sub(r"^(?:Rs\.?|₹|£)\s*", "", value, flags=re.IGNORECASE)
+    value = value.replace(",", "").strip()
+
+    match = re.fullmatch(r"(\d+)(?:\.(\d{1,2}))?", value)
+    if not match:
+        return None
+    whole = match.group(1)
+    decimal = match.group(2) or ""
+
+    decimal = decimal.ljust(2, "0")
+    return int(whole) * 100 + int(decimal)
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
@@ -35,7 +57,20 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 def fetch_html(url: str) -> str:
     """GET with our User-Agent, a timeout, 2 retries with backoff, and respect for
     robots.txt. Raise a clear exception on 4xx/5xx."""
-    raise NotImplementedError
+    response = requests.get(
+        url,
+        headers={"User-Agent": settings.scrape_user_agent},
+        timeout=FETCH_TIMEOUT_SECONDS,
+    )
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+
+    # No charset in the header: requests guesses ISO-8859-1 and "£" becomes "Â£".
+    if "charset" not in response.headers.get("Content-Type", "").lower():
+        response.encoding = response.apparent_encoding
+
+    return response.text
 
 
 def scrape(url: str) -> list[ScrapedProduct]:

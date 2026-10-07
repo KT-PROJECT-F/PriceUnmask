@@ -201,7 +201,7 @@ If there is no conflict, run the checks and `git push`. Done.
 4. Search the file for `<<<<<<<` to make sure none are left.
 5. Finish the merge:
    ```bash
-   git add docs/notes.md
+   git add backend/db/crud.py
    git commit
    ```
    (Git prepares a message like `Merge branch 'dev' into ...`. Save and close the editor.)

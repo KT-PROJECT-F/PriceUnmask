@@ -1,12 +1,14 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
-Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
-Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
-against saved HTML files with zero network calls.
+Contract: scrape(url) returns a list of ScrapedProduct and NEVER touches
+the database. Keeping the scraper pure (HTML in, dataclasses out) means
+it can be unit-tested against saved HTML files with zero network calls.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from time import sleep
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
@@ -22,33 +24,59 @@ BACKOFF_SECONDS = 1
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
+    external_id: str
     name: str
     url: str
-    current_price_minor: int  # Rs 1,299.50 -> 129950
-    original_price_minor: int | None  # strikethrough price, None if not shown
+    current_price_minor: int
+    original_price_minor: int | None
     in_stock: bool | None
     currency: str
-    scraped_at: datetime  # timezone-aware UTC
+    scraped_at: datetime
 
 
 def parse_price_to_minor(text: str) -> int | None:
-    """'Rs. 1,299.50' / '₹1,299' / '1299' -> 129950 / 129900 / 129900. None if unparseable."""
-    raise NotImplementedError
+    """Convert a price string into minor currency units."""
+    if not text or not text.strip():
+        return None
+
+    # Remove common currency prefixes, including Rs. and Rs.
+    cleaned_text = re.sub(r"(?i)^\s*Rs\.?\s*", "", text.strip())
+
+    # Remove thousands separators and currency symbols.
+    cleaned_text = cleaned_text.replace(",", "")
+    cleaned_text = re.sub(r"[^\d.]", "", cleaned_text)
+
+    # Reject empty or malformed numeric values.
+    if not cleaned_text or cleaned_text.count(".") > 1:
+        return None
+
+    try:
+        price = Decimal(cleaned_text)
+    except InvalidOperation:
+        return None
+
+    if not price.is_finite() or price < 0:
+        return None
+
+    return int(price * 100)
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse one listing page. Skip (and log) cards with missing name or price;
-    never crash the whole page because one card is weird."""
-    raise NotImplementedError
+    """Parse a listing page into ScrapedProduct objects.
+
+    HTML-specific parsing is not implemented in this version.
+    """
+    raise NotImplementedError("Listing HTML parsing has not been implemented yet.")
 
 
 def fetch_html(url: str) -> str:
-    """GET with our User-Agent, timeout, retries, backoff, and robots.txt."""
+    """Fetch a page with a User-Agent, timeout, retries, and robots.txt."""
     robots_url = urljoin(url, "/robots.txt")
+    headers = {"User-Agent": settings.scrape_user_agent}
+
     robots_response = requests.get(
         robots_url,
-        headers={"User-Agent": settings.scrape_user_agent},
+        headers=headers,
         timeout=FETCH_TIMEOUT_SECONDS,
     )
 
@@ -70,17 +98,21 @@ def fetch_html(url: str) -> str:
         try:
             response = requests.get(
                 url,
-                headers={"User-Agent": settings.scrape_user_agent},
+                headers=headers,
                 timeout=FETCH_TIMEOUT_SECONDS,
             )
         except (requests.Timeout, requests.ConnectionError):
             if attempt == MAX_RETRIES:
                 raise
+
             sleep(BACKOFF_SECONDS * (2**attempt))
             continue
 
         if response.status_code >= 400:
-            if response.status_code not in (500, 503) or attempt == MAX_RETRIES:
+            if response.status_code not in (500, 503):
+                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+
+            if attempt == MAX_RETRIES:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             sleep(BACKOFF_SECONDS * (2**attempt))
@@ -95,5 +127,6 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """fetch_html + save raw HTML to data/snapshots/ + parse_listing."""
-    raise NotImplementedError
+    """Fetch HTML and parse the listing."""
+    html = fetch_html(url)
+    return parse_listing(html, url)

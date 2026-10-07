@@ -3,4 +3,37 @@ body {
   margin: 0 auto;
   max-width: 1100px;
   padding: 16px;
+  background: #f5f7fa;
+}
+
+header {
+  margin-bottom: 24px;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.product-card {
+  padding: 20px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  overflow-wrap: anywhere;
+}
+
+.product-card h2 {
+  font-size: 20px;
+  margin-top: 0;
+}
+
+.trust-label {
+  font-weight: bold;
+}
+
+#product-status {
+  padding: 16px;
 }

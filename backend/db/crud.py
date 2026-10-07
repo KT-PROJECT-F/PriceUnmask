@@ -4,8 +4,9 @@ Rule: no other module writes raw SQLAlchemy queries. Scheduler, API and analysis
 call these functions. That keeps the schema changeable in one place.
 Signatures below are the contract; bodies are the DB owner's first task.
 
-Write functions commit their own changes. Callers should not rely on an additional
-commit after calling these functions.
+Commit policy: the write functions (start_scrape_run, finish_scrape_run,
+upsert_product_and_snapshot) commit themselves. Callers must not commit again.
+Read functions never commit.
 """
 
 from collections.abc import Sequence
@@ -34,20 +35,16 @@ def start_scrape_run(session: Session) -> ScrapeRun:
 def finish_scrape_run(
     session: Session,
     run: ScrapeRun,
-    *,
     status: str,
     products_seen: int,
-    error_message: str | None = None,
-) -> ScrapeRun:
+    error: str | None = None,
+) -> None:
+    """Set finished_at, status, products_seen, error_message."""
     run.finished_at = datetime.now(UTC)
     run.status = status
     run.products_seen = products_seen
-    run.error_message = error_message
-
+    run.error_message = error
     session.commit()
-    session.refresh(run)
-
-    return run
 
 
 def upsert_product_and_snapshot(
@@ -56,10 +53,9 @@ def upsert_product_and_snapshot(
     item: ScrapedProduct,
     run: ScrapeRun,
 ) -> PriceSnapshot:
-    """Create or update a product and append a new price snapshot.
+    """Find-or-create the Product (by source + external_id), update name/url/last_seen_at,
+    then append one PriceSnapshot. Never updates an existing snapshot."""
 
-    Never updates an existing snapshot.
-    """
     statement = select(Product).where(
         Product.source == source,
         Product.external_id == item.external_id,
@@ -82,9 +78,11 @@ def upsert_product_and_snapshot(
     else:
         product.name = item.name
         product.url = item.url
-        product.is_active = True
-        product.last_seen_at = item.scraped_at
 
+    # A product seen again by the scraper is considered active.
+    product.is_active = True
+
+    product.last_seen_at = item.scraped_at
     snapshot = PriceSnapshot(
         product_id=product.id,
         scrape_run_id=run.id,

@@ -3,10 +3,13 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from backend.db.crud import (
+    finish_scrape_run,
     get_history,
     get_product,
     list_products,
     list_scrape_runs,
+    start_scrape_run,
+    upsert_product_and_snapshot,
 )
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
@@ -45,6 +48,28 @@ def add_snapshot(
     )
     session.add(snapshot)
     session.commit()
+
+
+def make_item(
+    *,
+    external_id: str = "p1",
+    name: str = "Phone",
+    price: int = 10_000,
+    original: int | None = None,
+    scraped_at: datetime = NOW,
+):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        external_id=external_id,
+        name=name,
+        url="https://example.com/p1",
+        current_price_minor=price,
+        original_price_minor=original,
+        in_stock=True,
+        currency="INR",
+        scraped_at=scraped_at,
+    )
 
 
 def test_list_products_returns_active_products(session: Session) -> None:
@@ -174,3 +199,171 @@ def test_list_scrape_runs_default_limit_is_20(
     runs = list_scrape_runs(session)
 
     assert len(runs) == 20
+
+
+def test_start_scrape_run_is_running(session: Session) -> None:
+    run = start_scrape_run(session)
+
+    assert run.id is not None
+    assert run.status == "running"
+    assert run.finished_at is None
+
+
+def test_finish_scrape_run_sets_fields(session: Session) -> None:
+    run = start_scrape_run(session)
+
+    finish_scrape_run(session, run, "failed", 0, error="boom")
+
+    assert (run.status, run.products_seen, run.error_message) == (
+        "failed",
+        0,
+        "boom",
+    )
+    assert run.finished_at is not None
+
+
+def test_upsert_new_product_creates_one_product_one_snapshot(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(),
+        run,
+    )
+
+    products = list_products(session)
+
+    assert len(products) == 1
+    assert len(get_history(session, products[0].id)) == 1
+
+
+def test_upsert_same_product_twice_gives_one_product_two_snapshots(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    first_time = NOW
+    second_time = NOW + timedelta(minutes=1)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(scraped_at=first_time),
+        run,
+    )
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            price=9_000,
+            scraped_at=second_time,
+        ),
+        run,
+    )
+
+    products = list_products(session)
+
+    assert len(products) == 1
+    assert len(get_history(session, products[0].id)) == 2
+
+
+def test_same_external_id_different_source_makes_two_products(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop-a",
+        make_item(),
+        run,
+    )
+
+    upsert_product_and_snapshot(
+        session,
+        "shop-b",
+        make_item(),
+        run,
+    )
+
+    assert len(list_products(session)) == 2
+
+
+def test_upsert_updates_name_but_keeps_one_product(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(name="Old"),
+        run,
+    )
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            name="New",
+            scraped_at=NOW + timedelta(minutes=1),
+        ),
+        run,
+    )
+
+    products = list_products(session)
+
+    assert len(products) == 1
+    assert products[0].name == "New"
+
+
+def test_second_upsert_does_not_change_first_snapshot(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    first = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            price=10_000,
+            scraped_at=NOW,
+        ),
+        run,
+    )
+
+    before = (
+        first.id,
+        first.current_price_minor,
+        first.original_price_minor,
+        first.in_stock,
+        first.scraped_at,
+    )
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            price=5_000,
+            scraped_at=NOW + timedelta(minutes=1),
+        ),
+        run,
+    )
+
+    session.expire_all()
+
+    history = get_history(session, first.product_id)
+
+    after = (
+        history[0].id,
+        history[0].current_price_minor,
+        history[0].original_price_minor,
+        history[0].in_stock,
+        history[0].scraped_at,
+    )
+
+    assert before == after

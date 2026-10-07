@@ -37,6 +37,10 @@ def use_fake(monkeypatch, responses, calls: list | None = None) -> None:
         if isinstance(response, Exception):
             raise response
 
+def use_fake(monkeypatch, response: FakeResponse, calls: list | None = None) -> None:
+    def fake_get(url, **kwargs):
+        if calls is not None:
+            calls.append((url, kwargs))
         return response
 
     monkeypatch.setattr(
@@ -54,6 +58,7 @@ def test_success(monkeypatch) -> None:
         ],
     )
 
+    use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"))
     assert fetch_html("https://example.com") == "<html>OK</html>"
 
 
@@ -72,6 +77,10 @@ def test_user_agent_and_timeout(monkeypatch) -> None:
     fetch_html("https://example.com")
 
     _, kwargs = calls[1]
+    use_fake(monkeypatch, FakeResponse(body="ok"), calls)
+    fetch_html("https://example.com")
+
+    _, kwargs = calls[0]
 
     assert kwargs["headers"]["User-Agent"] == settings.scrape_user_agent
     assert kwargs["timeout"] == FETCH_TIMEOUT_SECONDS
@@ -87,6 +96,21 @@ def test_pound_sign_survives_without_charset(monkeypatch) -> None:
                 content_type="text/html",
             ),
         ],
+@pytest.mark.parametrize("status", [404, 500])
+def test_error_status_raises(monkeypatch, status: int) -> None:
+    use_fake(monkeypatch, FakeResponse(status_code=status))
+
+    with pytest.raises(RuntimeError, match=f"HTTP {status}"):
+        fetch_html("https://example.com/x")
+
+
+def test_pound_sign_survives_without_charset(monkeypatch) -> None:
+    use_fake(
+        monkeypatch,
+        FakeResponse(
+            body="<p>£51.77</p>",
+            content_type="text/html",
+        ),
     )
 
     html = fetch_html("https://books.toscrape.com")

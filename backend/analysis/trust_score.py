@@ -40,7 +40,44 @@ class TrustScore:
 
 
 def compute_signals(history: pd.DataFrame) -> TrustSignals:
-    raise NotImplementedError
+    """Compute basic Trust Score signals from price history.
+
+    Raises:
+        ValueError: If history is empty.
+    """
+    if history.empty:
+        raise ValueError("history must contain at least one row")
+
+    snapshot_count = len(history)
+
+    first_time = history["scraped_at"].iloc[0]
+    last_time = history["scraped_at"].iloc[-1]
+    days_of_history = (last_time - first_time) / pd.Timedelta(days=1)
+
+    lowest_price_minor = int(history["current_price_minor"].min())
+
+    today_price = int(history["current_price_minor"].iloc[-1])
+
+    pct_above_lowest = (today_price - lowest_price_minor) / lowest_price_minor * 100
+
+    mean_price = history["current_price_minor"].mean()
+    std_price = history["current_price_minor"].std()
+
+    volatility_pct = (
+        0.0 if mean_price == 0 or pd.isna(std_price) else (std_price / mean_price) * 100
+    )
+
+    return TrustSignals(
+        days_of_history=float(days_of_history),
+        snapshot_count=snapshot_count,
+        lowest_price_minor=lowest_price_minor,
+        pct_above_lowest=float(pct_above_lowest),
+        volatility_pct=float(volatility_pct),
+        spike_before_discount=False,
+        spike_pct=None,
+        claimed_discount_pct=None,
+        real_discount_vs_median_pct=None,
+    )
 
 
 def compute_trust_score(history: pd.DataFrame) -> TrustScore:

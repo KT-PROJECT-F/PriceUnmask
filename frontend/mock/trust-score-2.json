@@ -1,0 +1,15 @@
+{
+  "product_id": 2,
+  "score": 68,
+  "label": "uncertain",
+  "reasons": [
+    "Some unusual price movement was detected.",
+    "There is not enough historical data to confirm the deal."
+  ],
+  "signals": {
+    "price_stability": 0.64,
+    "discount_consistency": 0.61,
+    "anomaly_detected": true
+  },
+  "anomaly_note": "Recent price changes make the deal difficult to classify with confidence."
+}

@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 from backend.config import settings
 from backend.scraper.product_scraper import FETCH_TIMEOUT_SECONDS, fetch_html
@@ -37,13 +38,17 @@ def use_fake(monkeypatch, response: FakeResponse, calls: list | None = None) -> 
 
 
 def test_success(monkeypatch) -> None:
-    use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"))
+    calls: list = []
+    use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"), calls)
+
     assert fetch_html("https://example.com") == "<html>OK</html>"
+    assert len(calls) == 2
 
 
 def test_user_agent_and_timeout(monkeypatch) -> None:
     calls: list = []
     use_fake(monkeypatch, FakeResponse(body="ok"), calls)
+
     fetch_html("https://example.com")
 
     _, kwargs = calls[0]
@@ -52,27 +57,29 @@ def test_user_agent_and_timeout(monkeypatch) -> None:
     assert kwargs["timeout"] == FETCH_TIMEOUT_SECONDS
 
 
-@pytest.mark.parametrize("status", [404, 500])
-def test_error_status_raises(monkeypatch, status: int) -> None:
-    use_fake(monkeypatch, FakeResponse(status_code=status))
-
-    with pytest.raises(RuntimeError, match=f"HTTP {status}"):
-        fetch_html("https://example.com/x")
-
-
 def test_pound_sign_survives_without_charset(monkeypatch) -> None:
-    use_fake(
-        monkeypatch,
+    responses = [
+        FakeResponse(body="User-agent: *\nAllow: /"),
         FakeResponse(
-            body="<p>£51.77</p>",
+            body="<p>┬ú51.77</p>",
             content_type="text/html",
         ),
+    ]
+
+    queue = list(responses)
+
+    def fake_get(url, **kwargs):
+        return queue.pop(0)
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
     )
 
     html = fetch_html("https://books.toscrape.com")
 
-    assert "£51.77" in html
-    assert "Â£" not in html
+    assert "┬ú51.77" in html
+    assert "├é┬ú" not in html
 
 
 def test_fake_garbles_like_requests_without_fix() -> None:
@@ -83,3 +90,186 @@ def test_fake_garbles_like_requests_without_fix() -> None:
             content_type="text/html",
         ).text
     )
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.sleep",
+        waits.append,
+    )
+    return waits
+
+
+def script(monkeypatch, *steps):
+    """steps are FakeResponse objects or exceptions, returned/raised in order."""
+    calls: list[str] = []
+    queue = list(steps)
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        step = queue.pop(0)
+
+        if isinstance(step, Exception):
+            raise step
+
+        return step
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
+    )
+
+    return calls
+
+
+ROBOTS_OK = FakeResponse(
+    body="User-agent: *\nAllow: /",
+)
+
+
+def test_fails_twice_then_succeeds(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(503),
+        FakeResponse(503),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+    assert len(calls) == 4
+    assert sleeps == [1, 2]
+
+
+def test_fails_three_times_then_raises(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(503),
+        FakeResponse(503),
+        FakeResponse(503),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        fetch_html("https://example.com/p")
+
+    assert sleeps == [1, 2]
+
+
+def test_404_is_not_retried(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(404),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 404"):
+        fetch_html("https://example.com/p")
+
+    assert len(calls) == 2
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+def test_temporary_status_is_retried_then_raises(monkeypatch, sleeps, status: int) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(status),
+        FakeResponse(status),
+        FakeResponse(status),
+    )
+
+    with pytest.raises(RuntimeError, match=f"HTTP {status}"):
+        fetch_html("https://example.com/p")
+
+    assert len(calls) == 4
+    assert sleeps == [1, 2]
+
+
+def test_timeout_is_retried(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        requests.Timeout(),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+    assert sleeps == [1]
+
+
+def test_connection_error_is_retried(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        requests.ConnectionError(),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+    assert sleeps == [1]
+
+
+def test_timeout_on_every_attempt_raises_after_three_tries(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        requests.Timeout(),
+        requests.Timeout(),
+        requests.Timeout(),
+    )
+
+    with pytest.raises(requests.Timeout):
+        fetch_html("https://example.com/p")
+
+    assert len(calls) == 4
+    assert sleeps == [1, 2]
+
+
+def test_disallowed_url_never_requests_the_page(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        FakeResponse(
+            body="User-agent: *\nDisallow: /private",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="robots.txt disallows"):
+        fetch_html("https://example.com/private/x")
+
+    assert calls == ["https://example.com/robots.txt"]
+
+
+def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        FakeResponse(status_code=404),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+
+
+def test_robots_txt_timeout_raises_clear_error(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        requests.Timeout(),
+    )
+
+    with pytest.raises(RuntimeError, match="robots.txt"):
+        fetch_html("https://example.com/p")
+
+
+@pytest.mark.parametrize("status", [403, 500])
+def test_robots_txt_error_status_raises_and_page_is_not_requested(
+    monkeypatch, sleeps, status: int
+) -> None:
+    calls = script(monkeypatch, FakeResponse(status_code=status))
+
+    with pytest.raises(RuntimeError, match=f"robots.txt returned HTTP {status}"):
+        fetch_html("https://example.com/p")
+
+    assert calls == ["https://example.com/robots.txt"]

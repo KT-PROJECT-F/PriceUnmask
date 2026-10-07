@@ -73,7 +73,9 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     latest_original_price = history["original_price_minor"].iloc[-1]
     claimed_discount_pct = (
         float((latest_original_price - today_price) / latest_original_price * 100)
-        if pd.notna(latest_original_price) and latest_original_price > 0
+        if pd.notna(latest_original_price)
+        and latest_original_price >= today_price
+        and latest_original_price > 0
         else None
     )
 
@@ -85,11 +87,20 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     )
 
     timestamps = history["scraped_at"]
-    latest_time = timestamps.iloc[-1]
-    spike_cutoff = latest_time - pd.Timedelta(days=SPIKE_WINDOW_DAYS)
+    claimed_sale = (
+        history["original_price_minor"].notna()
+        & (history["original_price_minor"] > prices)
+        & (history["original_price_minor"] > 0)
+    )
+    sale_start_index = snapshot_count - 1
+    while sale_start_index > 0 and claimed_sale.iloc[sale_start_index - 1]:
+        sale_start_index -= 1
+    sale_start_time = timestamps.iloc[sale_start_index]
+    spike_cutoff = sale_start_time - pd.Timedelta(days=SPIKE_WINDOW_DAYS)
     baseline_prices = prices.loc[timestamps < spike_cutoff]
-    recent_prices = prices.loc[(timestamps >= spike_cutoff) & (timestamps < latest_time)]
+    recent_prices = prices.loc[(timestamps >= spike_cutoff) & (timestamps < sale_start_time)]
     if baseline_prices.empty or recent_prices.empty:
+        # We need both an older baseline and pre-sale prices to measure a spike.
         spike_pct = None
     else:
         baseline_median = baseline_prices.median()

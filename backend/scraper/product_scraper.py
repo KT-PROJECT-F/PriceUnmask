@@ -1,4 +1,9 @@
-"""Scraper for product listing pages."""
+"""Scraper. Owners: Scraper track (2 people: parsing + robustness).
+
+Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
+against saved HTML files with zero network calls.
+"""
 
 import logging
 import re
@@ -12,27 +17,25 @@ from bs4 import BeautifulSoup
 from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
-MAX_RETRIES = 2
-BACKOFF_SECONDS = 1
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str
+    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
     name: str
     url: str
-    current_price_minor: int
-    original_price_minor: int | None
+    current_price_minor: int  # Rs 1,299.50 -> 129950
+    original_price_minor: int | None  # strikethrough price, None if not shown
     in_stock: bool | None
     currency: str
-    scraped_at: datetime
+    scraped_at: datetime  # timezone-aware UTC
 
 
 def parse_price_to_minor(text: str) -> int | None:
-    """Convert a price string into minor currency units."""
-    if not text or not text.strip():
+    """'Rs. 1,299.50' / '₹1,299' / '1299' -> 129950 / 129900 / 129900. None if unparseable."""
+    if not isinstance(text, str) or not text.strip():
         return None
 
     value = text.strip()
@@ -54,7 +57,8 @@ def parse_price_to_minor(text: str) -> int | None:
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse product cards from a listing page."""
+    """Parse one listing page. Skip (and log) cards with missing name or price;
+    never crash the whole page because one card is weird."""
     soup = BeautifulSoup(html, "html.parser")
     products: list[ScrapedProduct] = []
     scraped_at = datetime.now(UTC)
@@ -83,29 +87,23 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
         url = urljoin(base_url, relative_url)
 
-        price_minor = parse_price_to_minor(price_element.get_text(strip=True))
+        price_text = price_element.get_text(strip=True)
+        price_minor = parse_price_to_minor(price_text)
 
         if price_minor is None:
             logger.warning("Skipping product card with unreadable price: %s", name)
             continue
 
         url_path = url.rstrip("/").split("/")
+
         filename = url_path[-1]
 
         slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
 
         external_id = slug.rsplit("_", 1)[0]
 
-        price_text = price_element.get_text(strip=True)
-
-        if "₹" in price_text:
-            currency = "INR"
-        elif "£" in price_text:
-            currency = "GBP"
-        elif "Rs" in price_text:
-            currency = "INR"
-        else:
-            currency = "GBP"
+        # This site sells in GBP; a rupee sign or "Rs" means INR.
+        currency = "INR" if ("₹" in price_text or "Rs" in price_text) else "GBP"
 
         in_stock = None
         if availability_element:

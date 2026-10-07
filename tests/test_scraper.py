@@ -22,6 +22,7 @@ def test_parse_listing_sample_page():
     )
 
     assert len(products) == 20
+    assert len({product.external_id for product in products}) == 20
 
     first = products[0]
 
@@ -35,6 +36,57 @@ def test_parse_listing_sample_page():
     assert first.currency == "GBP"
     assert first.original_price_minor is None
     assert first.scraped_at.tzinfo is UTC
+
+
+def test_parse_listing_sample_page_has_unique_ids_and_int_prices():
+    html = FIXTURE_PATH.read_text(encoding="utf-8")
+
+    products = parse_listing(html, "https://books.toscrape.com/")
+
+    assert len({p.external_id for p in products}) == 20
+    assert all(isinstance(p.current_price_minor, int) for p in products)
+    assert all(p.url.startswith("https://books.toscrape.com/") for p in products)
+
+
+def test_parse_listing_skips_card_without_href():
+    html = """
+    <article class="product_pod">
+        <h3><a title="Book One">Book One</a></h3>
+        <p class="price_color">£10.00</p>
+    </article>
+    """
+
+    assert parse_listing(html, "https://books.toscrape.com/") == []
+
+
+def test_parse_listing_skips_card_without_link():
+    html = """
+    <article class="product_pod">
+        <h3></h3>
+        <p class="price_color">£10.00</p>
+    </article>
+    """
+
+    assert parse_listing(html, "https://books.toscrape.com/") == []
+
+
+def test_parse_listing_missing_availability_gives_unknown_stock():
+    html = """
+    <article class="product_pod">
+        <h3><a href="book_1/index.html" title="Book One">Book One</a></h3>
+        <p class="price_color">£10.00</p>
+    </article>
+    """
+
+    products = parse_listing(html, "https://books.toscrape.com/")
+
+    assert len(products) == 1
+    assert products[0].in_stock is None
+
+
+def test_parse_price_to_minor_non_string_returns_none():
+    assert parse_price_to_minor(None) is None
+    assert parse_price_to_minor(5) is None
 
 
 def test_parse_listing_skips_card_without_price():

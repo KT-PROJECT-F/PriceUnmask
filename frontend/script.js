@@ -1,7 +1,9 @@
+"use strict";
 // Load mock products and render product cards with prices and trust labels.
 const app = document.getElementById("app");
 const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
+const searchBox = document.getElementById("search-box");
 
 const trustLabels = {
   genuine: "Genuine",
@@ -18,10 +20,10 @@ function formatPrice(price, currency) {
   try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
-      currency: currency
+      currency
     }).format(price / 100);
   } catch (error) {
-    console.error("Bad currency", currency, error);
+    console.error("Invalid currency:", currency, error);
     return "—";
   }
 }
@@ -30,6 +32,8 @@ function createProductCard(product, onSelect) {
   const card = document.createElement("article");
   card.className = "product-card";
   card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", `View details for ${product.name}`);
 
   const name = document.createElement("h2");
   name.textContent = product.name;
@@ -45,19 +49,18 @@ function createProductCard(product, onSelect) {
     formatPrice(product.lowest_price_minor, product.currency);
 
   const trustLabel = document.createElement("p");
+  trustLabel.className = "trust-label";
   trustLabel.textContent =
     "Trust Label: " +
     (trustLabels[product.trust_label] ?? "Not available");
-  trustLabel.className = "trust-label";
 
   card.append(name, latestPrice, lowestPrice, trustLabel);
 
-  card.addEventListener("click", () => {
-    onSelect(product);
-  });
+  card.addEventListener("click", () => onSelect(product));
 
   card.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
       onSelect(product);
     }
   });
@@ -73,7 +76,7 @@ function filterProducts(products, searchTerm) {
   }
 
   return products.filter((product) =>
-    product.name.toLowerCase().includes(normalizedSearch)
+    String(product.name ?? "").toLowerCase().includes(normalizedSearch)
   );
 }
 
@@ -92,6 +95,7 @@ function renderProducts(products, grid, onSelect) {
   });
 }
 
+// Load trust-score data for the selected product.
 async function loadTrustScore(productId) {
   const response = await fetch(`mock/trust-score-${productId}.json`);
 
@@ -101,52 +105,57 @@ async function loadTrustScore(productId) {
 
   const trustScore = await response.json();
 
-  if (!trustScore || typeof trustScore !== "object") {
+  if (
+    !trustScore ||
+    typeof trustScore !== "object" ||
+    !Array.isArray(trustScore.reasons) ||
+    !trustScore.reasons.every((reason) => typeof reason === "string") ||
+    typeof trustScore.label !== "string" ||
+    !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
+    (
+      trustScore.score !== null &&
+      trustScore.score !== undefined &&
+      (
+        typeof trustScore.score !== "number" ||
+        !Number.isFinite(trustScore.score) ||
+        trustScore.score < 0 ||
+        trustScore.score > 100
+      )
+    )
+  ) {
     throw new Error("Invalid trust score data");
   }
 
   return trustScore;
 }
 
-async function showProductDetail(product, showGrid) {
-  const grid = document.querySelector(".product-grid");
-
-  if (grid) {
-    grid.hidden = true;
-  }
-
-  searchInput.hidden = true;
-  productStatus.textContent = "Loading product details...";
-
-  let trustScore;
-
-  try {
-    trustScore = await loadTrustScore(product.id);
-  } catch (error) {
-    productStatus.textContent =
-      "Unable to load product details. Please try again later.";
-    console.error(error);
-    return;
-  }
-
-  const detail = document.createElement("section");
-  detail.className = "product-detail";
-  detail.setAttribute("aria-labelledby", "product-detail-title");
-
-  const backButton = document.createElement("button");
-  backButton.type = "button";
-  backButton.textContent = "Back to products";
-  backButton.addEventListener("click", showGrid);
+function buildDetailContent(product, trustScore) {
+  const elements = [];
 
   const title = document.createElement("h2");
   title.id = "product-detail-title";
+  title.tabIndex = -1;
   title.textContent = product.name;
+  elements.push(title);
 
-  const shopLink = document.createElement("a");
-  shopLink.href = product.url;
-  shopLink.target = "_blank";
-  shopLink.rel = "noopener noreferrer";
-  shopLink.textContent = "Visit shop";
+  // Only display links that use HTTP or HTTPS.
+  try {
+    const parsedURL = new URL(product.url);
+
+    if (
+      parsedURL.protocol === "http:" ||
+      parsedURL.protocol === "https:"
+    ) {
+      const shopLink = document.createElement("a");
+      shopLink.href = parsedURL.href;
+      shopLink.target = "_blank";
+      shopLink.rel = "noopener noreferrer";
+      shopLink.textContent = "Visit shop";
+      elements.push(shopLink);
+    }
+  } catch (error) {
+    console.warn("Invalid product URL; shop link omitted.", error);
+  }
 
   const latestPrice = document.createElement("p");
   latestPrice.textContent =
@@ -158,59 +167,151 @@ async function showProductDetail(product, showGrid) {
     "Lowest Price: " +
     formatPrice(product.lowest_price_minor, product.currency);
 
+  elements.push(latestPrice, lowestPrice);
+
   const scoreHeading = document.createElement("h3");
   scoreHeading.textContent = "Trust Score";
 
   const scoreBadge = document.createElement("span");
   scoreBadge.className = `trust-badge trust-badge-${trustScore.label}`;
+
+  const labelText = trustLabels[trustScore.label];
+
   scoreBadge.textContent =
-    trustScore.score === null
-      ? trustLabels[trustScore.label]
-      : `${trustScore.score} — ${trustLabels[trustScore.label]}`;
+    trustScore.score === null || trustScore.score === undefined
+      ? labelText
+      : `${trustScore.score} — ${labelText}`;
+
+  elements.push(scoreHeading, scoreBadge);
 
   const reasonsHeading = document.createElement("h3");
   reasonsHeading.textContent = "Why?";
 
   const reasonsList = document.createElement("ul");
 
-  trustScore.reasons.forEach((reason) => {
-    const reasonItem = document.createElement("li");
-    reasonItem.textContent = reason;
-    reasonsList.append(reasonItem);
-  });
+  if (trustScore.reasons.length === 0) {
+    const emptyReason = document.createElement("li");
+    emptyReason.textContent = "No reasons available.";
+    reasonsList.append(emptyReason);
+  } else {
+    trustScore.reasons.forEach((reason) => {
+      const reasonItem = document.createElement("li");
+      reasonItem.textContent = reason;
+      reasonsList.append(reasonItem);
+    });
+  }
+
+  elements.push(reasonsHeading, reasonsList);
 
   const chartPlaceholder = document.createElement("div");
   chartPlaceholder.className = "price-chart-placeholder";
-  chartPlaceholder.textContent = "Price chart — coming next working day";
-  chartPlaceholder.setAttribute("aria-label", "Price chart placeholder");
+  chartPlaceholder.textContent =
+    "Price chart — coming next working day";
 
-  detail.append(
-    backButton,
-    title,
-    shopLink,
-    latestPrice,
-    lowestPrice,
-    scoreHeading,
-    scoreBadge,
-    reasonsHeading,
-    reasonsList,
-    chartPlaceholder
-  );
+  elements.push(chartPlaceholder);
 
-  app.append(detail);
+  return elements;
+}
+
+async function showProductDetail(product, showGrid) {
+  // Find the actual grid and hide it completely.
+  const grid = app.querySelector(".product-grid");
+
+  if (grid) {
+    grid.hidden = true;
+    grid.style.display = "none";
+  }
+
+  // Hide the search area as well.
+  if (searchBox) {
+    searchBox.hidden = true;
+    searchBox.style.display = "none";
+  } else if (searchInput) {
+    searchInput.hidden = true;
+    searchInput.style.display = "none";
+  }
+
+  // Remove an old detail view, if one exists.
+  const existingDetail = app.querySelector(".product-detail");
+
+  if (existingDetail) {
+    existingDetail.remove();
+  }
+
   productStatus.textContent = "";
-  backButton.focus();
+
+  const detail = document.createElement("section");
+  detail.className = "product-detail";
+  detail.setAttribute("aria-labelledby", "product-detail-title");
+  detail.setAttribute("aria-busy", "true");
+
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.textContent = "Back to products";
+  backButton.addEventListener("click", showGrid);
+
+  const loadingMessage = document.createElement("p");
+  loadingMessage.textContent = "Loading product details...";
+
+  detail.append(backButton, loadingMessage);
+  app.append(detail);
+
+  try {
+    const trustScore = await loadTrustScore(product.id);
+
+    // Avoid rendering if this detail view has already been removed.
+    if (!detail.isConnected) {
+      return;
+    }
+
+    loadingMessage.remove();
+    detail.append(...buildDetailContent(product, trustScore));
+    detail.setAttribute("aria-busy", "false");
+
+    const title = detail.querySelector("#product-detail-title");
+
+    if (title) {
+      title.focus();
+    }
+  } catch (error) {
+    console.error("Error loading product details:", error);
+
+    if (!detail.isConnected) {
+      return;
+    }
+
+    loadingMessage.remove();
+
+    const errorMessage = document.createElement("p");
+    errorMessage.className = "error-message";
+    errorMessage.setAttribute("role", "alert");
+    errorMessage.textContent =
+      "Unable to load product details. Please try again later.";
+
+    detail.append(errorMessage);
+    detail.setAttribute("aria-busy", "false");
+  }
 }
 
 function showProductGrid(grid, products, onSelect) {
-  const detail = document.querySelector(".product-detail");
+  const detail = app.querySelector(".product-detail");
 
   if (detail) {
     detail.remove();
   }
 
-  searchInput.hidden = false;
+  // Restore the search area.
+  if (searchBox) {
+    searchBox.hidden = false;
+    searchBox.style.display = "";
+  } else if (searchInput) {
+    searchInput.hidden = false;
+    searchInput.style.display = "";
+  }
+
+  // Restore the product grid.
   grid.hidden = false;
+  grid.style.display = "";
 
   renderProducts(
     filterProducts(products, searchInput.value),
@@ -222,6 +323,11 @@ function showProductGrid(grid, products, onSelect) {
 }
 
 async function loadProducts() {
+  if (!app || !productStatus || !searchInput) {
+    console.error("Required page elements are missing.");
+    return;
+  }
+
   const grid = document.createElement("section");
   grid.className = "product-grid";
 
@@ -245,8 +351,6 @@ async function loadProducts() {
       return;
     }
 
-    app.append(grid);
-
     const showGrid = () => {
       showProductGrid(grid, products, showProductDetailForProduct);
     };
@@ -255,24 +359,25 @@ async function loadProducts() {
       showProductDetail(product, showGrid);
     };
 
+    app.append(grid);
+
     renderProducts(products, grid, showProductDetailForProduct);
 
-    searchInput.addEventListener("input", (event) => {
-      const filteredProducts = filterProducts(
-        products,
-        event.target.value
-      );
-
-      renderProducts(
-        filteredProducts,
-        grid,
-        showProductDetailForProduct
-      );
+    searchInput.addEventListener("input", () => {
+      // Do not update the hidden grid while details are open.
+      if (!grid.hidden) {
+        renderProducts(
+          filterProducts(products, searchInput.value),
+          grid,
+          showProductDetailForProduct
+        );
+      }
     });
   } catch (error) {
     productStatus.textContent =
       "Unable to load products. Please try again later.";
-    console.error(error);
+
+    console.error("Error loading products:", error);
   }
 }
 

@@ -12,11 +12,17 @@
     <p>Is that discount real?</p>
   </header>
   <main id="app">
-    <label for="product-search">Search products</label>
-    <input id="product-search" type="search" placeholder="Search products..." autocomplete="off"/>
-    <!-- Frontend track: product grid, search box, detail view with Chart.js line chart
-         and Trust Score badge. Build against /api/... (see docs/ARCHITECTURE.md). -->
+    <div id="search-box">
+      <label for="product-search">Search products</label>
+      <input
+        id="product-search"
+        type="search"
+        placeholder="Search products..."
+        autocomplete="off"
+      />
+    </div>
     <p id="product-status">Loading products...</p>
+    <!-- Product grid and detail view are rendered by script.js. -->
   </main>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="script.js"></script>

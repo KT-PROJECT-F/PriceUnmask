@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -6,13 +7,15 @@ from backend.scheduler import jobs
 from backend.scraper.product_scraper import ScrapedProduct
 
 
-class FakeRun:
-    id = 1
-
-
 class FakeSession:
+    def __init__(self):
+        self.rollbacks = 0
+
     def __enter__(self):
         return self
+
+    def rollback(self):
+        self.rollbacks += 1
 
     def __exit__(self, *a):
         return False
@@ -32,10 +35,16 @@ def make_item(ext_id):
 
 
 @pytest.fixture
-def calls(monkeypatch):
+def session(monkeypatch):
+    fake = FakeSession()
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: fake)
+    return fake
+
+
+@pytest.fixture
+def calls(monkeypatch, session):
     log = []
     run = object()
-    monkeypatch.setattr(jobs, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(
         jobs.crud,
         "start_scrape_run",
@@ -80,38 +89,58 @@ def test_empty_scrape_finishes_with_zero(monkeypatch, calls):
     assert calls[-1] == ("finish", "success", 0, None)
 
 
-def test_source_key_and_url_passed(monkeypatch):
+def test_scrape_url_comes_from_settings(monkeypatch, calls):
     seen = {}
-
-    def fake_start(session):
-        return FakeRun()
 
     def fake_scrape(url):
         seen["url"] = url
         return []
 
-    def fake_upsert(session, source, item, run):
-        return None
-
-    def fake_finish(session, run, status, products_seen, error=None):
-        return None
-
-    monkeypatch.setattr(jobs, "SessionLocal", lambda: FakeSession())
-    monkeypatch.setattr(jobs.crud, "start_scrape_run", fake_start)
+    monkeypatch.setattr(
+        jobs, "settings", SimpleNamespace(scrape_target_url="https://example.com/list")
+    )
     monkeypatch.setattr(jobs, "scrape", fake_scrape)
-    monkeypatch.setattr(jobs.crud, "upsert_product_and_snapshot", fake_upsert)
-    monkeypatch.setattr(jobs.crud, "finish_scrape_run", fake_finish)
 
     jobs.run_scrape_cycle()
-    assert seen["url"] == jobs.settings.scrape_target_url
+    assert seen["url"] == "https://example.com/list"
 
 
-def test_scrape_error_is_recorded_and_logged(monkeypatch, calls, caplog):
-    def boom(url):
-        raise RuntimeError("site down")
+def test_failure_after_first_item_is_recorded_as_partial(monkeypatch, calls, session):
+    items = [make_item("a"), make_item("b"), make_item("c")]
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
 
-    monkeypatch.setattr(jobs, "scrape", boom)
+    def flaky_upsert(session, source, item, run):
+        if item.external_id == "b":
+            raise RuntimeError("database error")
+        calls.append(("upsert", source, item, run))
+
+    monkeypatch.setattr(jobs.crud, "upsert_product_and_snapshot", flaky_upsert)
+
+    assert jobs.run_scrape_cycle() == 1
+    assert session.rollbacks == 1
+    assert calls[-1] == ("finish", "partial", 1, "database error")
+
+
+def test_start_scrape_run_failure_does_not_raise(monkeypatch, calls, caplog):
+    def boom(session):
+        raise RuntimeError("database locked")
+
+    monkeypatch.setattr(jobs.crud, "start_scrape_run", boom)
 
     assert jobs.run_scrape_cycle() == 0
-    assert calls[-1] == ("finish", "failed", 0, "site down")
-    assert "Scrape cycle failed" in caplog.text
+    assert calls == []
+    assert "Scrape cycle could not run" in caplog.text
+
+
+def test_finish_scrape_run_failure_does_not_raise(monkeypatch, calls, caplog):
+    def scrape_boom(url):
+        raise RuntimeError("site down")
+
+    def finish_boom(session, run, status, products_seen, error=None):
+        raise RuntimeError("database locked")
+
+    monkeypatch.setattr(jobs, "scrape", scrape_boom)
+    monkeypatch.setattr(jobs.crud, "finish_scrape_run", finish_boom)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert "Scrape cycle could not run" in caplog.text

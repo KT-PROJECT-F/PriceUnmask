@@ -1,157 +1,247 @@
-"""Scraper. Owners: Scraper track (2 people: parsing + robustness).
-
-Contract: scrape(url) returns a list of ScrapedProduct and NEVER touches
-
-the database. Keeping the scraper pure (HTML in, dataclasses out) means
-
-it can be unit-tested against saved HTML files with zero network calls.
-
-"""
-
-import re
-from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal, InvalidOperation
-from time import sleep
-from urllib.parse import urljoin
-from urllib.robotparser import RobotFileParser
-
+import pytest
 import requests
 
 from backend.config import settings
-
-FETCH_TIMEOUT_SECONDS = 10
-
-MAX_RETRIES = 2
-
-BACKOFF_SECONDS = 1
+from backend.scraper.product_scraper import FETCH_TIMEOUT_SECONDS, fetch_html
 
 
-@dataclass(frozen=True)
-class ScrapedProduct:
-    external_id: str
+class FakeResponse:
+    """Behaves like requests: no charset in Content-Type -> encoding ISO-8859-1."""
 
-    name: str
+    def __init__(
+        self,
+        status_code: int = 200,
+        body: str = "",
+        content_type: str = "text/html; charset=utf-8",
+    ) -> None:
+        self.status_code = status_code
+        self.content = body.encode("utf-8")
+        self.headers = {"Content-Type": content_type}
+        self.encoding = "utf-8" if "charset=utf-8" in content_type else "ISO-8859-1"
+        self.apparent_encoding = "utf-8"
 
-    url: str
-
-    current_price_minor: int
-
-    original_price_minor: int | None
-
-    in_stock: bool | None
-
-    currency: str
-
-    scraped_at: datetime
-
-
-def parse_price_to_minor(text: str) -> int | None:
-    """Convert a price string into minor currency units."""
-
-    if not text or not text.strip():
-        return None
-
-    cleaned_text = re.sub(r"(?i)\bRs\.?\s*", "", text.strip())
-
-    cleaned_text = cleaned_text.replace(",", "")
-
-    cleaned_text = re.sub(r"[^\d.]", "", cleaned_text)
-
-    if not cleaned_text or cleaned_text.count(".") > 1:
-        return None
-
-    try:
-        price = Decimal(cleaned_text)
-
-    except InvalidOperation:
-        return None
-
-    if not price.is_finite() or price < 0:
-        return None
-
-    return int(price * 100)
+    @property
+    def text(self) -> str:
+        return self.content.decode(self.encoding)
 
 
-def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse a listing page into ScrapedProduct objects.
+def use_fake(monkeypatch, response: FakeResponse, calls: list | None = None) -> None:
+    def fake_get(url, **kwargs):
+        if calls is not None:
+            calls.append((url, kwargs))
+        return response
 
-    Listing-specific HTML parsing is not implemented in this version.
-
-    """
-
-    raise NotImplementedError("Listing HTML parsing has not been implemented yet.")
-
-
-def fetch_html(url: str) -> str:
-    """Fetch a page with a User-Agent, timeout, retries, and robots.txt."""
-
-    robots_url = urljoin(url, "/robots.txt")
-
-    headers = {"User-Agent": settings.scrape_user_agent}
-
-    robots_response = requests.get(
-        robots_url,
-        headers=headers,
-        timeout=FETCH_TIMEOUT_SECONDS,
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
     )
 
-    if robots_response.status_code == 404:
-        robots_allowed = True
 
-    elif robots_response.status_code >= 400:
-        raise RuntimeError(
-            f"Failed to fetch robots.txt for {url}: HTTP {robots_response.status_code}"
-        )
+def test_success(monkeypatch) -> None:
+    calls: list = []
+    use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"), calls)
 
+    assert fetch_html("https://example.com") == "<html>OK</html>"
+    assert len(calls) == 2
+
+
+def test_user_agent_and_timeout(monkeypatch) -> None:
+    calls: list = []
+    use_fake(monkeypatch, FakeResponse(body="ok"), calls)
+
+    fetch_html("https://example.com")
+
+    _, kwargs = calls[0]
+
+    assert kwargs["headers"]["User-Agent"] == settings.scrape_user_agent
+    assert kwargs["timeout"] == FETCH_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize("status", [404, 500])
+def test_error_status_raises(monkeypatch, status: int) -> None:
+    if status == 404:
+        responses = [
+            FakeResponse(body="User-agent: *\nAllow: /"),
+            FakeResponse(status_code=404),
+        ]
     else:
-        parser = RobotFileParser()
+        responses = [
+            FakeResponse(body="User-agent: *\nAllow: /"),
+            FakeResponse(status_code=500),
+            FakeResponse(status_code=500),
+            FakeResponse(status_code=500),
+        ]
 
-        parser.parse(robots_response.text.splitlines())
+    queue = list(responses)
 
-        robots_allowed = parser.can_fetch(settings.scrape_user_agent, url)
+    def fake_get(url, **kwargs):
+        return queue.pop(0)
 
-    if not robots_allowed:
-        raise RuntimeError(f"robots.txt disallows fetching {url}")
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
+    )
 
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=FETCH_TIMEOUT_SECONDS,
-            )
-
-        except (requests.Timeout, requests.ConnectionError):
-            if attempt == MAX_RETRIES:
-                raise
-
-            sleep(BACKOFF_SECONDS * (2**attempt))
-
-            continue
-
-        if response.status_code >= 400:
-            if response.status_code not in (500, 503):
-                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
-
-            if attempt == MAX_RETRIES:
-                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
-
-            sleep(BACKOFF_SECONDS * (2**attempt))
-
-            continue
-
-        if "charset" not in response.headers.get("Content-Type", "").lower():
-            response.encoding = response.apparent_encoding
-
-        return response.text
-
-    raise RuntimeError(f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts")
+    with pytest.raises(RuntimeError, match=f"HTTP {status}"):
+        fetch_html("https://example.com/x")
 
 
-def scrape(url: str) -> list[ScrapedProduct]:
-    """Fetch HTML and parse the listing."""
+def test_pound_sign_survives_without_charset(monkeypatch) -> None:
+    responses = [
+        FakeResponse(body="User-agent: *\nAllow: /"),
+        FakeResponse(
+            body="<p>┬ú51.77</p>",
+            content_type="text/html",
+        ),
+    ]
 
-    html = fetch_html(url)
+    queue = list(responses)
 
-    return parse_listing(html, url)
+    def fake_get(url, **kwargs):
+        return queue.pop(0)
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
+    )
+
+    html = fetch_html("https://books.toscrape.com")
+
+    assert "┬ú51.77" in html
+    assert "├é┬ú" not in html
+
+
+def test_fake_garbles_like_requests_without_fix() -> None:
+    assert (
+        "Â£"
+        in FakeResponse(
+            body="£",
+            content_type="text/html",
+        ).text
+    )
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.sleep",
+        waits.append,
+    )
+    return waits
+
+
+def script(monkeypatch, *steps):
+    """steps are FakeResponse objects or exceptions, returned/raised in order."""
+    calls: list[str] = []
+    queue = list(steps)
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        step = queue.pop(0)
+
+        if isinstance(step, Exception):
+            raise step
+
+        return step
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
+    )
+
+    return calls
+
+
+ROBOTS_OK = FakeResponse(
+    body="User-agent: *\nAllow: /",
+)
+
+
+def test_fails_twice_then_succeeds(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(503),
+        FakeResponse(503),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+    assert len(calls) == 4
+    assert sleeps == [1, 2]
+
+
+def test_fails_three_times_then_raises(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(503),
+        FakeResponse(503),
+        FakeResponse(503),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        fetch_html("https://example.com/p")
+
+    assert sleeps == [1, 2]
+
+
+def test_404_is_not_retried(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(404),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 404"):
+        fetch_html("https://example.com/p")
+
+    assert len(calls) == 2
+    assert sleeps == []
+
+
+def test_timeout_is_retried(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        requests.Timeout(),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+    assert sleeps == [1]
+
+
+def test_disallowed_url_never_requests_the_page(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        FakeResponse(
+            body="User-agent: *\nDisallow: /private",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="robots.txt disallows"):
+        fetch_html("https://example.com/private/x")
+
+    assert calls == ["https://example.com/robots.txt"]
+
+
+def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        FakeResponse(status_code=404),
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/p") == "ok"
+
+
+def test_robots_txt_timeout_raises_clear_error(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        requests.Timeout(),
+    )
+
+    with pytest.raises(RuntimeError, match="robots.txt"):
+        fetch_html("https://example.com/p")

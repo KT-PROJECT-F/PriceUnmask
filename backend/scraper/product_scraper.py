@@ -1,14 +1,13 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
-Contract: scrape(url) returns a list of ScrapedProduct and NEVER touches
-the database. Keeping the scraper pure (HTML in, dataclasses out) means
-it can be unit-tested against saved HTML files with zero network calls.
+Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
+against saved HTML files with zero network calls.
 """
 
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
 from time import sleep
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
@@ -21,83 +20,78 @@ FETCH_TIMEOUT_SECONDS = 10
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
 
+RETRY_STATUSES = {500, 502, 503, 504}
+
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str
+    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
     name: str
     url: str
-    current_price_minor: int
-    original_price_minor: int | None
+    current_price_minor: int  # Rs 1,299.50 -> 129950
+    original_price_minor: int | None  # strikethrough price, None if not shown
     in_stock: bool | None
     currency: str
-    scraped_at: datetime
+    scraped_at: datetime  # timezone-aware UTC
 
 
 def parse_price_to_minor(text: str) -> int | None:
-    """Convert a price string into minor currency units."""
-    if not text or not text.strip():
+    """'Rs. 1,299.50' / 'Γé╣1,299' / '1299' -> 129950 / 129900 / 129900. None if unparseable."""
+    if not isinstance(text, str):
         return None
-
-    # Remove common currency prefixes, including Rs. and Rs.
-    cleaned_text = re.sub(r"(?i)^\s*Rs\.?\s*", "", text.strip())
-
-    # Remove thousands separators and currency symbols.
-    cleaned_text = cleaned_text.replace(",", "")
-    cleaned_text = re.sub(r"[^\d.]", "", cleaned_text)
-
-    # Reject empty or malformed numeric values.
-    if not cleaned_text or cleaned_text.count(".") > 1:
+    value = text.strip()
+    if not value:
         return None
+    value = re.sub(r"^(?:Rs\.?|Γé╣|┬ú)\s*", "", value, flags=re.IGNORECASE)
+    value = value.replace(",", "").strip()
 
-    try:
-        price = Decimal(cleaned_text)
-    except InvalidOperation:
+    match = re.fullmatch(r"(\d+)(?:\.(\d{1,2}))?", value)
+    if not match:
         return None
+    whole = match.group(1)
+    decimal = match.group(2) or ""
 
-    if not price.is_finite() or price < 0:
-        return None
-
-    return int(price * 100)
+    decimal = decimal.ljust(2, "0")
+    return int(whole) * 100 + int(decimal)
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse a listing page into ScrapedProduct objects.
+    """Parse one listing page. Skip (and log) cards with missing name or price;
+    never crash the whole page because one card is weird."""
+    raise NotImplementedError
 
-    HTML-specific parsing is not implemented in this version.
-    """
-    raise NotImplementedError("Listing HTML parsing has not been implemented yet.")
+
+def _robots_allows(url: str, headers: dict[str, str]) -> bool:
+    """Return whether robots.txt allows fetching the requested URL."""
+    robots_url = urljoin(url, "/robots.txt")
+
+    try:
+        response = requests.get(
+            robots_url,
+            headers=headers,
+            timeout=FETCH_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Could not fetch robots.txt for {url}: {exc}") from exc
+
+    if response.status_code == 404:
+        return True
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"robots.txt returned HTTP {response.status_code} for {url}")
+
+    parser = RobotFileParser()
+    parser.parse(response.text.splitlines())
+
+    return parser.can_fetch(settings.scrape_user_agent, url)
 
 
 def fetch_html(url: str) -> str:
-    """Fetch a page with a User-Agent, timeout, retries, and robots.txt."""
-
-    robots_url = urljoin(url, "/robots.txt")
-
+    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect for
+    robots.txt. Raise a clear exception on 4xx/5xx."""
     headers = {"User-Agent": settings.scrape_user_agent}
 
-    robots_response = requests.get(
-        robots_url,
-        headers=headers,
-        timeout=FETCH_TIMEOUT_SECONDS,
-    )
-
-    if robots_response.status_code == 404:
-        robots_allowed = True
-
-    elif robots_response.status_code >= 400:
-        raise RuntimeError(
-            f"Failed to fetch robots.txt for {url}: HTTP {robots_response.status_code}"
-        )
-
-    else:
-        parser = RobotFileParser()
-
-        parser.parse(robots_response.text.splitlines())
-
-        robots_allowed = parser.can_fetch(settings.scrape_user_agent, url)
-
-    if not robots_allowed:
+    if not _robots_allows(url, headers):
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
     for attempt in range(MAX_RETRIES + 1):
@@ -107,26 +101,25 @@ def fetch_html(url: str) -> str:
                 headers=headers,
                 timeout=FETCH_TIMEOUT_SECONDS,
             )
-
         except (requests.Timeout, requests.ConnectionError):
             if attempt == MAX_RETRIES:
                 raise
 
             sleep(BACKOFF_SECONDS * (2**attempt))
-
             continue
 
         if response.status_code >= 400:
-            if response.status_code not in (500, 503):
+            if response.status_code not in RETRY_STATUSES:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             if attempt == MAX_RETRIES:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             sleep(BACKOFF_SECONDS * (2**attempt))
-
             continue
 
+        # No charset in the header: requests guesses ISO-8859-1 and
+        # "┬ú" becomes "├é┬ú".
         if "charset" not in response.headers.get("Content-Type", "").lower():
             response.encoding = response.apparent_encoding
 
@@ -136,6 +129,5 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """Fetch HTML and parse the listing."""
-    html = fetch_html(url)
-    return parse_listing(html, url)
+    """fetch_html + save raw HTML to data/snapshots/ + parse_listing."""
+    raise NotImplementedError

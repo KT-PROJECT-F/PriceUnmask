@@ -2,10 +2,8 @@
 
 API lives under /api. The frontend folder is served at / by the same server,
 so there is no CORS setup and one command runs everything:
-    uvicorn backend.main:app --reload
+       uvicorn backend.main:app --reload
 """
-
-
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta

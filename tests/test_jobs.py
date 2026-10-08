@@ -199,3 +199,29 @@ def test_scrape_cycle_persists_rows_with_real_crud(monkeypatch, real_database):
     assert len(snapshots) == 2
     assert {snapshot.scrape_run_id for snapshot in snapshots} == {runs[0].id}
     assert {snapshot.current_price_minor for snapshot in snapshots} == {129900}
+
+
+def test_run_cycle_rollback_failure_recorded(monkeypatch, calls, session, caplog):
+    monkeypatch.setattr(jobs, "scrape", lambda url: [make_item("a")])
+
+    def upsert_boom(session, source, item, run):
+        raise RuntimeError("database error")
+
+    monkeypatch.setattr(jobs.crud, "upsert_product_and_snapshot", upsert_boom)
+    rollback_attempts = []
+
+    def rollback_boom():
+        rollback_attempts.append(True)
+        raise RuntimeError("rollback failed")
+
+    monkeypatch.setattr(session, "rollback", rollback_boom)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert rollback_attempts == [True]
+    assert calls[-1] == (
+        "finish",
+        "failed",
+        0,
+        "a: database error; Rollback failed: rollback failed",
+    )
+    assert "Could not roll back after saving item" in caplog.text

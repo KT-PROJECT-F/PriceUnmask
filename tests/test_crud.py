@@ -1,5 +1,6 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy.orm import Session
 
 from backend.db.crud import (
@@ -193,7 +194,12 @@ def test_list_scrape_runs_newest_first_and_respects_limit(
 def test_list_scrape_runs_default_limit_is_20(
     session: Session,
 ) -> None:
-    session.add_all([ScrapeRun(started_at=NOW - timedelta(hours=hours)) for hours in range(25)])
+    session.add_all(
+        [
+            ScrapeRun(started_at=NOW - timedelta(hours=hours))
+            for hours in range(25)
+        ]
+    )
     session.commit()
 
     runs = list_scrape_runs(session)
@@ -367,3 +373,146 @@ def test_second_upsert_does_not_change_first_snapshot(
     )
 
     assert before == after
+
+
+def assert_aware_utc(value: datetime) -> None:
+    assert value.tzinfo is not None
+    assert value.utcoffset() is not None
+    assert value.utcoffset().total_seconds() == 0
+    assert value.tzinfo == UTC
+
+
+def test_read_functions_return_aware_utc_timestamps(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(),
+        run,
+    )
+    product_id = snapshot.product_id
+
+    # Force objects to reload values from the database.
+    session.expire_all()
+
+    products = list_products(session)
+    product = get_product(session, product_id)
+    history = get_history(session, product_id)
+    runs = list_scrape_runs(session)
+
+    assert product is not None
+    assert products
+    assert history
+    assert runs
+
+    assert_aware_utc(product.created_at)
+    assert_aware_utc(product.last_seen_at)
+
+    for item in products:
+        assert_aware_utc(item.created_at)
+        assert_aware_utc(item.last_seen_at)
+
+    for item in history:
+        assert_aware_utc(item.scraped_at)
+
+    for item in runs:
+        assert_aware_utc(item.started_at)
+        if item.finished_at is not None:
+            assert_aware_utc(item.finished_at)
+
+
+def test_write_functions_return_aware_utc_timestamps(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    assert_aware_utc(run.started_at)
+    run_id = run.id
+
+    session.expire_all()
+
+    run = next(
+        item for item in list_scrape_runs(session) if item.id == run_id
+    )
+
+    assert_aware_utc(run.started_at)
+
+    snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(),
+        run,
+    )
+
+    assert_aware_utc(snapshot.scraped_at)
+
+    snapshot_id = snapshot.id
+    product_id = snapshot.product_id
+
+    session.expire_all()
+
+    snapshot = next(
+        item for item in get_history(session, product_id) if item.id == snapshot_id
+    )
+
+    product = get_product(session, product_id)
+
+    assert_aware_utc(snapshot.scraped_at)
+    assert product is not None
+    assert_aware_utc(product.created_at)
+    assert_aware_utc(product.last_seen_at)
+
+    finish_scrape_run(session, run, "success", 1)
+
+    session.expire_all()
+
+    run = next(
+        item for item in list_scrape_runs(session) if item.id == run_id
+    )
+
+    assert_aware_utc(run.started_at)
+    assert run.finished_at is not None
+    assert_aware_utc(run.finished_at)
+
+
+def test_get_history_rejects_naive_since(
+    session: Session,
+) -> None:
+    product = add_product(session, "Kettle")
+    naive_since = datetime(2026, 10, 1, 12, 0)
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        get_history(session, product.id, since=naive_since)
+
+
+def test_get_history_ist_since_matches_equivalent_utc(
+    session: Session,
+) -> None:
+    product = add_product(session, "Kettle")
+
+    add_snapshot(session, product, 3, 1100)
+    add_snapshot(session, product, 2, 1000)
+    add_snapshot(session, product, 1, 900)
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+
+    since_ist = datetime(2026, 10, 5, 12, 0, tzinfo=ist)
+    since_utc = datetime(2026, 10, 5, 6, 30, tzinfo=UTC)
+
+    history_ist = get_history(
+        session,
+        product.id,
+        since=since_ist,
+    )
+    history_utc = get_history(
+        session,
+        product.id,
+        since=since_utc,
+    )
+
+    assert [item.id for item in history_ist] == [
+        item.id for item in history_utc
+    ]

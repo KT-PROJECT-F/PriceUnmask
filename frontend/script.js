@@ -4,6 +4,7 @@ const app = document.getElementById("app");
 const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
 const searchBox = document.getElementById("search-box");
+let priceHistoryChart = null;
 
 const trustLabels = {
   genuine: "Genuine",
@@ -129,6 +130,209 @@ async function loadTrustScore(productId) {
   return trustScore;
 }
 
+// Swap for GET /api/products/{id}/history when the API is ready.
+async function loadPriceHistory(productId) {
+  const response = await fetch(`mock/history-${productId}.json`);
+
+  if (!response.ok) {
+    throw new Error("Could not load price history");
+  }
+
+  const history = await response.json();
+
+  if (
+    history.product_id !== productId ||
+    !Array.isArray(history.points) ||
+    !history.points.every(
+      (point) =>
+        typeof point.scraped_at === "string" &&
+        Number.isFinite(Date.parse(point.scraped_at)) &&
+        typeof point.current_price_minor === "number" &&
+        Number.isFinite(point.current_price_minor) &&
+        (
+          point.original_price_minor === null ||
+          (
+            typeof point.original_price_minor === "number" &&
+            Number.isFinite(point.original_price_minor)
+          )
+        )
+    )
+  ) {
+    throw new Error("Invalid price history data");
+  }
+
+  return history.points;
+}
+
+// Format history timestamps for readable chart labels.
+function formatChartDate(isoString) {
+  return new Date(isoString).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+
+ // Render the selected product's price history.
+function renderPriceHistoryChart(canvas, history, currency) {
+  if (priceHistoryChart) {
+    priceHistoryChart.destroy();
+    priceHistoryChart = null;
+  }
+
+  const formatRupees = (minorUnits) =>
+    formatPrice(minorUnits, currency);
+
+  priceHistoryChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: history.map((item) =>
+        formatChartDate(item.scraped_at)
+      ),
+      datasets: [
+        {
+          label: "Current Price",
+          data: history.map(
+            (item) => item.current_price_minor / 100
+          ),
+          borderColor: "#2563eb",
+          backgroundColor: "#2563eb",
+          tension: 0.2,
+        },
+        {
+          label: "Original Price",
+          data: history.map((item) =>
+            item.original_price_minor === null
+              ? null
+              : item.original_price_minor / 100
+          ),
+          borderColor: "#dc2626",
+          borderDash: [6, 4],
+          backgroundColor: "#dc2626",
+          tension: 0.2,
+          spanGaps: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback(value) {
+              return formatRupees(value * 100);
+            },
+          },
+        },
+      },
+      plugins: {
+        tooltip: {
+          backgroundColor: "#1f2937",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          borderColor: "#9ca3af",
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true,
+          callbacks: {
+            label(context) {
+              const value = context.parsed.y;
+
+              if (value === null) {
+                return `${context.dataset.label}: No data`;
+              }
+
+              return `${context.dataset.label}: ${formatRupees(
+                value * 100
+              )}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+
+// Load and render price history without blocking the Trust Score.
+async function showPriceHistory(detail, product) {
+  const container = detail.querySelector(".price-chart-container");
+  const canvas = detail.querySelector("#price-history-chart");
+
+  if (!container) {
+    return;
+  }
+
+  if (!canvas) {
+    return;
+  }
+
+  try {
+    if (typeof Chart === "undefined") {
+      throw new Error("Chart.js is unavailable");
+    }
+
+    const history = await loadPriceHistory(product.id);
+
+    // Ignore results if the user has left this product's detail view.
+    if (!detail.isConnected) {
+      return;
+    }
+    if (history.length === 0) {
+      canvas.remove();
+      const message = document.createElement("p");
+      message.className = "chart-summary";
+      message.setAttribute("role", "status");
+      message.textContent = "No price history is available yet.";
+
+      container.append(message);
+      return;
+    }
+    renderPriceHistoryChart(canvas, history, product.currency);
+    const summary = document.createElement("p");
+    summary.className = "chart-summary";
+    let lowestPrice = Infinity;
+    let highestPrice = -Infinity;
+
+    for (const point of history) {
+      lowestPrice = Math.min(lowestPrice, point.current_price_minor);
+      highestPrice = Math.max(highestPrice, point.current_price_minor);
+    }
+
+    summary.textContent =
+      `Price history contains ${history.length} data points. ` +
+      `Prices range from ${formatPrice(
+        lowestPrice,
+        product.currency
+      )} to ${formatPrice(
+        highestPrice,
+        product.currency
+      )}.`;
+
+    container.append(summary);
+  } catch (error) {
+    console.error("Unable to display price history:", error);
+
+    if (!detail.isConnected) {
+      return;
+    }
+
+    canvas.remove();
+
+    const message = document.createElement("p");
+    message.className = "error-message";
+    message.setAttribute("role", "status");
+    message.textContent = "The price chart is not available right now.";
+
+    container.append(message);
+  }
+}
+
 function buildDetailContent(product, trustScore) {
   const elements = [];
 
@@ -203,12 +407,22 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(reasonsHeading, reasonsList);
 
-  const chartPlaceholder = document.createElement("div");
-  chartPlaceholder.className = "price-chart-placeholder";
-  chartPlaceholder.textContent =
-    "Price chart — coming next working day";
+  const chartContainer = document.createElement("div");
+  chartContainer.className = "price-chart-container";
 
-  elements.push(chartPlaceholder);
+  const chartHeading = document.createElement("h3");
+  chartHeading.textContent = "Price History";
+
+  const chartCanvas = document.createElement("canvas");
+  chartCanvas.id = "price-history-chart";
+  chartCanvas.setAttribute(
+    "aria-label",
+    `Price history chart for ${product.name}`
+  );
+  chartCanvas.setAttribute("role", "img");
+
+  chartContainer.append(chartHeading, chartCanvas);
+  elements.push(chartContainer);
 
   return elements;
 }
@@ -266,6 +480,8 @@ async function showProductDetail(product, showGrid) {
 
     loadingMessage.remove();
     detail.append(...buildDetailContent(product, trustScore));
+    // Load the chart separately so it doesn't block the Trust Score.
+    showPriceHistory(detail, product);
     detail.setAttribute("aria-busy", "false");
 
     const title = detail.querySelector("#product-detail-title");
@@ -294,6 +510,10 @@ async function showProductDetail(product, showGrid) {
 }
 
 function showProductGrid(grid, products, onSelect) {
+  if (priceHistoryChart) {
+    priceHistoryChart.destroy();
+    priceHistoryChart = null;
+  }
   const detail = app.querySelector(".product-detail");
 
   if (detail) {

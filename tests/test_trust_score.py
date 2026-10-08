@@ -421,3 +421,118 @@ def test_compute_trust_score_explains_seeded_fake_discount_warnings() -> None:
     assert any("rose sharply" in reason for reason in score.reasons)
     assert any("advertised discount" in reason for reason in score.reasons)
     assert any("volatility" in reason for reason in score.reasons)
+
+
+def daily_history(
+    prices: list[int],
+    originals: list[int | None] | None = None,
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=len(prices), tz="UTC"),
+            "current_price_minor": prices,
+            "original_price_minor": originals if originals is not None else [None] * len(prices),
+        }
+    )
+
+
+def test_compute_trust_score_seeded_fake_discount_is_exactly_20() -> None:
+    score = compute_trust_score(seeded_history("fake_discount"))
+
+    # 100 - 40 (spike) - 25 (large discount gap) - 15 (high volatility)
+    assert score.score == 20
+    assert len(score.reasons) == 3
+
+
+def test_compute_trust_score_without_warnings_is_100_with_one_reason() -> None:
+    score = compute_trust_score(daily_history([1000] * 10))
+
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.reasons == ["The recorded prices show no strong signs of an inflated discount."]
+
+
+@pytest.mark.parametrize(
+    ("original", "expected_score"),
+    [
+        (1198, 100),  # gap rounds to 14.9 points: below the moderate threshold
+        (1200, 90),  # gap exactly 15: moderate
+        (1490, 90),  # gap rounds to 29.6: still moderate
+        (1500, 75),  # gap exactly 30: large
+    ],
+)
+def test_compute_trust_score_discount_gap_thresholds(
+    original: int,
+    expected_score: int,
+) -> None:
+    # Earlier typical price 1000, today 900: the real saving is 10%.
+    history = daily_history([1000] * 9 + [900], [None] * 9 + [original])
+
+    assert compute_trust_score(history).score == expected_score
+
+
+@pytest.mark.parametrize(("today", "expected_score"), [(999, 100), (1000, 85)])
+def test_compute_trust_score_price_above_lowest_threshold(
+    today: int,
+    expected_score: int,
+) -> None:
+    # Lowest price 800: 999 is below 25% above it, 1000 is exactly 25% above.
+    history = daily_history([800] + [1000] * 8 + [today])
+
+    assert compute_trust_score(history).score == expected_score
+
+
+def test_compute_trust_score_high_volatility_costs_15_points() -> None:
+    score = compute_trust_score(daily_history([1500, 500] * 5))
+
+    assert score.score == 85
+    assert any("volatility" in reason for reason in score.reasons)
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        (0, "Only 0 price snapshots are"),
+        (1, "Only 1 price snapshot is"),
+        (5, "Only 5 price snapshots are"),
+    ],
+)
+def test_compute_trust_score_insufficient_data_message_grammar(
+    rows: int,
+    expected: str,
+) -> None:
+    score = compute_trust_score(daily_history([1000] * rows))
+
+    assert score.label == "insufficient_data"
+    assert expected in score.reasons[0]
+
+
+def test_compute_trust_score_does_not_crash_on_a_zero_price() -> None:
+    score = compute_trust_score(daily_history([0, 1000, 1000, 1000, 1000, 1000]))
+
+    assert score.score is not None
+    assert 0 <= score.score <= 100
+
+
+def test_compute_trust_score_spike_alone_costs_40_points() -> None:
+    history = daily_history(
+        [1000, 1000, 1000, 1600, 1000, 1000],
+        [None, None, None, None, None, 1010],
+    )
+    history["scraped_at"] = pd.to_datetime(
+        [
+            "2026-10-01 00:00:00+00:00",
+            "2026-10-02 00:00:00+00:00",
+            "2026-10-03 00:00:00+00:00",
+            "2026-10-10 00:00:00+00:00",
+            "2026-10-11 00:00:00+00:00",
+            "2026-10-12 00:00:00+00:00",
+        ]
+    )
+
+    score = compute_trust_score(history)
+
+    assert score.score == 60
+    assert score.label == "uncertain"
+    assert len(score.reasons) == 1
+    assert "rose sharply" in score.reasons[0]

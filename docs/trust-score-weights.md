@@ -34,3 +34,16 @@ real-drop products remain `genuine` while the seeded price-hike-then-sale produc
 `likely_inflated`. They should be revisited against more real price histories and reviewed
 for false positives, especially where normal promotions or lasting price changes resemble
 spikes.
+
+## Notes on the rules
+
+`real_discount_vs_median_pct` is clamped at 0 in `compute_signals`, so a price above the
+earlier median counts as "no real saving". The gap rule therefore compares the advertised
+discount with 0 in that case, which makes the gap as large as the advertised discount.
+
+A spike on its own (no gap, no volatility) costs 40 points, so the score is 60 and the label
+is `uncertain`. The label `likely_inflated` needs the spike plus at least one more warning.
+
+Least certain weight: the volatility penalty (15). A product with a normal, regular sale
+cycle can look volatile without being dishonest. More real price histories are needed
+to tune it.

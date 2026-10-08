@@ -71,7 +71,12 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     prices = history["current_price_minor"]
     today_price = int(prices.iloc[-1])
 
-    pct_above_lowest = (today_price - lowest_price_minor) / lowest_price_minor * 100
+    # A price of 0 would divide by zero; there is no meaningful "% above" a free price.
+    pct_above_lowest = (
+        (today_price - lowest_price_minor) / lowest_price_minor * 100
+        if lowest_price_minor > 0
+        else 0.0
+    )
 
     mean_price = prices.mean()
     std_price = prices.std()
@@ -144,14 +149,16 @@ def compute_trust_score(history: pd.DataFrame) -> TrustScore:
     <40 likely_inflated. Fewer than MIN_SNAPSHOTS rows -> insufficient_data."""
     snapshot_count = len(history)
     if snapshot_count < MIN_SNAPSHOTS:
+        available = (
+            f"Only {snapshot_count} price snapshot is available"
+            if snapshot_count == 1
+            else f"Only {snapshot_count} price snapshots are available"
+        )
         return TrustScore(
             score=None,
             label="insufficient_data",
             signals=None,
-            reasons=[
-                f"Only {snapshot_count} price snapshots are available; at least "
-                f"{MIN_SNAPSHOTS} are needed for a trustworthy score."
-            ],
+            reasons=[f"{available}; at least {MIN_SNAPSHOTS} are needed for a trustworthy score."],
         )
 
     signals = compute_signals(history)
@@ -168,13 +175,14 @@ def compute_trust_score(history: pd.DataFrame) -> TrustScore:
     if signals.claimed_discount_pct is not None and signals.real_discount_vs_median_pct is not None:
         discount_gap_pct = signals.claimed_discount_pct - signals.real_discount_vs_median_pct
         if discount_gap_pct >= LARGE_DISCOUNT_GAP_THRESHOLD_PCT:
-            deductions += LARGE_DISCOUNT_GAP_PENALTY
-            reasons.append(
-                f"The advertised discount is {discount_gap_pct:.1f} percentage points "
-                "larger than the saving against the product's earlier typical price."
-            )
+            gap_penalty = LARGE_DISCOUNT_GAP_PENALTY
         elif discount_gap_pct >= MODERATE_DISCOUNT_GAP_THRESHOLD_PCT:
-            deductions += MODERATE_DISCOUNT_GAP_PENALTY
+            gap_penalty = MODERATE_DISCOUNT_GAP_PENALTY
+        else:
+            gap_penalty = 0
+
+        if gap_penalty:
+            deductions += gap_penalty
             reasons.append(
                 f"The advertised discount is {discount_gap_pct:.1f} percentage points "
                 "larger than the saving against the product's earlier typical price."

@@ -10,6 +10,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from time import sleep
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
@@ -20,6 +21,7 @@ from bs4 import BeautifulSoup
 from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
+SNAPSHOT_DIR = Path("data/snapshots")
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
 RETRY_STATUSES = {500, 502, 503, 504}
@@ -29,14 +31,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
+    external_id: str
     name: str
     url: str
-    current_price_minor: int  # Rs 1,299.50 -> 129950
-    original_price_minor: int | None  # strikethrough price, None if not shown
+    current_price_minor: int
+    original_price_minor: int | None
     in_stock: bool | None
     currency: str
-    scraped_at: datetime  # timezone-aware UTC
+    scraped_at: datetime
 
 
 def parse_price_to_minor(text: str) -> int | None:
@@ -62,18 +64,21 @@ def parse_price_to_minor(text: str) -> int | None:
 
     whole = match.group(1)
     decimal = match.group(2) or ""
-
     decimal = decimal.ljust(2, "0")
+
     return int(whole) * 100 + int(decimal)
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse one listing page. Skip (and log) cards with missing name or price;
-    never crash the whole page because one card is weird.
+    """Parse one listing page.
+
+    Skip and log cards with missing name or price; never crash the whole
+    page because one card is weird.
     """
     soup = BeautifulSoup(html, "html.parser")
     products: list[ScrapedProduct] = []
     scraped_at = datetime.now(UTC)
+
     cards = soup.select("article.product_pod")
 
     for card in cards:
@@ -110,6 +115,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         url_path = url.rstrip("/").split("/")
         filename = url_path[-1]
         slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
+
         external_id = slug.rsplit("_", 1)[0]
 
         # This site sells in GBP; a rupee sign or "Rs" means INR.
@@ -162,13 +168,16 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
 
 
 def fetch_html(url: str) -> str:
-    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect
-    for robots.txt. Raise a clear exception on 4xx/5xx.
-    """
+    """GET with our User-Agent, timeout, retries, and robots.txt respect."""
     headers = {"User-Agent": settings.scrape_user_agent}
 
     if not _robots_allows(url, headers):
         raise RuntimeError(f"robots.txt disallows fetching {url}")
+
+    # robots.txt and the page are two requests to the same site.
+    # Wait politely before requesting the page.
+    if settings.scrape_delay_seconds > 0:
+        sleep(settings.scrape_delay_seconds)
 
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -204,5 +213,17 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """fetch_html + save raw HTML to data/snapshots/ + parse_listing."""
-    raise NotImplementedError
+    """Fetch, save raw HTML, parse, and return products."""
+    html = fetch_html(url)
+
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
+
+    snapshot_path.write_text(
+        html,
+        encoding="utf-8",
+    )
+
+    return parse_listing(html, url)

@@ -6,7 +6,7 @@ from backend.scraper.product_scraper import FETCH_TIMEOUT_SECONDS, fetch_html
 
 
 class FakeResponse:
-    """Behaves like requests: no charset in Content-Type -> encoding ISO-8859-1."""
+    """Behaves like requests: no charset -> ISO-8859-1."""
 
     def __init__(
         self,
@@ -25,7 +25,11 @@ class FakeResponse:
         return self.content.decode(self.encoding)
 
 
-def use_fake(monkeypatch, response: FakeResponse, calls: list | None = None) -> None:
+def use_fake(
+    monkeypatch,
+    response: FakeResponse,
+    calls: list | None = None,
+) -> None:
     def fake_get(url, **kwargs):
         if calls is not None:
             calls.append((url, kwargs))
@@ -95,15 +99,17 @@ def test_fake_garbles_like_requests_without_fix() -> None:
 @pytest.fixture
 def sleeps(monkeypatch):
     waits: list[float] = []
+
     monkeypatch.setattr(
         "backend.scraper.product_scraper.sleep",
         waits.append,
     )
+
     return waits
 
 
 def script(monkeypatch, *steps):
-    """steps are FakeResponse objects or exceptions, returned/raised in order."""
+    """Return or raise each step in order for requests.get."""
     calls: list[str] = []
     queue = list(steps)
 
@@ -129,6 +135,38 @@ ROBOTS_OK = FakeResponse(
 )
 
 
+def test_configured_delay_between_robots_and_page(monkeypatch) -> None:
+    calls: list[str] = []
+    waits: list[float] = []
+    queue = [
+        ROBOTS_OK,
+        FakeResponse(body="ok"),
+    ]
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        return queue.pop(0)
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
+    )
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.sleep",
+        waits.append,
+    )
+
+    delay = settings.scrape_delay_seconds
+
+    fetch_html("https://example.com/p")
+
+    assert calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/p",
+    ]
+    assert waits == [delay]
+
+
 def test_fails_twice_then_succeeds(monkeypatch, sleeps) -> None:
     calls = script(
         monkeypatch,
@@ -140,7 +178,7 @@ def test_fails_twice_then_succeeds(monkeypatch, sleeps) -> None:
 
     assert fetch_html("https://example.com/p") == "ok"
     assert len(calls) == 4
-    assert sleeps == [1, 2]
+    assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
 
 def test_fails_three_times_then_raises(monkeypatch, sleeps) -> None:
@@ -155,7 +193,7 @@ def test_fails_three_times_then_raises(monkeypatch, sleeps) -> None:
     with pytest.raises(RuntimeError, match="HTTP 503"):
         fetch_html("https://example.com/p")
 
-    assert sleeps == [1, 2]
+    assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
 
 def test_404_is_not_retried(monkeypatch, sleeps) -> None:
@@ -169,11 +207,15 @@ def test_404_is_not_retried(monkeypatch, sleeps) -> None:
         fetch_html("https://example.com/p")
 
     assert len(calls) == 2
-    assert sleeps == []
+    assert sleeps == [settings.scrape_delay_seconds]
 
 
 @pytest.mark.parametrize("status", [500, 502, 503, 504])
-def test_temporary_status_is_retried_then_raises(monkeypatch, sleeps, status: int) -> None:
+def test_temporary_status_is_retried_then_raises(
+    monkeypatch,
+    sleeps,
+    status: int,
+) -> None:
     calls = script(
         monkeypatch,
         ROBOTS_OK,
@@ -186,7 +228,7 @@ def test_temporary_status_is_retried_then_raises(monkeypatch, sleeps, status: in
         fetch_html("https://example.com/p")
 
     assert len(calls) == 4
-    assert sleeps == [1, 2]
+    assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
 
 def test_timeout_is_retried(monkeypatch, sleeps) -> None:
@@ -198,7 +240,7 @@ def test_timeout_is_retried(monkeypatch, sleeps) -> None:
     )
 
     assert fetch_html("https://example.com/p") == "ok"
-    assert sleeps == [1]
+    assert sleeps == [settings.scrape_delay_seconds, 1]
 
 
 def test_connection_error_is_retried(monkeypatch, sleeps) -> None:
@@ -210,10 +252,13 @@ def test_connection_error_is_retried(monkeypatch, sleeps) -> None:
     )
 
     assert fetch_html("https://example.com/p") == "ok"
-    assert sleeps == [1]
+    assert sleeps == [settings.scrape_delay_seconds, 1]
 
 
-def test_timeout_on_every_attempt_raises_after_three_tries(monkeypatch, sleeps) -> None:
+def test_timeout_on_every_attempt_raises_after_three_tries(
+    monkeypatch,
+    sleeps,
+) -> None:
     calls = script(
         monkeypatch,
         ROBOTS_OK,
@@ -226,7 +271,7 @@ def test_timeout_on_every_attempt_raises_after_three_tries(monkeypatch, sleeps) 
         fetch_html("https://example.com/p")
 
     assert len(calls) == 4
-    assert sleeps == [1, 2]
+    assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
 
 def test_disallowed_url_never_requests_the_page(monkeypatch, sleeps) -> None:
@@ -241,6 +286,7 @@ def test_disallowed_url_never_requests_the_page(monkeypatch, sleeps) -> None:
         fetch_html("https://example.com/private/x")
 
     assert calls == ["https://example.com/robots.txt"]
+    assert sleeps == []
 
 
 def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
@@ -251,6 +297,7 @@ def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
     )
 
     assert fetch_html("https://example.com/p") == "ok"
+    assert sleeps == [settings.scrape_delay_seconds]
 
 
 def test_robots_txt_timeout_raises_clear_error(monkeypatch, sleeps) -> None:
@@ -262,14 +309,82 @@ def test_robots_txt_timeout_raises_clear_error(monkeypatch, sleeps) -> None:
     with pytest.raises(RuntimeError, match="robots.txt"):
         fetch_html("https://example.com/p")
 
+    assert sleeps == []
+
 
 @pytest.mark.parametrize("status", [403, 500])
 def test_robots_txt_error_status_raises_and_page_is_not_requested(
-    monkeypatch, sleeps, status: int
+    monkeypatch,
+    sleeps,
+    status: int,
 ) -> None:
-    calls = script(monkeypatch, FakeResponse(status_code=status))
+    calls = script(
+        monkeypatch,
+        FakeResponse(status_code=status),
+    )
 
-    with pytest.raises(RuntimeError, match=f"robots.txt returned HTTP {status}"):
+    with pytest.raises(
+        RuntimeError,
+        match=f"robots.txt returned HTTP {status}",
+    ):
         fetch_html("https://example.com/p")
 
     assert calls == ["https://example.com/robots.txt"]
+    assert sleeps == []
+
+
+def test_scrape_saves_raw_html(monkeypatch, tmp_path) -> None:
+    from backend.scraper import product_scraper
+
+    html = "<html><body>saved page</body></html>"
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
+    monkeypatch.setattr(
+        product_scraper,
+        "parse_listing",
+        lambda html, url: [],
+    )
+
+    product_scraper.scrape("https://example.com")
+
+    snapshots = list(tmp_path.glob("*.html"))
+
+    assert len(snapshots) == 1
+    assert snapshots[0].read_text(encoding="utf-8") == html
+    assert snapshots[0].name != "sample_books_page1.html"
+
+
+def test_scrape_returns_parsed_products(monkeypatch, tmp_path) -> None:
+    from backend.scraper import product_scraper
+
+    html = "<html>test</html>"
+    expected_products = ["product-1", "product-2"]
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
+    monkeypatch.setattr(
+        product_scraper,
+        "parse_listing",
+        lambda html, url: expected_products,
+    )
+
+    result = product_scraper.scrape("https://example.com")
+
+    assert result == expected_products
+
+
+def test_scrape_does_not_save_when_fetch_fails(monkeypatch, tmp_path) -> None:
+    from backend.scraper import product_scraper
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+
+    def fail_fetch(url):
+        raise RuntimeError("fetch failed")
+
+    monkeypatch.setattr(product_scraper, "fetch_html", fail_fetch)
+
+    with pytest.raises(RuntimeError, match="fetch failed"):
+        product_scraper.scrape("https://example.com")
+
+    assert list(tmp_path.iterdir()) == []

@@ -80,12 +80,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
             logger.warning("Skipping product card with no name")
             continue
 
-        # relative_url = link.get("href")
         relative_url = link.get("href")
-
-        # if not relative_url:
-        #     logger.warning("Skipping product card with no URL: %s", name)
-        #     continue
 
         if not price_element:
             logger.warning("Skipping product card with no price: %s", name)
@@ -103,11 +98,20 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
             )
             continue
 
+        # Assumption: the shop marks the old price with <del>
+        # or class "old-price".
         original_price_minor = None
         original_price_element = card.select_one("del, .old-price")
 
         if original_price_element:
             original_price_minor = parse_price_to_minor(original_price_element.get_text(strip=True))
+
+            if original_price_minor is not None and original_price_minor <= price_minor:
+                logger.warning(
+                    "Ignoring old price that is not above the price: %s",
+                    name,
+                )
+                original_price_minor = None
 
         url_path = url.rstrip("/").split("/")
 
@@ -137,6 +141,12 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
                 currency=currency,
                 scraped_at=scraped_at,
             )
+        )
+
+    if cards and not products:
+        logger.error(
+            "Skipped all %d product cards; the page layout may have changed",
+            len(cards),
         )
 
     return products

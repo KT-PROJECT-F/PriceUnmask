@@ -21,7 +21,8 @@ from bs4 import BeautifulSoup
 from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
-SNAPSHOT_DIR = Path("data/snapshots")
+SNAPSHOT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "snapshots"
+
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
 RETRY_STATUSES = {500, 502, 503, 504}
@@ -31,14 +32,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str
+    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
     name: str
     url: str
-    current_price_minor: int
-    original_price_minor: int | None
+    current_price_minor: int  # Rs 1,299.50 -> 129950
+    original_price_minor: int | None  # strikethrough price, None if not shown
     in_stock: bool | None
     currency: str
-    scraped_at: datetime
+    scraped_at: datetime  # timezone-aware UTC
 
 
 def parse_price_to_minor(text: str) -> int | None:
@@ -56,6 +57,7 @@ def parse_price_to_minor(text: str) -> int | None:
         value,
         flags=re.IGNORECASE,
     )
+
     value = value.replace(",", "").strip()
 
     match = re.fullmatch(r"(\d+)(?:\.(\d{1,2}))?", value)
@@ -78,7 +80,6 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
     soup = BeautifulSoup(html, "html.parser")
     products: list[ScrapedProduct] = []
     scraped_at = datetime.now(UTC)
-
     cards = soup.select("article.product_pod")
 
     for card in cards:
@@ -215,15 +216,22 @@ def fetch_html(url: str) -> str:
 def scrape(url: str) -> list[ScrapedProduct]:
     """Fetch, save raw HTML, parse, and return products."""
     html = fetch_html(url)
+    products = parse_listing(html, url)
 
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
 
-    snapshot_path.write_text(
-        html,
-        encoding="utf-8",
-    )
+    try:
+        snapshot_path.write_text(
+            html,
+            encoding="utf-8",
+        )
+    except OSError:
+        logger.exception(
+            "Could not save raw HTML snapshot to %s",
+            snapshot_path,
+        )
 
-    return parse_listing(html, url)
+    return products

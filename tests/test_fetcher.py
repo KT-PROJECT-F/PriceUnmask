@@ -1,7 +1,10 @@
+import re
+
 import pytest
 import requests
 
 from backend.config import settings
+from backend.scraper import product_scraper
 from backend.scraper.product_scraper import FETCH_TIMEOUT_SECONDS, fetch_html
 
 
@@ -41,6 +44,18 @@ def use_fake(
     )
 
 
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch):
+    waits: list[float] = []
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.sleep",
+        waits.append,
+    )
+
+    return waits
+
+
 def test_success(monkeypatch) -> None:
     calls: list = []
     use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"), calls)
@@ -65,7 +80,7 @@ def test_pound_sign_survives_without_charset(monkeypatch) -> None:
     responses = [
         FakeResponse(body="User-agent: *\nAllow: /"),
         FakeResponse(
-            body="<p>┬ú51.77</p>",
+            body="<p>£51.77</p>",
             content_type="text/html",
         ),
     ]
@@ -82,8 +97,8 @@ def test_pound_sign_survives_without_charset(monkeypatch) -> None:
 
     html = fetch_html("https://books.toscrape.com")
 
-    assert "┬ú51.77" in html
-    assert "├é┬ú" not in html
+    assert "£51.77" in html
+    assert "Â£" not in html
 
 
 def test_fake_garbles_like_requests_without_fix() -> None:
@@ -94,18 +109,6 @@ def test_fake_garbles_like_requests_without_fix() -> None:
             content_type="text/html",
         ).text
     )
-
-
-@pytest.fixture
-def sleeps(monkeypatch):
-    waits: list[float] = []
-
-    monkeypatch.setattr(
-        "backend.scraper.product_scraper.sleep",
-        waits.append,
-    )
-
-    return waits
 
 
 def script(monkeypatch, *steps):
@@ -135,9 +138,8 @@ ROBOTS_OK = FakeResponse(
 )
 
 
-def test_configured_delay_between_robots_and_page(monkeypatch) -> None:
+def test_configured_delay_between_robots_and_page(monkeypatch, sleeps) -> None:
     calls: list[str] = []
-    waits: list[float] = []
     queue = [
         ROBOTS_OK,
         FakeResponse(body="ok"),
@@ -151,10 +153,6 @@ def test_configured_delay_between_robots_and_page(monkeypatch) -> None:
         "backend.scraper.product_scraper.requests.get",
         fake_get,
     )
-    monkeypatch.setattr(
-        "backend.scraper.product_scraper.sleep",
-        waits.append,
-    )
 
     delay = settings.scrape_delay_seconds
 
@@ -164,7 +162,7 @@ def test_configured_delay_between_robots_and_page(monkeypatch) -> None:
         "https://example.com/robots.txt",
         "https://example.com/p",
     ]
-    assert waits == [delay]
+    assert sleeps == [delay]
 
 
 def test_fails_twice_then_succeeds(monkeypatch, sleeps) -> None:
@@ -334,49 +332,56 @@ def test_robots_txt_error_status_raises_and_page_is_not_requested(
 
 
 def test_scrape_saves_raw_html(monkeypatch, tmp_path) -> None:
-    from backend.scraper import product_scraper
-
     html = "<html><body>saved page</body></html>"
+    seen = {}
 
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
     monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
-    monkeypatch.setattr(
-        product_scraper,
-        "parse_listing",
-        lambda html, url: [],
-    )
 
-    product_scraper.scrape("https://example.com")
+    def fake_parse(page_html, base_url):
+        seen["html"] = page_html
+        seen["url"] = base_url
+        return []
 
-    snapshots = list(tmp_path.glob("*.html"))
+    monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
 
-    assert len(snapshots) == 1
-    assert snapshots[0].read_text(encoding="utf-8") == html
-    assert snapshots[0].name != "sample_books_page1.html"
+    product_scraper.scrape("https://example.com/list")
+
+    [snapshot] = list(tmp_path.glob("*.html"))
+
+    assert re.fullmatch(r"\d{8}T\d{6}Z\.html", snapshot.name)
+    assert snapshot.read_text(encoding="utf-8") == html
+    assert seen == {
+        "html": html,
+        "url": "https://example.com/list",
+    }
 
 
 def test_scrape_returns_parsed_products(monkeypatch, tmp_path) -> None:
-    from backend.scraper import product_scraper
-
     html = "<html>test</html>"
     expected_products = ["product-1", "product-2"]
+    seen = {}
 
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
     monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
-    monkeypatch.setattr(
-        product_scraper,
-        "parse_listing",
-        lambda html, url: expected_products,
-    )
 
-    result = product_scraper.scrape("https://example.com")
+    def fake_parse(page_html, base_url):
+        seen["html"] = page_html
+        seen["url"] = base_url
+        return expected_products
+
+    monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
+
+    result = product_scraper.scrape("https://example.com/list")
 
     assert result == expected_products
+    assert seen == {
+        "html": html,
+        "url": "https://example.com/list",
+    }
 
 
 def test_scrape_does_not_save_when_fetch_fails(monkeypatch, tmp_path) -> None:
-    from backend.scraper import product_scraper
-
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
 
     def fail_fetch(url):

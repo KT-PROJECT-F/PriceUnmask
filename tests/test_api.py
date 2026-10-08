@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.db.database import Base, get_session
-from backend.db.models import ScrapeRun
+from backend.db.models import Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
 from backend.main import app
 
@@ -149,24 +149,20 @@ def test_get_product_history_oldest_first(client):
 
 
 def test_get_product_history_days_filter(client):
-    products = client.get("/api/products").json()
-    product_id = products[0]["id"]
+    product_id = client.get("/api/products").json()[0]["id"]
 
-    response = client.get(
+    everything = client.get(f"/api/products/{product_id}/history").json()["points"]
+
+    last_week = client.get(
         f"/api/products/{product_id}/history",
         params={"days": 7},
-    )
+    ).json()["points"]
 
-    assert response.status_code == 200
+    cutoff = datetime.now(UTC) - timedelta(days=7)
 
-    data = response.json()
+    assert 0 < len(last_week) < len(everything)
 
-    assert data["product_id"] == product_id
-    assert 1 <= len(data["points"]) <= 42
-
-    timestamps = [point["scraped_at"] for point in data["points"]]
-
-    assert timestamps == sorted(timestamps)
+    assert all(datetime.fromisoformat(point["scraped_at"]) >= cutoff for point in last_week)
 
 
 def test_get_product_history_missing_product(client):
@@ -176,13 +172,31 @@ def test_get_product_history_missing_product(client):
     assert response.json()["detail"] == "Product not found"
 
 
-def test_get_product_history_invalid_days(client):
-    products = client.get("/api/products").json()
-    product_id = products[0]["id"]
+def test_get_product_history_without_snapshots_is_empty_not_404(client):
+    with TestingSessionLocal() as session:
+        product = Product(
+            source="test",
+            external_id="no-history",
+            name="No History",
+            url="https://example.com/no-history",
+        )
+        session.add(product)
+        session.commit()
+        product_id = product.id
+
+    response = client.get(f"/api/products/{product_id}/history")
+
+    assert response.status_code == 200
+    assert response.json() == {"product_id": product_id, "points": []}
+
+
+@pytest.mark.parametrize("days", [0, -5, 3651, 1_000_000])
+def test_get_product_history_invalid_days(client, days):
+    product_id = client.get("/api/products").json()[0]["id"]
 
     response = client.get(
         f"/api/products/{product_id}/history",
-        params={"days": 0},
+        params={"days": days},
     )
 
     assert response.status_code == 422
@@ -232,3 +246,22 @@ def test_list_scrape_runs_empty(client):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_list_scrape_runs_returns_at_most_20_newest_first(client):
+    with TestingSessionLocal() as session:
+        session.add_all(
+            ScrapeRun(
+                started_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day),
+                status="success",
+                products_seen=day,
+            )
+            for day in range(25)
+        )
+        session.commit()
+
+    data = client.get("/api/scrape-runs").json()
+
+    assert len(data) == 20
+    assert data[0]["products_seen"] == 24
+    assert data[-1]["products_seen"] == 5

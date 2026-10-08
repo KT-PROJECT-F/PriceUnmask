@@ -5,6 +5,8 @@ so there is no CORS setup and one command runs everything:
     uvicorn backend.main:app --reload
 """
 
+
+
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,6 +19,8 @@ from backend import converters
 from backend.db import crud
 from backend.db.database import get_session, init_db
 from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut
+
+MAX_HISTORY_DAYS = 3650  # ten years; larger values would overflow datetime
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -66,7 +70,7 @@ def get_product(
 )
 def get_product_history(
     product_id: int,
-    days: int | None = Query(default=None, ge=1),
+    days: int | None = Query(default=None, ge=1, le=MAX_HISTORY_DAYS),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> HistoryOut:
     product = crud.get_product(session, product_id)
@@ -92,12 +96,8 @@ def get_scrape_runs(
 
 
 # TODO(API track): add the endpoints listed in docs/ARCHITECTURE.md section 5:
-
-#   GET  /api/products/{product_id}/history
 #   GET  /api/products/{product_id}/trust-score
-#   GET  /api/scrape-runs
 #   POST /api/scrape/run
-
 
 # Mount the dashboard LAST so it does not shadow /api routes.
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

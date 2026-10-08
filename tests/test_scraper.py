@@ -14,6 +14,9 @@ FIXTURE_PATH = (
 BROKEN_FIXTURE_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_broken.html"
 )
+CATEGORY_FIXTURE_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_category.html"
+)
 
 
 def test_parse_listing_sample_page():
@@ -357,3 +360,46 @@ def test_parse_listing_logs_error_when_every_card_is_skipped(caplog):
 
     assert products == []
     assert "Skipped all 1 product cards" in caplog.text
+
+
+def test_parse_category_page_returns_books():
+    html = CATEGORY_FIXTURE_PATH.read_text(encoding="utf-8")
+
+    products = parse_listing(
+        html,
+        "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+    )
+
+    assert products
+
+
+def test_parse_category_page_returns_absolute_urls():
+    html = CATEGORY_FIXTURE_PATH.read_text(encoding="utf-8")
+
+    products = parse_listing(
+        html,
+        "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+    )
+
+    assert products
+
+    for product in products:
+        assert product.url.startswith("https://books.toscrape.com/")
+
+
+def test_parse_category_page_reads_product_fields():
+    html = CATEGORY_FIXTURE_PATH.read_text(encoding="utf-8")
+
+    products = parse_listing(
+        html,
+        "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+    )
+
+    assert products
+
+    product = products[0]
+
+    assert product.name
+    assert product.current_price_minor > 0
+    assert product.currency == "GBP"
+    assert product.scraped_at.tzinfo is UTC

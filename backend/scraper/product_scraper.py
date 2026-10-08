@@ -61,7 +61,6 @@ def parse_price_to_minor(text: str) -> int | None:
         return None
     whole = match.group(1)
     decimal = match.group(2) or ""
-
     decimal = decimal.ljust(2, "0")
     return int(whole) * 100 + int(decimal)
 

@@ -6,6 +6,7 @@ so there is no CORS setup and one command runs everything:
 """
 
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,9 +15,10 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from backend import converters
+from backend.analysis.trust_score import compute_trust_score
 from backend.db import crud
 from backend.db.database import get_session, init_db
-from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut
+from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut, TrustScoreOut
 
 MAX_HISTORY_DAYS = 3650  # ten years; larger values would overflow datetime
 
@@ -83,6 +85,35 @@ def get_product_history(
     history = crud.get_history(session, product_id, since=since)
 
     return converters.history_to_out(product, history)
+
+
+@app.get(
+    "/api/products/{product_id}/trust-score",
+    response_model=TrustScoreOut,
+)
+def get_product_trust_score(
+    product_id: int,
+    session: Session = Depends(get_session),  # noqa: B008
+) -> TrustScoreOut:
+    product = crud.get_product(session, product_id)
+
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    history = crud.get_history(session, product_id)
+    history_df = converters.snapshots_to_dataframe(history)
+    trust_score = compute_trust_score(history_df)
+
+    signals = asdict(trust_score.signals) if trust_score.signals is not None else None
+
+    return TrustScoreOut(
+        product_id=product.id,
+        score=trust_score.score,
+        label=trust_score.label,
+        reasons=trust_score.reasons,
+        signals=signals,
+        anomaly_note=None,
+    )
 
 
 @app.get("/api/scrape-runs", response_model=list[ScrapeRunOut])

@@ -129,11 +129,9 @@ async function loadTrustScore(productId) {
   return trustScore;
 }
 
-// Load price-history data for the selected product.
+// Swap for GET /api/products/{id}/history when the API is ready.
 async function loadPriceHistory(productId) {
-  const response = await fetch(
-    `mock/price-history-${productId}.json`
-  );
+  const response = await fetch(`mock/history-${productId}.json`);
 
   if (!response.ok) {
     throw new Error("Could not load price history");
@@ -142,17 +140,19 @@ async function loadPriceHistory(productId) {
   const history = await response.json();
 
   if (
-    !Array.isArray(history) ||
-    !history.every(
-      (item) =>
-        typeof item.date === "string" &&
-        typeof item.current_price_minor === "number" &&
-        Number.isFinite(item.current_price_minor) &&
+    history.product_id !== productId ||
+    !Array.isArray(history.points) ||
+    !history.points.every(
+      (point) =>
+        typeof point.scraped_at === "string" &&
+        Number.isFinite(Date.parse(point.scraped_at)) &&
+        typeof point.current_price_minor === "number" &&
+        Number.isFinite(point.current_price_minor) &&
         (
-          item.original_price_minor === null ||
+          point.original_price_minor === null ||
           (
-            typeof item.original_price_minor === "number" &&
-            Number.isFinite(item.original_price_minor)
+            typeof point.original_price_minor === "number" &&
+            Number.isFinite(point.original_price_minor)
           )
         )
     )
@@ -160,7 +160,14 @@ async function loadPriceHistory(productId) {
     throw new Error("Invalid price history data");
   }
 
-  return history;
+  return history.points;
+}
+// Format history timestamps for readable chart labels.
+function formatChartDate(isoString) {
+  return new Date(isoString).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
 // Render the selected product's price history.
@@ -176,7 +183,7 @@ function renderPriceHistoryChart(canvas, history, currency) {
   priceHistoryChart = new Chart(canvas, {
     type: "line",
     data: {
-      labels: history.map((item) => item.date),
+      labels: history.map((item) => formatChartDate(item.scraped_at)),
       datasets: [
         {
           label: "Current Price",
@@ -195,6 +202,7 @@ function renderPriceHistoryChart(canvas, history, currency) {
               : item.original_price_minor / 100
           ),
           borderColor: "#dc2626",
+          borderDash: [6, 4],
           backgroundColor: "#dc2626",
           tension: 0.2,
           spanGaps: false,
@@ -243,6 +251,60 @@ function renderPriceHistoryChart(canvas, history, currency) {
       },
     },
   });
+}
+
+// Load and render price history without blocking the Trust Score.
+async function showPriceHistory(detail, product) {
+  const container = detail.querySelector(".price-chart-container");
+  const canvas = detail.querySelector("#price-history-chart");
+
+  if (!container || !canvas) {
+    return;
+  }
+
+  try {
+    if (typeof Chart === "undefined") {
+      throw new Error("Chart.js is unavailable");
+    }
+
+    const history = await loadPriceHistory(product.id);
+
+    // Ignore results if the user has left this product's detail view.
+    if (!detail.isConnected) {
+      return;
+    }
+
+    renderPriceHistoryChart(canvas, history, product.currency);
+
+    const summary = document.createElement("p");
+    summary.className = "chart-summary";
+    summary.textContent =
+      `Price history contains ${history.length} data points. ` +
+      `Prices range from ${formatPrice(
+        Math.min(...history.map((point) => point.current_price_minor)),
+        product.currency
+      )} to ${formatPrice(
+        Math.max(...history.map((point) => point.current_price_minor)),
+        product.currency
+      )}.`;
+
+    container.append(summary);
+  } catch (error) {
+    console.error("Unable to display price history:", error);
+
+    if (!detail.isConnected) {
+      return;
+    }
+
+    canvas.remove();
+
+    const message = document.createElement("p");
+    message.className = "error-message";
+    message.setAttribute("role", "status");
+    message.textContent = "The price chart is not available right now.";
+
+    container.append(message);
+  }
 }
 
 function buildDetailContent(product, trustScore) {
@@ -383,10 +445,7 @@ async function showProductDetail(product, showGrid) {
   app.append(detail);
 
   try {
-    const [trustScore, history] = await Promise.all([
-      loadTrustScore(product.id),
-      loadPriceHistory(product.id),
-    ]);
+    const trustScore = await loadTrustScore(product.id);
 
     // Avoid rendering if this detail view has already been removed.
     if (!detail.isConnected) {
@@ -395,14 +454,8 @@ async function showProductDetail(product, showGrid) {
 
     loadingMessage.remove();
     detail.append(...buildDetailContent(product, trustScore));
-    const chartCanvas = detail.querySelector("#price-history-chart");
-    if (chartCanvas) {
-      renderPriceHistoryChart(
-        chartCanvas,
-        history,
-        product.currency
-      );
-    }
+    // Load the chart separately so it doesn't block the Trust Score.
+    showPriceHistory(detail, product);
     detail.setAttribute("aria-busy", "false");
 
     const title = detail.querySelector("#product-detail-title");

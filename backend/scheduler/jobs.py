@@ -4,16 +4,18 @@ Run the collector with:  python -m backend.scheduler.jobs
 """
 
 import logging
+from datetime import UTC, datetime
 
+from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db import crud
-from backend.db.database import SessionLocal
+from backend.db.database import SessionLocal, init_db
 from backend.db.models import ScrapeRun
 from backend.scraper.product_scraper import scrape
 
-SOURCE_KEY = "demo-shop"  # change when the target site is chosen
+SOURCE_KEY = "books-toscrape"
 logger = logging.getLogger(__name__)
 
 
@@ -107,11 +109,36 @@ def _finish_run(
             logger.exception("Could not record failure for scrape run %s", run_id)
 
 
-def build_scheduler():  # -> apscheduler BackgroundScheduler / BlockingScheduler
+def build_scheduler() -> BlockingScheduler:
     """Interval job every settings.scrape_interval_hours, max_instances=1,
     coalesce=True, plus one run immediately at startup."""
-    raise NotImplementedError
+    scheduler = BlockingScheduler()
+    scheduler.add_job(
+        run_scrape_cycle,
+        trigger="interval",
+        hours=settings.scrape_interval_hours,
+        next_run_time=datetime.now(UTC),
+        max_instances=1,
+        coalesce=True,
+    )
+    return scheduler
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    init_db()
+    scheduler = build_scheduler()
+    try:
+        scheduler.start()
+    except KeyboardInterrupt:
+        logger.info("Collector stopped by user")
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=True)
 
 
 if __name__ == "__main__":
-    raise SystemExit("Scheduler not implemented yet. See docs/ARCHITECTURE.md")
+    main()

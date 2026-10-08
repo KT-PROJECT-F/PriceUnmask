@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -78,7 +79,7 @@ def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
 
     assert jobs.run_scrape_cycle() == 2
     assert [c[0] for c in calls] == ["start", "upsert", "upsert", "finish"]
-    assert calls[1][1] == "demo-shop"
+    assert calls[1][1] == "books-toscrape"
     assert [call[2] for call in calls[1:3]] == items
     assert all(call[3] is calls[0][1] for call in calls[1:3])
     assert calls[-1] == ("finish", "success", 2, None)
@@ -110,6 +111,45 @@ def test_scrape_url_comes_from_settings(monkeypatch, calls):
 
     jobs.run_scrape_cycle()
     assert seen["url"] == "https://example.com/list"
+
+
+def test_build_scheduler_configures_immediate_interval_job(monkeypatch):
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_interval_hours=2.5))
+
+    scheduler = jobs.build_scheduler()
+
+    assert isinstance(scheduler, BlockingScheduler)
+    scheduled_jobs = scheduler.get_jobs()
+    assert len(scheduled_jobs) == 1
+    job = scheduled_jobs[0]
+    assert job.func is jobs.run_scrape_cycle
+    assert job.trigger.interval.total_seconds() == 2.5 * 60 * 60
+    assert job.max_instances == 1
+    assert job.coalesce is True
+    assert job.next_run_time <= datetime.now(UTC)
+
+
+def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch):
+    calls = []
+
+    class FakeScheduler:
+        running = True
+
+        def start(self):
+            calls.append("start")
+            raise KeyboardInterrupt
+
+        def shutdown(self, wait):
+            calls.append(("shutdown", wait))
+            self.running = False
+
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(jobs, "init_db", lambda: calls.append("init_db"))
+    monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
+
+    jobs.main()
+
+    assert calls == ["init_db", "start", ("shutdown", True)]
 
 
 def test_failure_after_first_item_is_recorded_as_partial(monkeypatch, calls, session, caplog):

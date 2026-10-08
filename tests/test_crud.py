@@ -194,12 +194,7 @@ def test_list_scrape_runs_newest_first_and_respects_limit(
 def test_list_scrape_runs_default_limit_is_20(
     session: Session,
 ) -> None:
-    session.add_all(
-        [
-            ScrapeRun(started_at=NOW - timedelta(hours=hours))
-            for hours in range(25)
-        ]
-    )
+    session.add_all([ScrapeRun(started_at=NOW - timedelta(hours=hours)) for hours in range(25)])
     session.commit()
 
     runs = list_scrape_runs(session)
@@ -434,9 +429,7 @@ def test_write_functions_return_aware_utc_timestamps(
 
     session.expire_all()
 
-    run = next(
-        item for item in list_scrape_runs(session) if item.id == run_id
-    )
+    run = next(item for item in list_scrape_runs(session) if item.id == run_id)
 
     assert_aware_utc(run.started_at)
 
@@ -454,9 +447,7 @@ def test_write_functions_return_aware_utc_timestamps(
 
     session.expire_all()
 
-    snapshot = next(
-        item for item in get_history(session, product_id) if item.id == snapshot_id
-    )
+    snapshot = next(item for item in get_history(session, product_id) if item.id == snapshot_id)
 
     product = get_product(session, product_id)
 
@@ -469,9 +460,7 @@ def test_write_functions_return_aware_utc_timestamps(
 
     session.expire_all()
 
-    run = next(
-        item for item in list_scrape_runs(session) if item.id == run_id
-    )
+    run = next(item for item in list_scrape_runs(session) if item.id == run_id)
 
     assert_aware_utc(run.started_at)
     assert run.finished_at is not None
@@ -513,6 +502,4 @@ def test_get_history_ist_since_matches_equivalent_utc(
         since=since_utc,
     )
 
-    assert [item.id for item in history_ist] == [
-        item.id for item in history_utc
-    ]
+    assert [item.id for item in history_ist] == [item.id for item in history_utc]

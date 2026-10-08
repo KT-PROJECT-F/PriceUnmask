@@ -47,15 +47,10 @@ def main() -> None:
         print(f"  ID: {latest_run.id}")
         print(f"  Status: {latest_run.status}")
         print(f"  Products seen: {latest_run.products_seen}")
-        print(
-            "  Products without a snapshot in this run: "
-            f"{len(missing_products)}"
-        )
+        print(f"  Products without a snapshot in this run: {len(missing_products)}")
 
         health = (
-            "CHECK REQUIRED"
-            if latest_run.status != "success" or missing_products
-            else "HEALTHY"
+            "CHECK REQUIRED" if latest_run.status != "success" or missing_products else "HEALTHY"
         )
 
         print(f"\nHealth status: {health}")

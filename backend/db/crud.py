@@ -139,9 +139,7 @@ def get_history(
 
     if since is not None:
         if since.tzinfo is None or since.utcoffset() is None:
-            raise ValueError(
-                "since must be a timezone-aware datetime"
-            )
+            raise ValueError("since must be a timezone-aware datetime")
 
         since = since.astimezone(UTC)
         statement = statement.where(PriceSnapshot.scraped_at >= since)
@@ -158,11 +156,11 @@ def list_scrape_runs(
 
     return session.scalars(statement).all()
 
+
 def count_runs_by_status(session: Session) -> dict[str, int]:
     """Return the number of scrape runs for each status."""
     rows = session.execute(
-        select(ScrapeRun.status, func.count(ScrapeRun.id))
-        .group_by(ScrapeRun.status)
+        select(ScrapeRun.status, func.count(ScrapeRun.id)).group_by(ScrapeRun.status)
     ).all()
 
     return {status: count for status, count in rows}
@@ -170,9 +168,7 @@ def count_runs_by_status(session: Session) -> dict[str, int]:
 
 def count_products(session: Session) -> int:
     """Return the total number of products, including inactive products."""
-    return session.scalar(
-        select(func.count()).select_from(Product)
-    ) or 0
+    return session.scalar(select(func.count()).select_from(Product)) or 0
 
 
 def count_snapshots_by_run(session: Session) -> dict[int, int]:
@@ -194,15 +190,8 @@ def list_products_not_seen_in_run(
     run_id: int,
 ) -> Sequence[Product]:
     """Return products without a snapshot associated with the given run."""
-    seen_product_ids = (
-        select(PriceSnapshot.product_id)
-        .where(PriceSnapshot.scrape_run_id == run_id)
-    )
+    seen_product_ids = select(PriceSnapshot.product_id).where(PriceSnapshot.scrape_run_id == run_id)
 
-    statement = (
-        select(Product)
-        .where(~Product.id.in_(seen_product_ids))
-        .order_by(Product.name)
-    )
+    statement = select(Product).where(~Product.id.in_(seen_product_ids)).order_by(Product.name)
 
     return session.scalars(statement).all()

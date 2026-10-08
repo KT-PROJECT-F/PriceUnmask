@@ -1,16 +1,14 @@
 "use strict";
-const API_BASE_URL = "http://127.0.0.1:8000/api";
+const API_BASE_URL = "/api";
 
 const API_ENDPOINTS = {
   products: `${API_BASE_URL}/products`,
   product: (id) => `${API_BASE_URL}/products/${id}`,
   history: (id) => `${API_BASE_URL}/products/${id}/history`,
+  trustScore: (id) => `mock/trust-score-${id}.json`,
 };
 
-// Trust scores remain mocked until Rajesh's endpoint is merged.
-const TRUST_SCORE_URL = (id) => `mock/trust-score-${id}.json`;
-
-// Load mock products and render product cards with prices and trust labels.
+// Load products from the live API and render the product grid.
 const app = document.getElementById("app");
 const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
@@ -107,39 +105,51 @@ function renderProducts(products, grid, onSelect) {
   });
 }
 
-// Load trust-score data for the selected product.
+
+ // Load trust-score data for the selected product.
 async function loadTrustScore(productId) {
-  const response = await fetch(TRUST_SCORE_URL(productId));
+  try {
+    const response = await fetch(API_ENDPOINTS.trustScore(productId));
 
-  if (!response.ok) {
-    throw new Error("Could not load trust score");
-  }
+    if (!response.ok) {
+      throw new Error("Could not load trust score");
+    }
 
-  const trustScore = await response.json();
+    const trustScore = await response.json();
 
-  if (
-    !trustScore ||
-    typeof trustScore !== "object" ||
-    !Array.isArray(trustScore.reasons) ||
-    !trustScore.reasons.every((reason) => typeof reason === "string") ||
-    typeof trustScore.label !== "string" ||
-    !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
-    (
-      trustScore.score !== null &&
-      trustScore.score !== undefined &&
+    if (
+      !trustScore ||
+      typeof trustScore !== "object" ||
+      !Array.isArray(trustScore.reasons) ||
+      !trustScore.reasons.every((reason) => typeof reason === "string") ||
+      typeof trustScore.label !== "string" ||
+      !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
       (
-        typeof trustScore.score !== "number" ||
-        !Number.isFinite(trustScore.score) ||
-        trustScore.score < 0 ||
-        trustScore.score > 100
+        trustScore.score !== null &&
+        trustScore.score !== undefined &&
+        (
+          typeof trustScore.score !== "number" ||
+          !Number.isFinite(trustScore.score) ||
+          trustScore.score < 0 ||
+          trustScore.score > 100
+        )
       )
-    )
-  ) {
-    throw new Error("Invalid trust score data");
-  }
+    ) {
+      throw new Error("Invalid trust score data");
+    }
 
-  return trustScore;
+    return trustScore;
+  } catch (error) {
+    console.warn(`Trust Score unavailable for product ${productId}:`, error);
+
+    return {
+      score: null,
+      label: "insufficient_data",
+      reasons: ["Trust Score data is not available yet."]
+    };
+  }
 }
+
 
 // Load price history from the live API.
 async function loadPriceHistory(productId) {
@@ -544,11 +554,7 @@ function showProductGrid(grid, products, onSelect) {
   grid.hidden = false;
   grid.style.display = "";
 
-  renderProducts(
-    filterProducts(products, searchInput.value),
-    grid,
-    onSelect
-  );
+  renderProducts(products, grid, onSelect);
 
   searchInput.focus();
 }

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -83,7 +84,7 @@ def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
     assert calls[-1] == ("finish", "success", 2, None)
 
 
-def test_empty_scrape_finishes_with_zero(monkeypatch, calls):
+def test_empty_scrape_finishes_with_zero_and_warns(monkeypatch, calls, caplog):
     def _empty_scrape(url):
         return []
 
@@ -92,6 +93,7 @@ def test_empty_scrape_finishes_with_zero(monkeypatch, calls):
     count = jobs.run_scrape_cycle()
     assert count == 0
     assert calls[-1] == ("finish", "success", 0, None)
+    assert "Scrape returned no products" in caplog.text
 
 
 def test_scrape_url_comes_from_settings(monkeypatch, calls):
@@ -199,6 +201,62 @@ def test_scrape_cycle_persists_rows_with_real_crud(monkeypatch, real_database):
     assert len(snapshots) == 2
     assert {snapshot.scrape_run_id for snapshot in snapshots} == {runs[0].id}
     assert {snapshot.current_price_minor for snapshot in snapshots} == {129900}
+
+
+def test_scrape_cycle_records_partial_run_when_one_real_save_fails(
+    monkeypatch, real_database, caplog
+):
+    items = [make_item("a"), make_item("b"), make_item("c")]
+    items[1] = replace(items[1], name=None)
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
+
+    assert jobs.run_scrape_cycle() == 2
+
+    with real_database() as session:
+        run = list_scrape_runs(session)[0]
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert run.status == "partial"
+    assert run.products_seen == 2
+    assert run.finished_at is not None
+    assert run.error_message.startswith("b:")
+    assert len(snapshots) == 2
+    assert "Could not save scraped item b for run" in caplog.text
+
+
+def test_empty_scrape_persists_successful_run_without_snapshots(monkeypatch, real_database, caplog):
+    monkeypatch.setattr(jobs, "scrape", lambda url: [])
+
+    assert jobs.run_scrape_cycle() == 0
+
+    with real_database() as session:
+        runs = list_scrape_runs(session)
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert len(runs) == 1
+    assert runs[0].status == "success"
+    assert runs[0].products_seen == 0
+    assert runs[0].finished_at is not None
+    assert runs[0].error_message is None
+    assert snapshots == []
+    assert "Scrape returned no products" in caplog.text
+
+
+def test_scrape_cycle_records_failed_run_when_all_real_saves_fail(monkeypatch, real_database):
+    items = [replace(make_item("a"), name=None), replace(make_item("b"), name=None)]
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
+
+    assert jobs.run_scrape_cycle() == 0
+
+    with real_database() as session:
+        run = list_scrape_runs(session)[0]
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert run.status == "failed"
+    assert run.products_seen == 0
+    assert run.finished_at is not None
+    assert run.error_message.startswith("a:")
+    assert len(snapshots) == 0
 
 
 def test_run_cycle_rollback_failure_recorded(monkeypatch, calls, session, caplog):

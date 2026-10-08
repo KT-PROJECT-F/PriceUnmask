@@ -10,6 +10,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from time import sleep
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
@@ -20,6 +21,7 @@ from bs4 import BeautifulSoup
 from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
+SNAPSHOT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "snapshots"
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
 RETRY_STATUSES = {500, 502, 503, 504}
@@ -193,6 +195,11 @@ def fetch_html(url: str) -> str:
     if not _robots_allows(url, headers):
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
+    # robots.txt and the page are two requests to the same site.
+    # Wait politely before requesting the page.
+    if settings.scrape_delay_seconds > 0:
+        sleep(settings.scrape_delay_seconds)
+
     for attempt in range(MAX_RETRIES + 1):
         try:
             response = requests.get(
@@ -227,5 +234,18 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """fetch_html + save raw HTML to data/snapshots/ + parse_listing."""
-    raise NotImplementedError
+    """Fetch, save raw HTML, parse, and return products."""
+    html = fetch_html(url)
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
+
+    # Keep the raw page first: if the parser has a bug, we can re-parse it later.
+    # A failed backup must not cost us the prices, so we only log it.
+    try:
+        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(html, encoding="utf-8")
+    except OSError:
+        logger.exception("Could not save raw HTML snapshot to %s", snapshot_path)
+
+    return parse_listing(html, url)

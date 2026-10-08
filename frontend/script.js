@@ -5,6 +5,7 @@ const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
 const searchBox = document.getElementById("search-box");
 let priceHistoryChart = null;
+
 const trustLabels = {
   genuine: "Genuine",
   uncertain: "Uncertain",
@@ -162,6 +163,7 @@ async function loadPriceHistory(productId) {
 
   return history.points;
 }
+
 // Format history timestamps for readable chart labels.
 function formatChartDate(isoString) {
   return new Date(isoString).toLocaleDateString("en-IN", {
@@ -170,7 +172,8 @@ function formatChartDate(isoString) {
   });
 }
 
-// Render the selected product's price history.
+
+ // Render the selected product's price history.
 function renderPriceHistoryChart(canvas, history, currency) {
   if (priceHistoryChart) {
     priceHistoryChart.destroy();
@@ -183,7 +186,9 @@ function renderPriceHistoryChart(canvas, history, currency) {
   priceHistoryChart = new Chart(canvas, {
     type: "line",
     data: {
-      labels: history.map((item) => formatChartDate(item.scraped_at)),
+      labels: history.map((item) =>
+        formatChartDate(item.scraped_at)
+      ),
       datasets: [
         {
           label: "Current Price",
@@ -227,38 +232,43 @@ function renderPriceHistoryChart(canvas, history, currency) {
       },
       plugins: {
         tooltip: {
-        backgroundColor: "#1f2937",
-        titleColor: "#ffffff",
-        bodyColor: "#ffffff",
-        borderColor: "#9ca3af",
-        borderWidth: 1,
-        padding: 12,
-        displayColors: true,
-        callbacks: {
-          label(context) {
-            const value = context.parsed.y;
+          backgroundColor: "#1f2937",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          borderColor: "#9ca3af",
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true,
+          callbacks: {
+            label(context) {
+              const value = context.parsed.y;
 
-            if (value === null) {
-              return `${context.dataset.label}: No data`;
-            }
+              if (value === null) {
+                return `${context.dataset.label}: No data`;
+              }
 
-            return `${context.dataset.label}: ${formatRupees(
-              value * 100
-            )}`;
+              return `${context.dataset.label}: ${formatRupees(
+                value * 100
+              )}`;
+            },
           },
         },
-      },
       },
     },
   });
 }
+
 
 // Load and render price history without blocking the Trust Score.
 async function showPriceHistory(detail, product) {
   const container = detail.querySelector(".price-chart-container");
   const canvas = detail.querySelector("#price-history-chart");
 
-  if (!container || !canvas) {
+  if (!container) {
+    return;
+  }
+
+  if (!canvas) {
     return;
   }
 
@@ -273,18 +283,34 @@ async function showPriceHistory(detail, product) {
     if (!detail.isConnected) {
       return;
     }
+    if (history.length === 0) {
+      canvas.remove();
+      const message = document.createElement("p");
+      message.className = "chart-summary";
+      message.setAttribute("role", "status");
+      message.textContent = "No price history is available yet.";
 
+      container.append(message);
+      return;
+    }
     renderPriceHistoryChart(canvas, history, product.currency);
-
     const summary = document.createElement("p");
     summary.className = "chart-summary";
+    let lowestPrice = Infinity;
+    let highestPrice = -Infinity;
+
+    for (const point of history) {
+      lowestPrice = Math.min(lowestPrice, point.current_price_minor);
+      highestPrice = Math.max(highestPrice, point.current_price_minor);
+    }
+
     summary.textContent =
       `Price history contains ${history.length} data points. ` +
       `Prices range from ${formatPrice(
-        Math.min(...history.map((point) => point.current_price_minor)),
+        lowestPrice,
         product.currency
       )} to ${formatPrice(
-        Math.max(...history.map((point) => point.current_price_minor)),
+        highestPrice,
         product.currency
       )}.`;
 

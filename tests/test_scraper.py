@@ -11,6 +11,9 @@ from backend.scraper.product_scraper import (
 FIXTURE_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_page1.html"
 )
+BROKEN_FIXTURE_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_broken.html"
+)
 
 
 def test_parse_listing_sample_page():
@@ -246,7 +249,111 @@ def test_parse_listing_same_timestamp_for_page():
         ("£", None),
         ("Free", None),
         ("hello", None),
+        ("N/A", None),
+        ("Call for price", None),
     ],
 )
 def test_parse_price_to_minor(text, expected):
     assert parse_price_to_minor(text) == expected
+
+
+def parse_broken_fixture():
+    html = BROKEN_FIXTURE_PATH.read_text(encoding="utf-8")
+    return parse_listing(html, "https://books.toscrape.com/")
+
+
+def test_parse_listing_broken_fixture_skips_damaged_cards():
+    products = parse_broken_fixture()
+
+    # 22 cards in the file; 4 are damaged:
+    # no price, unreadable price, no product link, and no name.
+    assert len(products) == 18
+
+    names = {product.name for product in products}
+
+    assert "A Light in the Attic" not in names
+    assert "Tipping the Velvet" not in names
+    assert "Broken Product" not in names
+
+
+def test_parse_listing_broken_fixture_logs_each_skipped_card(caplog):
+    with caplog.at_level("WARNING"):
+        parse_broken_fixture()
+
+    assert "no price: A Light in the Attic" in caplog.text
+    assert "unreadable price: Tipping the Velvet" in caplog.text
+    assert "no product link" in caplog.text
+    assert "no name" in caplog.text
+    assert len(caplog.records) == 4
+
+
+def test_parse_listing_broken_fixture_out_of_stock():
+    products = parse_broken_fixture()
+
+    book = next(product for product in products if product.name == "The Black Maria")
+
+    assert book.in_stock is False
+
+
+def test_parse_listing_broken_fixture_reads_original_price():
+    products = parse_broken_fixture()
+
+    product = next(
+        product for product in products if product.name.startswith("The Boys in the Boat")
+    )
+
+    assert product.current_price_minor == 2260
+    assert product.original_price_minor == 5000
+
+
+def test_parse_listing_broken_fixture_continues_after_bad_cards():
+    products = parse_broken_fixture()
+
+    assert len(products) == 18
+    assert all(product.name for product in products)
+    assert all(product.current_price_minor > 0 for product in products)
+
+    names = {product.name for product in products}
+
+    assert "A Light in the Attic" not in names
+    assert "Tipping the Velvet" not in names
+    assert "Broken Product" not in names
+
+
+def test_parse_listing_ignores_old_price_not_above_price():
+    html = """
+    <article class="product_pod">
+        <h3>
+            <a href="a_1/index.html" title="A">A</a>
+        </h3>
+        <p class="price_color">£10.00</p>
+        <del>£5.00</del>
+    </article>
+    """
+
+    [product] = parse_listing(
+        html,
+        "https://books.toscrape.com/",
+    )
+
+    assert product.current_price_minor == 1000
+    assert product.original_price_minor is None
+
+
+def test_parse_listing_logs_error_when_every_card_is_skipped(caplog):
+    html = """
+    <article class="product_pod">
+        <h3>
+            <a href="a_1/index.html" title="A">A</a>
+        </h3>
+    </article>
+    """
+
+    with caplog.at_level("ERROR"):
+        products = parse_listing(
+            html,
+            "https://books.toscrape.com/",
+        )
+
+    assert products == []
+    assert "Skipped all 1 product cards" in caplog.text

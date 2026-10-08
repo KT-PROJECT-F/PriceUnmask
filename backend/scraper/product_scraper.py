@@ -77,16 +77,21 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         link = card.select_one("h3 a")
         price_element = card.select_one(".price_color")
         availability_element = card.select_one(".availability")
-        if not link:
+
+        if not link or not link.get("href"):
             logger.warning("Skipping product card with no product link")
             continue
-        if not price_element:
-            logger.warning("Skipping product card with no price")
-            continue
+
         name = link.get("title") or link.get_text(strip=True)
+
+        if not name:
+            logger.warning("Skipping product card with no name")
+            continue
+
         relative_url = link.get("href")
-        if not relative_url:
-            logger.warning("Skipping product card with no URL: %s", name)
+
+        if not price_element:
+            logger.warning("Skipping product card with no price: %s", name)
             continue
         url = urljoin(base_url, relative_url)
         price_text = price_element.get_text(strip=True)
@@ -97,6 +102,22 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
                 name,
             )
             continue
+
+        # Assumption: the shop marks the old price with <del>
+        # or class "old-price".
+        original_price_minor = None
+        original_price_element = card.select_one("del, .old-price")
+
+        if original_price_element:
+            original_price_minor = parse_price_to_minor(original_price_element.get_text(strip=True))
+
+            if original_price_minor is not None and original_price_minor <= price_minor:
+                logger.warning(
+                    "Ignoring old price that is not above the price: %s",
+                    name,
+                )
+                original_price_minor = None
+
         url_path = url.rstrip("/").split("/")
         filename = url_path[-1]
         slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
@@ -104,6 +125,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         # This site sells in GBP; a rupee sign or "Rs" means INR.
         currency = "INR" if ("₹" in price_text or "Rs" in price_text) else "GBP"
         in_stock = None
+
         if availability_element:
             availability = availability_element.get_text(" ", strip=True)
             in_stock = "In stock" in availability
@@ -113,12 +135,19 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
                 name=name,
                 url=url,
                 current_price_minor=price_minor,
-                original_price_minor=None,
+                original_price_minor=original_price_minor,
                 in_stock=in_stock,
                 currency=currency,
                 scraped_at=scraped_at,
             )
         )
+
+    if cards and not products:
+        logger.error(
+            "Skipped all %d product cards; the page layout may have changed",
+            len(cards),
+        )
+
     return products
 
 

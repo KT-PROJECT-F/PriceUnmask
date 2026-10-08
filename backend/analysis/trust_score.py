@@ -19,6 +19,16 @@ MIN_SNAPSHOTS = 6  # below this we refuse to score; say "insufficient_data" hone
 SPIKE_WINDOW_DAYS = 7
 SPIKE_THRESHOLD_PCT = 50.0
 
+SPIKE_PENALTY = 40
+LARGE_DISCOUNT_GAP_THRESHOLD_PCT = 30.0
+LARGE_DISCOUNT_GAP_PENALTY = 25
+MODERATE_DISCOUNT_GAP_THRESHOLD_PCT = 15.0
+MODERATE_DISCOUNT_GAP_PENALTY = 10
+PRICE_ABOVE_LOWEST_THRESHOLD_PCT = 25.0
+PRICE_ABOVE_LOWEST_PENALTY = 15
+HIGH_VOLATILITY_THRESHOLD_PCT = 30.0
+HIGH_VOLATILITY_PENALTY = 15
+
 
 @dataclass
 class TrustSignals:
@@ -61,7 +71,12 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     prices = history["current_price_minor"]
     today_price = int(prices.iloc[-1])
 
-    pct_above_lowest = (today_price - lowest_price_minor) / lowest_price_minor * 100
+    # A price of 0 would divide by zero; there is no meaningful "% above" a free price.
+    pct_above_lowest = (
+        (today_price - lowest_price_minor) / lowest_price_minor * 100
+        if lowest_price_minor > 0
+        else 0.0
+    )
 
     mean_price = prices.mean()
     std_price = prices.std()
@@ -132,4 +147,70 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 def compute_trust_score(history: pd.DataFrame) -> TrustScore:
     """Combine signals into 0..100. Label thresholds: >=70 genuine, 40..69 uncertain,
     <40 likely_inflated. Fewer than MIN_SNAPSHOTS rows -> insufficient_data."""
-    raise NotImplementedError
+    snapshot_count = len(history)
+    if snapshot_count < MIN_SNAPSHOTS:
+        available = (
+            f"Only {snapshot_count} price snapshot is available"
+            if snapshot_count == 1
+            else f"Only {snapshot_count} price snapshots are available"
+        )
+        return TrustScore(
+            score=None,
+            label="insufficient_data",
+            signals=None,
+            reasons=[f"{available}; at least {MIN_SNAPSHOTS} are needed for a trustworthy score."],
+        )
+
+    signals = compute_signals(history)
+    deductions = 0
+    reasons: list[str] = []
+
+    if signals.spike_before_discount:
+        deductions += SPIKE_PENALTY
+        reasons.append(
+            "The price rose sharply shortly before the current sale, which can make "
+            "the advertised discount misleading."
+        )
+
+    if signals.claimed_discount_pct is not None and signals.real_discount_vs_median_pct is not None:
+        discount_gap_pct = signals.claimed_discount_pct - signals.real_discount_vs_median_pct
+        if discount_gap_pct >= LARGE_DISCOUNT_GAP_THRESHOLD_PCT:
+            gap_penalty = LARGE_DISCOUNT_GAP_PENALTY
+        elif discount_gap_pct >= MODERATE_DISCOUNT_GAP_THRESHOLD_PCT:
+            gap_penalty = MODERATE_DISCOUNT_GAP_PENALTY
+        else:
+            gap_penalty = 0
+
+        if gap_penalty:
+            deductions += gap_penalty
+            reasons.append(
+                f"The advertised discount is {discount_gap_pct:.1f} percentage points "
+                "larger than the saving against the product's earlier typical price."
+            )
+
+    if signals.pct_above_lowest >= PRICE_ABOVE_LOWEST_THRESHOLD_PCT:
+        deductions += PRICE_ABOVE_LOWEST_PENALTY
+        reasons.append(
+            f"Today's price is {signals.pct_above_lowest:.1f}% above the lowest price "
+            "seen in this history."
+        )
+
+    if signals.volatility_pct >= HIGH_VOLATILITY_THRESHOLD_PCT:
+        deductions += HIGH_VOLATILITY_PENALTY
+        reasons.append(
+            f"The price has changed substantially over time, with "
+            f"{signals.volatility_pct:.1f}% volatility."
+        )
+
+    if not reasons:
+        reasons.append("The recorded prices show no strong signs of an inflated discount.")
+
+    score = max(0, 100 - deductions)
+    if score >= 70:
+        label: Label = "genuine"
+    elif score >= 40:
+        label = "uncertain"
+    else:
+        label = "likely_inflated"
+
+    return TrustScore(score=score, label=label, signals=signals, reasons=reasons)

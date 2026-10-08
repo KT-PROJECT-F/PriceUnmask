@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import pandas as pd
 
 from backend.db.models import PriceSnapshot, Product
-from backend.schemas import ProductOut
+from backend.schemas import HistoryOut, PricePointOut, ProductOut
 
 HISTORY_COLUMNS = [
     "scraped_at",
@@ -61,4 +61,14 @@ def product_to_out(
         latest_price_minor=latest_price_minor,
         lowest_price_minor=lowest_price_minor,
         trust_label=None,
+    )
+
+
+def history_to_out(
+    product: Product,
+    snapshots: Sequence[PriceSnapshot],
+) -> HistoryOut:
+    return HistoryOut(
+        product_id=product.id,
+        points=[PricePointOut.model_validate(snapshot) for snapshot in snapshots],
     )

@@ -8,6 +8,8 @@ from backend.analysis.trust_score import (
     compute_signals,
     compute_trust_score,
 )
+from backend.converters import snapshots_to_dataframe
+from backend.db.crud import get_history, list_products
 from backend.db.models import Product
 from backend.devtools.seed_fake_data import DAYS, SNAPSHOTS_PER_DAY, _series, seed
 
@@ -383,6 +385,37 @@ def test_compute_trust_score_classifies_seeded_patterns(
 
     assert score.label == expected_label
     assert score.score is not None
+
+
+def test_compute_trust_score_classifies_seeded_database_history(
+    session: Session,
+) -> None:
+    seed(session)
+
+    expected = {
+        "Demo Bluetooth Speaker (stable)": ("genuine", 100),
+        "Demo Running Shoes (real drop)": ("genuine", 100),
+        "Demo Air Fryer (fake discount)": ("likely_inflated", 20),
+    }
+    products = list_products(session)
+    assert {product.name for product in products} == set(expected)
+
+    actual: dict[str, tuple[str, int | None]] = {}
+    for product in products:
+        snapshots = get_history(session, product.id)
+        assert len(snapshots) == DAYS * SNAPSHOTS_PER_DAY
+
+        history = snapshots_to_dataframe(snapshots)
+        assert isinstance(history["scraped_at"].dtype, pd.DatetimeTZDtype)
+        assert str(history["scraped_at"].dt.tz) == "UTC"
+        assert history["current_price_minor"].dtype == "int64"
+        assert str(history["original_price_minor"].dtype) == "Int64"
+
+        score = compute_trust_score(history)
+        assert score.reasons
+        actual[product.name] = (score.label, score.score)
+
+    assert actual == expected
 
 
 def test_compute_trust_score_requires_at_least_six_snapshots() -> None:

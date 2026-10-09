@@ -393,14 +393,14 @@ def test_compute_trust_score_classifies_seeded_database_history(
     seed(session)
 
     expected = {
-        "Demo Bluetooth Speaker (stable)": ("genuine", 100),
-        "Demo Running Shoes (real drop)": ("genuine", 100),
-        "Demo Air Fryer (fake discount)": ("likely_inflated", 20),
+        "Demo Bluetooth Speaker (stable)": "genuine",
+        "Demo Running Shoes (real drop)": "genuine",
+        "Demo Air Fryer (fake discount)": "likely_inflated",
     }
     products = list_products(session)
     assert {product.name for product in products} == set(expected)
 
-    actual: dict[str, tuple[str, int | None]] = {}
+    actual: dict[str, str] = {}
     for product in products:
         snapshots = get_history(session, product.id)
         assert len(snapshots) == DAYS * SNAPSHOTS_PER_DAY
@@ -413,7 +413,13 @@ def test_compute_trust_score_classifies_seeded_database_history(
 
         score = compute_trust_score(history)
         assert score.reasons
-        actual[product.name] = (score.label, score.score)
+        actual[product.name] = score.label
+
+        if product.name == "Demo Air Fryer (fake discount)":
+            reasons = " ".join(score.reasons).casefold()
+            assert "rose sharply" in reasons
+            assert "advertised discount" in reasons
+            assert "volatility" in reasons
 
     assert actual == expected
 

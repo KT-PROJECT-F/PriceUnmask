@@ -164,6 +164,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 def _robots_allows(url: str, headers: dict[str, str]) -> bool:
     """Return whether robots.txt allows fetching the requested URL."""
     robots_url = urljoin(url, "/robots.txt")
+    logger.info("Checking robots.txt: %s", robots_url)
 
     try:
         response = requests.get(
@@ -191,13 +192,20 @@ def fetch_html(url: str) -> str:
     for robots.txt. Raise a clear exception on 4xx/5xx.
     """
     headers = {"User-Agent": settings.scrape_user_agent}
+    logger.info("Using User-Agent: %s", headers["User-Agent"])
 
     if not _robots_allows(url, headers):
+        logger.warning("robots.txt disallows fetching %s", url)
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
     # robots.txt and the page are two requests to the same site.
     # Wait politely before requesting the page.
     if settings.scrape_delay_seconds > 0:
+        logger.info(
+            "Waiting %.2f seconds before fetching %s",
+            settings.scrape_delay_seconds,
+            url,
+        )
         sleep(settings.scrape_delay_seconds)
 
     for attempt in range(MAX_RETRIES + 1):
@@ -211,7 +219,14 @@ def fetch_html(url: str) -> str:
             if attempt == MAX_RETRIES:
                 raise
 
-            sleep(BACKOFF_SECONDS * (2**attempt))
+            wait_seconds = BACKOFF_SECONDS * (2**attempt)
+            logger.warning(
+                "Request failed; retry %s of %s in %s seconds",
+                attempt + 1,
+                MAX_RETRIES,
+                wait_seconds,
+            )
+            sleep(wait_seconds)
             continue
 
         if response.status_code >= 400:
@@ -221,9 +236,18 @@ def fetch_html(url: str) -> str:
             if attempt == MAX_RETRIES:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
-            sleep(BACKOFF_SECONDS * (2**attempt))
+            wait_seconds = BACKOFF_SECONDS * (2**attempt)
+            logger.warning(
+                "HTTP %s; retry %s of %s in %s seconds",
+                response.status_code,
+                attempt + 1,
+                MAX_RETRIES,
+                wait_seconds,
+            )
+            sleep(wait_seconds)
             continue
 
+        logger.info("Fetched %s: HTTP %s", url, response.status_code)
         # No charset in the header: requests guesses ISO-8859-1.
         if "charset" not in response.headers.get("Content-Type", "").lower():
             response.encoding = response.apparent_encoding

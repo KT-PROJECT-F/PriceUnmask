@@ -265,3 +265,64 @@ def test_list_scrape_runs_returns_at_most_20_newest_first(client):
     assert len(data) == 20
     assert data[0]["products_seen"] == 24
     assert data[-1]["products_seen"] == 5
+
+
+def test_get_product_trust_score_air_fryer(client):
+    products = client.get("/api/products").json()
+    fryer = next(item for item in products if item["name"] == "Demo Air Fryer (fake discount)")
+
+    response = client.get(f"/api/products/{fryer['id']}/trust-score")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["product_id"] == fryer["id"]
+    assert data["label"] == "likely_inflated"
+    assert data["score"] is not None
+    assert data["reasons"]
+    assert data["signals"] is not None
+    assert data["anomaly_note"] is None
+
+
+def test_get_product_trust_score_insufficient_data(client):
+    with TestingSessionLocal() as session:
+        product = Product(
+            source="test",
+            external_id="insufficient-history",
+            name="Insufficient History",
+            url="https://example.com/insufficient-history",
+        )
+        session.add(product)
+        session.commit()
+        product_id = product.id
+
+    response = client.get(f"/api/products/{product_id}/trust-score")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["product_id"] == product_id
+    assert data["label"] == "insufficient_data"
+    assert data["score"] is None
+    assert data["signals"] is None
+    assert data["reasons"]
+    assert data["anomaly_note"] is None
+
+
+def test_get_product_trust_score_missing_product(client):
+    response = client.get("/api/products/999999/trust-score")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Product not found"
+
+
+def test_get_product_trust_score_anomaly_note_is_null(client):
+    products = client.get("/api/products").json()
+
+    for product in products:
+        response = client.get(f"/api/products/{product['id']}/trust-score")
+
+        assert response.status_code == 200
+        assert response.json()["anomaly_note"] is None

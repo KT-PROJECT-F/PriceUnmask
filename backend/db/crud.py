@@ -143,6 +143,7 @@ def get_history(
 
         since = since.astimezone(UTC)
         statement = statement.where(PriceSnapshot.scraped_at >= since)
+
     return session.scalars(statement).all()
 
 
@@ -195,3 +196,18 @@ def list_products_not_seen_in_run(
     statement = select(Product).where(~Product.id.in_(seen_product_ids)).order_by(Product.name)
 
     return session.scalars(statement).all()
+
+
+def list_duplicate_product_names(session: Session) -> list[tuple[str, str, int]]:
+    """Return (source, name, count) for names that appear more than once in a source.
+
+    (source, external_id) is unique, so these are the same product stored under two ids.
+    """
+    rows = session.execute(
+        select(Product.source, Product.name, func.count(Product.id))
+        .group_by(Product.source, Product.name)
+        .having(func.count(Product.id) > 1)
+        .order_by(Product.source, Product.name)
+    ).all()
+
+    return [(source, name, count) for source, name, count in rows]

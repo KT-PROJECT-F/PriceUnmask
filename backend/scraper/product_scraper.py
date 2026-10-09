@@ -188,7 +188,9 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
 
 
 def fetch_html(url: str) -> str:
-    """GET with our User-Agent, a timeout, retries, and robots.txt checks."""
+    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect
+    for robots.txt. Raise a clear exception on 4xx/5xx.
+    """
     headers = {"User-Agent": settings.scrape_user_agent}
     logger.info("Using User-Agent: %s", headers["User-Agent"])
 
@@ -196,6 +198,7 @@ def fetch_html(url: str) -> str:
         logger.warning("robots.txt disallows fetching %s", url)
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
+    # robots.txt and the page are two requests to the same site.
     # Wait politely before requesting the page.
     if settings.scrape_delay_seconds > 0:
         logger.info(
@@ -218,10 +221,10 @@ def fetch_html(url: str) -> str:
 
             wait_seconds = BACKOFF_SECONDS * (2**attempt)
             logger.warning(
-                "Request failed; retrying in %s seconds (attempt %s/%s)",
-                wait_seconds,
+                "Request failed; retry %s of %s in %s seconds",
                 attempt + 1,
                 MAX_RETRIES,
+                wait_seconds,
             )
             sleep(wait_seconds)
             continue
@@ -235,16 +238,16 @@ def fetch_html(url: str) -> str:
 
             wait_seconds = BACKOFF_SECONDS * (2**attempt)
             logger.warning(
-                "HTTP %s; retrying in %s seconds (attempt %s/%s)",
+                "HTTP %s; retry %s of %s in %s seconds",
                 response.status_code,
-                wait_seconds,
                 attempt + 1,
                 MAX_RETRIES,
+                wait_seconds,
             )
             sleep(wait_seconds)
             continue
 
-        # Use the detected encoding when the server does not specify a charset.
+        # No charset in the header: requests guesses ISO-8859-1.
         if "charset" not in response.headers.get("Content-Type", "").lower():
             response.encoding = response.apparent_encoding
 

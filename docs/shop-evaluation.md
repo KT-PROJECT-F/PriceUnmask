@@ -49,39 +49,144 @@ Reliance Digital exposes structured pricing information in the product page sour
 
 The difference between the deal price and offer price needs to be understood before choosing which value a future tracker should record. Automated-access permission remains unconfirmed, and a price change over time has not been established.
 
-## 3. Comparison
+### 3. Price Comparison
 
-| Criterion                                                      | Croma                                   | Reliance Digital                                                                       |
-| -------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| Product price displayed                                        | Yes                                     | Yes                                                                                    |
-| MRP and discount displayed                                     | Yes                                     | Yes                                                                                    |
-| Pricing data found in page source                              | Yes, according to initial inspection    | Yes, according to initial inspection                                                   |
-| Selected URL explicitly disallowed by checked robots.txt rules | Not observed                            | Not observed                                                                           |
-| Automated-access permission confirmed                          | No                                      | No                                                                                     |
-| Price changes over time verified                               | No                                      | No                                                                                     |
-| Main outstanding concern                                       | Terms review and price-history evidence | Terms review, price-history evidence, and deal-price versus offer-price interpretation |
+The issue requires three products from each shop to be checked at 10:30 AM and 3:30 PM.
 
-## 4. Preliminary Recommendation
+The following are individual product pages to use for the comparison. Record prices and MRPs from your actual observations; do not treat the links or current listings as evidence of historical price changes.
 
-Both Croma and Reliance Digital are candidates for further evaluation because their product pages display pricing and discount information, and pricing data was found in their page source during the initial inspection.
+Shop
 
-**Neither shop is conclusively recommended for automated price tracking at this stage.**
+Product URL
 
-Before selecting a shop:
+10:30 AM price
 
-1. Complete a careful review of the applicable Terms of Use and access restrictions.
-2. Record timestamped price observations at different times and compare them to establish whether prices change.
-3. Confirm that any future scraper respects robots.txt, uses the configured User-Agent, and observes the required request delay.
-4. If a shop is selected, verify the relevant category/listing URL and determine which displayed price should be tracked.
-5. Run the project checks and record their actual results.
+10:30 AM MRP
 
-### Verification status
+3:30 PM price
 
-* Initial browser-based shop evaluation: recorded.
-* Current product prices on 9 October 2026: recorded.
-* Price changes over time: not established.
-* Automated-access permission: not confirmed.
-* Scraper logging and politeness check on Books to Scrape: completed separately.
-* Project checks: 178 tests passed; Ruff checks passed during the recorded run.
+3:30 PM MRP
 
-**Final status:** Preliminary evaluation documented. Final shop selection remains pending further verification.
+Changed?
+
+Croma
+
+6.5 kg Semi-Automatic Washing Machine, Burgundy
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Unverified
+
+Croma
+
+6.5 kg Fully Automatic Washing Machine, Inox Grey
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Unverified
+
+Croma
+
+8 kg Semi-Automatic Washing Machine, Black
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Unverified
+
+Reliance Digital
+
+Samsung 6.5 kg Fully Automatic Washing Machine
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Unverified
+
+Reliance Digital
+
+Voltas Beko 6.5 kg Fully Automatic Washing Machine
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Unverified
+
+Reliance Digital
+
+LG 7.5 kg Fully Automatic Washing Machine
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Not recorded
+
+Unverified
+
+The existing observations establish that both shops display prices and discounts, but they do not establish that either shop's prices changed during the day.
+
+If no price moved during the observation period, record that result and say whether a displayed “was” price or “deal ends” badge suggests a discount without proving that the actual price changed.
+
+## 4. Recommendation (9 October 2026)
+
+Provisional pick: Croma.
+
+Category URL to evaluate: https://www.croma.com/campaign/best-deals/c/7625
+
+Why this one
+
+Terms and robots.txt: The recorded robots.txt inspection did not identify an explicit disallow rule for the selected category path. However, the applicable Terms of Use still need to be reviewed to determine whether the proposed automated collection is permitted.
+
+Prices in raw HTML: The initial inspection found pricing fields, including formattedValue and mrp, in the category page source.
+
+Price changes: Price changes have not yet been established using timestamped observations. The six-product comparison must be completed before the recommendation can be treated as final.
+
+Main risk: Croma's applicable terms may not permit the proposed automated collection. If permission cannot be established, do not proceed with automated scraping; choose another source.
+
+Why not Reliance Digital?
+
+Reliance Digital also exposes pricing information, but the recorded product page shows a ₹17,499 deal price and a ₹18,999 offer price. The correct value to track needs clarification. Its automated-access permission and price changes also remain unverified.
+
+Conditions before implementation
+
+Read the applicable Terms of Use and record the exact relevant sentence and section number for both shops.
+
+Confirm that the category/listing URL is suitable for collecting product listings.
+
+Complete the three-product price comparison for each shop using genuine observations.
+
+Determine which price field should be recorded when multiple prices appear.
+
+Do not begin automated collection until the access restrictions have been resolved.
+
+If the chosen shop proves unsuitable, stop and select another candidate in accordance with docs/ARCHITECTURE.md, section 8.

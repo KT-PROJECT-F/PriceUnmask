@@ -412,6 +412,10 @@ def test_compute_trust_score_classifies_seeded_database_history(
         assert str(history["original_price_minor"].dtype) == "Int64"
 
         score = compute_trust_score(history)
+        print(f"\nProduct: {product.name}")
+        print(f"Label: {score.label}")
+        print(f"Score: {score.score}")
+        print(f"Reasons: {score.reasons}")
         assert score.reasons
         actual[product.name] = score.label
 

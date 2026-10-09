@@ -30,7 +30,16 @@ def find_problems(
         problems.append(f"{missing_count} products have no snapshot in run {latest_run.id}")
 
     if duplicates:
-        problems.append(f"{len(duplicates)} product names are stored more than once")
+        count = len(duplicates)
+        noun = "product name" if count == 1 else "product names"
+        problems.append(f"{count} {noun} stored more than once")
+
+    return problems
+
+    if duplicates:
+        count = len(duplicates)
+        noun = "product name" if count == 1 else "product names"
+        problems.append(f"{count} {noun} stored more than once")
 
     return problems
 

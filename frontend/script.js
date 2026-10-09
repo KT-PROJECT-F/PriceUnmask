@@ -5,7 +5,7 @@ const API_ENDPOINTS = {
   products: `${API_BASE_URL}/products`,
   product: (id) => `${API_BASE_URL}/products/${id}`,
   history: (id) => `${API_BASE_URL}/products/${id}/history`,
-  trustScore: (id) => `mock/trust-score-${id}.json`,
+  trustScore: (id) => `${API_BASE_URL}/products/${id}/trust-score`,
 };
 
 // Load products from the live API and render the product grid.
@@ -106,48 +106,39 @@ function renderProducts(products, grid, onSelect) {
 }
 
 
- // Load trust-score data for the selected product.
+
+// Load trust-score data for the selected product.
 async function loadTrustScore(productId) {
-  try {
-    const response = await fetch(API_ENDPOINTS.trustScore(productId));
+  const response = await fetch(API_ENDPOINTS.trustScore(productId));
 
-    if (!response.ok) {
-      throw new Error("Could not load trust score");
-    }
-
-    const trustScore = await response.json();
-
-    if (
-      !trustScore ||
-      typeof trustScore !== "object" ||
-      !Array.isArray(trustScore.reasons) ||
-      !trustScore.reasons.every((reason) => typeof reason === "string") ||
-      typeof trustScore.label !== "string" ||
-      !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
-      (
-        trustScore.score !== null &&
-        trustScore.score !== undefined &&
-        (
-          typeof trustScore.score !== "number" ||
-          !Number.isFinite(trustScore.score) ||
-          trustScore.score < 0 ||
-          trustScore.score > 100
-        )
-      )
-    ) {
-      throw new Error("Invalid trust score data");
-    }
-
-    return trustScore;
-  } catch (error) {
-    console.warn(`Trust Score unavailable for product ${productId}:`, error);
-
-    return {
-      score: null,
-      label: "insufficient_data",
-      reasons: ["Trust Score data is not available yet."]
-    };
+  if (!response.ok) {
+    throw new Error(`Could not load trust score: HTTP ${response.status}`);
   }
+
+  const trustScore = await response.json();
+
+  if (
+    !trustScore ||
+    typeof trustScore !== "object" ||
+    !Array.isArray(trustScore.reasons) ||
+    !trustScore.reasons.every((reason) => typeof reason === "string") ||
+    typeof trustScore.label !== "string" ||
+    !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
+    (
+      trustScore.score !== null &&
+      trustScore.score !== undefined &&
+      (
+        typeof trustScore.score !== "number" ||
+        !Number.isFinite(trustScore.score) ||
+        trustScore.score < 0 ||
+        trustScore.score > 100
+      )
+    )
+  ) {
+    throw new Error("Invalid trust score data");
+  }
+
+  return trustScore;
 }
 
 

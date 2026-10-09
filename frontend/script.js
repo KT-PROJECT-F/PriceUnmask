@@ -1,5 +1,14 @@
 "use strict";
-// Load mock products and render product cards with prices and trust labels.
+const API_BASE_URL = "/api";
+
+const API_ENDPOINTS = {
+  products: `${API_BASE_URL}/products`,
+  product: (id) => `${API_BASE_URL}/products/${id}`,
+  history: (id) => `${API_BASE_URL}/products/${id}/history`,
+  trustScore: (id) => `${API_BASE_URL}/products/${id}/trust-score`,
+};
+
+// Load products from the live API and render the product grid.
 const app = document.getElementById("app");
 const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
@@ -96,12 +105,14 @@ function renderProducts(products, grid, onSelect) {
   });
 }
 
+
+
 // Load trust-score data for the selected product.
 async function loadTrustScore(productId) {
-  const response = await fetch(`mock/trust-score-${productId}.json`);
+  const response = await fetch(API_ENDPOINTS.trustScore(productId));
 
   if (!response.ok) {
-    throw new Error("Could not load trust score");
+    throw new Error(`Could not load trust score: HTTP ${response.status}`);
   }
 
   const trustScore = await response.json();
@@ -130,9 +141,10 @@ async function loadTrustScore(productId) {
   return trustScore;
 }
 
-// Swap for GET /api/products/{id}/history when the API is ready.
+
+// Load price history from the live API.
 async function loadPriceHistory(productId) {
-  const response = await fetch(`mock/history-${productId}.json`);
+  const response = await fetch(API_ENDPOINTS.history(productId));
 
   if (!response.ok) {
     throw new Error("Could not load price history");
@@ -533,11 +545,7 @@ function showProductGrid(grid, products, onSelect) {
   grid.hidden = false;
   grid.style.display = "";
 
-  renderProducts(
-    filterProducts(products, searchInput.value),
-    grid,
-    onSelect
-  );
+  renderProducts(products, grid, onSelect);
 
   searchInput.focus();
 }
@@ -550,55 +558,109 @@ async function loadProducts() {
 
   const grid = document.createElement("section");
   grid.className = "product-grid";
+  app.append(grid);
 
-  productStatus.textContent = "Loading products...";
+  let searchTimer;
+  let requestId = 0;
+  let currentProducts = [];
+  let selectedProductId = null;
 
-  try {
-    const response = await fetch("mock/products.json");
+  const showGrid = () => {
+    selectedProductId = null;
+    showProductGrid(grid, currentProducts, showProductDetailForProduct);
+  };
 
-    if (!response.ok) {
-      throw new Error("Could not load products");
-    }
+  const showProductDetailForProduct = async (product) => {
+    selectedProductId = product.id;
 
-    const products = await response.json();
+    try {
+      const response = await fetch(API_ENDPOINTS.product(product.id));
 
-    if (!Array.isArray(products)) {
-      throw new Error("Invalid product data");
-    }
-
-    if (products.length === 0) {
-      productStatus.textContent = "No products yet.";
-      return;
-    }
-
-    const showGrid = () => {
-      showProductGrid(grid, products, showProductDetailForProduct);
-    };
-
-    const showProductDetailForProduct = (product) => {
-      showProductDetail(product, showGrid);
-    };
-
-    app.append(grid);
-
-    renderProducts(products, grid, showProductDetailForProduct);
-
-    searchInput.addEventListener("input", () => {
-      // Do not update the hidden grid while details are open.
-      if (!grid.hidden) {
-        renderProducts(
-          filterProducts(products, searchInput.value),
-          grid,
-          showProductDetailForProduct
-        );
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("This product could not be found.");
+        }
+        throw new Error("Unable to load this product.");
       }
-    });
-  } catch (error) {
-    productStatus.textContent =
-      "Unable to load products. Please try again later.";
 
-    console.error("Error loading products:", error);
+      const liveProduct = await response.json();
+
+      if (selectedProductId !== product.id) {
+        return;
+      }
+
+      await showProductDetail(liveProduct, showGrid);
+    } catch (error) {
+      console.error("Error loading product details:", error);
+
+      if (selectedProductId !== product.id) {
+        return;
+      }
+
+      productStatus.textContent =
+        error instanceof TypeError
+          ? "Cannot connect to the server. Please check that the API is running."
+          : error.message || "Unable to load product details. Please try again.";
+    }
+  };
+
+  async function fetchProducts(searchTerm = "") {
+    const thisRequestId = ++requestId;
+    productStatus.textContent = "Loading products...";
+
+    try {
+      const query = searchTerm.trim();
+      const url = query
+        ? `${API_ENDPOINTS.products}?search=${encodeURIComponent(query)}`
+        : API_ENDPOINTS.products;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Unable to load products (HTTP ${response.status}).`);
+      }
+
+      const products = await response.json();
+
+      if (!Array.isArray(products)) {
+        throw new Error("Invalid product data received from the server.");
+      }
+
+      if (thisRequestId !== requestId) {
+        return;
+      }
+
+      currentProducts = products;
+      renderProducts(currentProducts, grid, showProductDetailForProduct);
+
+      if (products.length === 0) {
+        productStatus.textContent = query
+          ? "No products match your search."
+          : "No products are available yet.";
+      }
+    } catch (error) {
+      if (thisRequestId !== requestId) {
+        return;
+      }
+
+      console.error("Error loading products:", error);
+      grid.replaceChildren();
+      productStatus.textContent =
+        error instanceof TypeError
+          ? "Cannot connect to the server. Please check that the API is running."
+          : error.message || "Unable to load products. Please try again.";
+    }
   }
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+
+    searchTimer = setTimeout(() => {
+      if (!app.querySelector(".product-detail")) {
+        fetchProducts(searchInput.value);
+      }
+    }, 300);
+  });
+await fetchProducts();
 }
 
 loadProducts();

@@ -21,10 +21,10 @@ from bs4 import BeautifulSoup
 from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
+SNAPSHOT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "snapshots"
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
 RETRY_STATUSES = {500, 502, 503, 504}
-SNAPSHOT_DIR = Path("data/snapshots")
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +194,11 @@ def fetch_html(url: str) -> str:
 
     if not _robots_allows(url, headers):
         raise RuntimeError(f"robots.txt disallows fetching {url}")
+
+    # robots.txt and the page are two requests to the same site.
+    # Wait politely before requesting the page.
+    if settings.scrape_delay_seconds > 0:
+        sleep(settings.scrape_delay_seconds)
 
     for attempt in range(MAX_RETRIES + 1):
         try:

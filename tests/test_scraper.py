@@ -18,6 +18,14 @@ CATEGORY_FIXTURE_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_category.html"
 )
 
+BASE_URL = "https://books.toscrape.com/"
+CATEGORY_BASE_URL = "https://books.toscrape.com/catalogue/category/books/travel_2/index.html"
+
+
+def parse_fixture(fixture_path: Path, base_url: str) -> list:
+    html = fixture_path.read_text(encoding="utf-8")
+    return parse_listing(html, base_url)
+
 
 def test_parse_listing_sample_page():
     html = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -363,43 +371,34 @@ def test_parse_listing_logs_error_when_every_card_is_skipped(caplog):
 
 
 def test_parse_category_page_returns_books():
-    html = CATEGORY_FIXTURE_PATH.read_text(encoding="utf-8")
+    products = parse_fixture(CATEGORY_FIXTURE_PATH, CATEGORY_BASE_URL)
 
-    products = parse_listing(
-        html,
-        "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+    assert len(products) == 11
+
+
+def test_parse_category_page_returns_exact_urls():
+    products = parse_fixture(CATEGORY_FIXTURE_PATH, CATEGORY_BASE_URL)
+
+    assert len(products) == 11
+
+    assert products[0].url == (
+        "https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html"
     )
 
-    assert products
-
-
-def test_parse_category_page_returns_absolute_urls():
-    html = CATEGORY_FIXTURE_PATH.read_text(encoding="utf-8")
-
-    products = parse_listing(
-        html,
-        "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+    assert all(
+        product.url.startswith("https://books.toscrape.com/catalogue/") for product in products
     )
-
-    assert products
-
-    for product in products:
-        assert product.url.startswith("https://books.toscrape.com/")
 
 
 def test_parse_category_page_reads_product_fields():
-    html = CATEGORY_FIXTURE_PATH.read_text(encoding="utf-8")
+    products = parse_fixture(CATEGORY_FIXTURE_PATH, CATEGORY_BASE_URL)
 
-    products = parse_listing(
-        html,
-        "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
-    )
-
-    assert products
+    assert len(products) == 11
 
     product = products[0]
 
-    assert product.name
-    assert product.current_price_minor > 0
+    assert product.name == "It's Only the Himalayas"
+    assert product.current_price_minor == 4517
+    assert product.in_stock is True
     assert product.currency == "GBP"
     assert product.scraped_at.tzinfo is UTC

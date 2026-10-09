@@ -247,6 +247,7 @@ def fetch_html(url: str) -> str:
             sleep(wait_seconds)
             continue
 
+        logger.info("Fetched %s: HTTP %s", url, response.status_code)
         # No charset in the header: requests guesses ISO-8859-1.
         if "charset" not in response.headers.get("Content-Type", "").lower():
             response.encoding = response.apparent_encoding

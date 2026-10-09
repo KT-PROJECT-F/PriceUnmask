@@ -414,6 +414,7 @@ def test_fetch_html_logs_robots_user_agent_and_delay(monkeypatch, caplog) -> Non
     assert "Checking robots.txt: https://example.com/robots.txt" in caplog.text
     assert f"Using User-Agent: {settings.scrape_user_agent}" in caplog.text
     assert f"Waiting {settings.scrape_delay_seconds:.2f} seconds" in caplog.text
+    assert "Fetched https://example.com/p: HTTP 200" in caplog.text
 
 
 def test_fetch_html_logs_each_retry(monkeypatch, caplog) -> None:

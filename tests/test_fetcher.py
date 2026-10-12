@@ -1,3 +1,4 @@
+import logging
 import re
 
 import pytest
@@ -402,3 +403,34 @@ def test_scrape_returns_products_when_the_snapshot_cannot_be_saved(
     )
 
     assert product_scraper.scrape("https://example.com/list") == ["product"]
+
+
+def test_fetch_html_logs_robots_user_agent_and_delay(monkeypatch, caplog) -> None:
+    script(monkeypatch, ROBOTS_OK, FakeResponse(body="ok"))
+
+    with caplog.at_level(logging.INFO, logger="backend.scraper.product_scraper"):
+        fetch_html("https://example.com/p")
+
+    assert "Checking robots.txt: https://example.com/robots.txt" in caplog.text
+    assert f"Using User-Agent: {settings.scrape_user_agent}" in caplog.text
+    assert f"Waiting {settings.scrape_delay_seconds:.2f} seconds" in caplog.text
+    assert "Fetched https://example.com/p: HTTP 200" in caplog.text
+
+
+def test_fetch_html_logs_each_retry(monkeypatch, caplog) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(503),
+        FakeResponse(503),
+        FakeResponse(body="ok"),
+    )
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="backend.scraper.product_scraper",
+    ):
+        fetch_html("https://example.com/p")
+
+    assert "retry 1 of 2" in caplog.text
+    assert "retry 2 of 2" in caplog.text

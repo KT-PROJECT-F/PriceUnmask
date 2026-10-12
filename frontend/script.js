@@ -129,8 +129,7 @@ async function loadTrustScore(productId) {
       trustScore.score !== null
     ) ||
     (
-      trustScore.score !== null &&
-      trustScore.score !== undefined &&
+      trustScore.label !== "insufficient_data" &&
       (
         typeof trustScore.score !== "number" ||
         !Number.isFinite(trustScore.score) ||

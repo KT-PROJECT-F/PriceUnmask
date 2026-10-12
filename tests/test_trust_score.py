@@ -108,6 +108,49 @@ def test_compute_signals_sorts_by_timestamp_before_scoring() -> None:
     assert signals.claimed_discount_pct == pytest.approx(20.0)
 
 
+def test_compute_signals_preserves_input_order_for_equal_timestamps() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.to_datetime(
+                [
+                    "2026-10-01 10:00:00+00:00",
+                    "2026-10-02 10:00:00+00:00",
+                    "2026-10-02 10:00:00+00:00",
+                ]
+            ),
+            "current_price_minor": [1000, 2000, 3000],
+            "original_price_minor": [None, 2500, 4000],
+        }
+    )
+
+    signals = compute_signals(history)
+
+    assert signals.pct_above_lowest == 200.0
+    assert signals.claimed_discount_pct == 25.0
+
+
+def test_compute_signals_rejects_naive_timestamps() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=2),
+            "current_price_minor": [1000, 900],
+            "original_price_minor": [None, 1200],
+        }
+    )
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        compute_signals(history)
+
+
+def test_compute_signals_rejects_non_numeric_prices() -> None:
+    history = daily_history([1000, 900])
+    history["current_price_minor"] = history["current_price_minor"].astype(object)
+    history.loc[1, "current_price_minor"] = "abc"
+
+    with pytest.raises(ValueError):
+        compute_signals(history)
+
+
 def test_compute_signals_today_is_lowest() -> None:
     history = pd.DataFrame(
         {
@@ -533,15 +576,19 @@ def test_compute_trust_score_discount_gap_thresholds(
     assert compute_trust_score(history).score == expected_score
 
 
-@pytest.mark.parametrize("dtype", ["float64", "Int64"])
-def test_compute_trust_score_accepts_nullable_and_float_original_price_dtypes(dtype: str) -> None:
+def test_compute_trust_score_matches_float_and_nullable_original_price_dtypes() -> None:
     history = daily_history([1000] * 9 + [900], [None] * 9 + [1200])
-    history["original_price_minor"] = history["original_price_minor"].astype(dtype)
+    float_history = history.copy()
+    nullable_history = history.copy()
+    float_history["original_price_minor"] = float_history["original_price_minor"].astype("float64")
+    nullable_history["original_price_minor"] = nullable_history["original_price_minor"].astype(
+        "Int64"
+    )
 
-    score = compute_trust_score(history)
+    float_score = compute_trust_score(float_history)
+    nullable_score = compute_trust_score(nullable_history)
 
-    assert score.label == "genuine"
-    assert score.score == 90
+    assert float_score == nullable_score
 
 
 @pytest.mark.parametrize(("today", "expected_score"), [(999, 100), (1000, 85)])

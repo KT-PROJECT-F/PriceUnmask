@@ -85,6 +85,29 @@ def test_compute_signals_single_row() -> None:
     assert signals.volatility_pct == 0.0
 
 
+def test_compute_signals_sorts_by_timestamp_before_scoring() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.to_datetime(
+                [
+                    "2026-10-03 10:00:00+00:00",
+                    "2026-10-01 10:00:00+00:00",
+                    "2026-10-02 10:00:00+00:00",
+                ]
+            ),
+            "current_price_minor": [1200, 1000, 1100],
+            "original_price_minor": [1500, None, None],
+        }
+    )
+
+    signals = compute_signals(history)
+
+    assert signals.snapshot_count == 3
+    assert signals.days_of_history == 2.0
+    assert signals.lowest_price_minor == 1000
+    assert signals.claimed_discount_pct == pytest.approx(20.0)
+
+
 def test_compute_signals_today_is_lowest() -> None:
     history = pd.DataFrame(
         {
@@ -412,10 +435,6 @@ def test_compute_trust_score_classifies_seeded_database_history(
         assert str(history["original_price_minor"].dtype) == "Int64"
 
         score = compute_trust_score(history)
-        print(f"\nProduct: {product.name}")
-        print(f"Label: {score.label}")
-        print(f"Score: {score.score}")
-        print(f"Reasons: {score.reasons}")
         assert score.reasons
         actual[product.name] = score.label
 
@@ -512,6 +531,17 @@ def test_compute_trust_score_discount_gap_thresholds(
     history = daily_history([1000] * 9 + [900], [None] * 9 + [original])
 
     assert compute_trust_score(history).score == expected_score
+
+
+@pytest.mark.parametrize("dtype", ["float64", "Int64"])
+def test_compute_trust_score_accepts_nullable_and_float_original_price_dtypes(dtype: str) -> None:
+    history = daily_history([1000] * 9 + [900], [None] * 9 + [1200])
+    history["original_price_minor"] = history["original_price_minor"].astype(dtype)
+
+    score = compute_trust_score(history)
+
+    assert score.label == "genuine"
+    assert score.score == 90
 
 
 @pytest.mark.parametrize(("today", "expected_score"), [(999, 100), (1000, 85)])

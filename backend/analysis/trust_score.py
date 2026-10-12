@@ -57,6 +57,14 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     Raises:
         ValueError: If history is empty.
     """
+    history = history.copy()
+    if "scraped_at" in history.columns:
+        history["scraped_at"] = pd.to_datetime(history["scraped_at"])
+        history = history.sort_values("scraped_at").reset_index(drop=True)
+    for column in ("current_price_minor", "original_price_minor"):
+        if column in history.columns:
+            history[column] = pd.to_numeric(history[column], errors="coerce")
+
     if history.empty:
         raise ValueError("history must contain at least one row")
 

@@ -151,6 +151,26 @@ def test_get_product_bad_id(client):
 @pytest.mark.parametrize(
     "endpoint",
     [
+        "/api/products/99999999999999999999",
+        "/api/products/99999999999999999999/history",
+        "/api/products/99999999999999999999/trust-score",
+        "/api/products/9223372036854775808",
+    ],
+)
+def test_product_endpoints_reject_huge_ids(client, endpoint):
+    response = client.get(endpoint)
+    assert response.status_code == 422
+
+
+def test_get_product_largest_valid_id_is_404(client):
+    response = client.get("/api/products/9223372036854775807")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Product not found"}
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
         "/api/products/0",
         "/api/products/-1",
         "/api/products/0/history",

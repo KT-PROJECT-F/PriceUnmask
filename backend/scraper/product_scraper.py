@@ -1,9 +1,10 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
-Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+Contract: scrape(url) returns a list of ScrapedProduct and never touches
+the database.
 
-Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
-against saved HTML files with zero network calls.
+Keeping the scraper pure (HTML in, dataclasses out) means it can be
+unit-tested against saved HTML files with zero network calls.
 """
 
 import logging
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -22,6 +23,7 @@ from backend.config import settings
 
 FETCH_TIMEOUT_SECONDS = 10
 SNAPSHOT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "snapshots"
+
 MAX_RETRIES = 2
 BACKOFF_SECONDS = 1
 RETRY_STATUSES = {500, 502, 503, 504}
@@ -31,18 +33,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
+    external_id: str
     name: str
     url: str
-    current_price_minor: int  # Rs 1,299.50 -> 129950
-    original_price_minor: int | None  # strikethrough price, None if not shown
+    current_price_minor: int
+    original_price_minor: int | None
     in_stock: bool | None
     currency: str
-    scraped_at: datetime  # timezone-aware UTC
+    scraped_at: datetime
 
 
 def parse_price_to_minor(text: str) -> int | None:
-    """'Rs. 1,299.50' / '£1,299' / '₹1,299' / '1299' -> minor units."""
+    """Convert a price such as 'Rs. 1,299.50' or '£1,299' to minor units."""
     if not isinstance(text, str):
         return None
 
@@ -51,11 +53,12 @@ def parse_price_to_minor(text: str) -> int | None:
         return None
 
     value = re.sub(
-        r"^(?:Rs\.?|[\u00a3\u20b9])\s*",
+        r"^(?:Rs\.?\s*|[£₹])\s*",
         "",
         value,
         flags=re.IGNORECASE,
     )
+
     value = value.replace(",", "").strip()
 
     match = re.fullmatch(r"(\d+)(?:\.(\d{1,2}))?", value)
@@ -63,19 +66,21 @@ def parse_price_to_minor(text: str) -> int | None:
         return None
 
     whole = match.group(1)
-    decimal = match.group(2) or ""
+    decimal = (match.group(2) or "").ljust(2, "0")
 
-    decimal = decimal.ljust(2, "0")
     return int(whole) * 100 + int(decimal)
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse one listing page. Skip (and log) cards with missing name or price;
-    never crash the whole page because one card is weird.
+    """Parse one listing page.
+
+    Skip and log cards with missing names or prices. A malformed card
+    must not cause the entire page to fail.
     """
     soup = BeautifulSoup(html, "html.parser")
     products: list[ScrapedProduct] = []
     scraped_at = datetime.now(UTC)
+
     cards = soup.select("article.product_pod")
 
     for card in cards:
@@ -93,13 +98,13 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
             logger.warning("Skipping product card with no name")
             continue
 
-        relative_url = link.get("href")
-
         if not price_element:
             logger.warning("Skipping product card with no price: %s", name)
             continue
 
+        relative_url = link.get("href")
         url = urljoin(base_url, relative_url)
+
         price_text = price_element.get_text(strip=True)
         price_minor = parse_price_to_minor(price_text)
 
@@ -110,8 +115,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
             )
             continue
 
-        # Assumption: the shop marks the old price with <del>
-        # or class "old-price".
+        # Assumption: the old price is marked with <del> or .old-price.
         original_price_minor = None
         original_price_element = card.select_one("del, .old-price")
 
@@ -127,6 +131,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
         url_path = url.rstrip("/").split("/")
         filename = url_path[-1]
+
         slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
         external_id = slug.rsplit("_", 1)[0]
 
@@ -162,7 +167,13 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
 
 def _robots_allows(url: str, headers: dict[str, str]) -> bool:
-    """Return whether robots.txt allows fetching the requested URL."""
+    """Check robots.txt before fetching a page.
+
+    HTTP 404 means robots.txt is absent and follows the project's
+    existing policy of allowing the page fetch.
+
+    Network failures, other HTTP errors, and redirects stop scraping.
+    """
     robots_url = urljoin(url, "/robots.txt")
     logger.info("Checking robots.txt: %s", robots_url)
 
@@ -171,11 +182,18 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
             robots_url,
             headers=headers,
             timeout=FETCH_TIMEOUT_SECONDS,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         raise RuntimeError(f"Could not fetch robots.txt for {url}: {exc}") from exc
 
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(
+            f"Unexpected redirect while fetching robots.txt: HTTP {response.status_code}"
+        )
+
     if response.status_code == 404:
+        logger.warning("robots.txt returned 404; allowing fetch of %s", url)
         return True
 
     if response.status_code >= 400:
@@ -184,12 +202,39 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
     parser = RobotFileParser()
     parser.parse(response.text.splitlines())
 
-    return parser.can_fetch(settings.scrape_user_agent, url)
+    allowed = parser.can_fetch(settings.scrape_user_agent, url)
+
+    if not allowed:
+        logger.warning("robots.txt disallows fetching %s", url)
+
+    return allowed
 
 
 def fetch_html(url: str) -> str:
-    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect
-    for robots.txt. Raise a clear exception on 4xx/5xx.
+    """Fetch an HTML page while respecting robots.txt and request politeness.
+
+    Failure handling:
+    - Timeouts and connection errors are retried up to MAX_RETRIES times.
+      The original network exception is raised if retries are exhausted.
+    - HTTP 500, 502, 503, and 504 are retried up to MAX_RETRIES times.
+      A RuntimeError is raised if retries are exhausted.
+    - Other HTTP errors, including HTTP 404, fail immediately.
+    - Robots.txt network failures, redirects, and HTTP errors other than
+      404 stop scraping. A robots.txt 404 follows the existing policy of
+      allowing the page fetch.
+    - Page redirects, including external redirects, are rejected.
+    - Non-HTML responses are rejected.
+    - The configured User-Agent, timeout, request delay, and exponential
+      retry backoff are preserved.
+
+    Returns:
+        The fetched HTML as a string.
+
+    Raises:
+        RuntimeError: If robots.txt disallows fetching, an HTTP error
+            occurs, a redirect is rejected, or the response is not HTML.
+        requests.Timeout: If timeout retries are exhausted.
+        requests.ConnectionError: If connection retries are exhausted.
     """
     headers = {"User-Agent": settings.scrape_user_agent}
     logger.info("Using User-Agent: %s", headers["User-Agent"])
@@ -198,8 +243,7 @@ def fetch_html(url: str) -> str:
         logger.warning("robots.txt disallows fetching %s", url)
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
-    # robots.txt and the page are two requests to the same site.
-    # Wait politely before requesting the page.
+    # Wait before requesting the page after checking robots.txt.
     if settings.scrape_delay_seconds > 0:
         logger.info(
             "Waiting %.2f seconds before fetching %s",
@@ -214,21 +258,52 @@ def fetch_html(url: str) -> str:
                 url,
                 headers=headers,
                 timeout=FETCH_TIMEOUT_SECONDS,
+                allow_redirects=False,
             )
         except (requests.Timeout, requests.ConnectionError):
             if attempt == MAX_RETRIES:
                 raise
 
             wait_seconds = BACKOFF_SECONDS * (2**attempt)
+
             logger.warning(
                 "Request failed; retry %s of %s in %s seconds",
                 attempt + 1,
                 MAX_RETRIES,
                 wait_seconds,
             )
+
             sleep(wait_seconds)
             continue
 
+        # Reject redirects rather than following them automatically.
+        if 300 <= response.status_code < 400:
+            location = response.headers.get("Location", "")
+
+            if location:
+                redirect_url = urljoin(url, location)
+
+                original = urlsplit(url)
+                redirected = urlsplit(redirect_url)
+
+                original_origin = (
+                    original.scheme.lower(),
+                    (original.hostname or "").lower(),
+                    original.port or (443 if original.scheme.lower() == "https" else 80),
+                )
+
+                redirected_origin = (
+                    redirected.scheme.lower(),
+                    (redirected.hostname or "").lower(),
+                    redirected.port or (443 if redirected.scheme.lower() == "https" else 80),
+                )
+
+                if original_origin != redirected_origin:
+                    raise RuntimeError(f"External redirect rejected: {url} -> {redirect_url}")
+
+            raise RuntimeError(f"Unexpected redirect from {url}: HTTP {response.status_code}")
+
+        # Retry only configured transient HTTP errors.
         if response.status_code >= 400:
             if response.status_code not in RETRY_STATUSES:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
@@ -237,6 +312,7 @@ def fetch_html(url: str) -> str:
                 raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
             wait_seconds = BACKOFF_SECONDS * (2**attempt)
+
             logger.warning(
                 "HTTP %s; retry %s of %s in %s seconds",
                 response.status_code,
@@ -244,12 +320,23 @@ def fetch_html(url: str) -> str:
                 MAX_RETRIES,
                 wait_seconds,
             )
+
             sleep(wait_seconds)
             continue
 
+        # Reject responses that are not HTML.
+        content_type = response.headers.get("Content-Type", "")
+        media_type = content_type.split(";", maxsplit=1)[0].strip().lower()
+
+        if media_type not in {"text/html", "application/xhtml+xml"}:
+            raise RuntimeError(
+                f"Expected HTML from {url}, received {content_type or 'unknown Content-Type'}"
+            )
+
         logger.info("Fetched %s: HTTP %s", url, response.status_code)
-        # No charset in the header: requests guesses ISO-8859-1.
-        if "charset" not in response.headers.get("Content-Type", "").lower():
+
+        # Without an explicit charset, use requests' detected encoding.
+        if "charset" not in content_type.lower():
             response.encoding = response.apparent_encoding
 
         return response.text
@@ -258,18 +345,39 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """Fetch, save raw HTML, parse, and return products."""
+    """Fetch, save, parse, and return products.
+
+    Fetch failures propagate to the caller. No raw HTML snapshot is saved
+    when fetching fails.
+
+    After a successful fetch, the raw HTML is saved before parsing so it
+    remains available if parsing fails.
+
+    Snapshot-saving OSError exceptions are logged but do not prevent
+    parsing. Parsing exceptions propagate to the caller.
+
+    Returns:
+        A list of parsed ScrapedProduct objects.
+
+    Raises:
+        RuntimeError: If fetching fails due to robots.txt restrictions,
+            an HTTP error, a rejected redirect, or a non-HTML response.
+        requests.Timeout: If fetch timeout retries are exhausted.
+        requests.ConnectionError: If connection retries are exhausted.
+    """
     html = fetch_html(url)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
 
-    # Keep the raw page first: if the parser has a bug, we can re-parse it later.
-    # A failed backup must not cost us the prices, so we only log it.
+    # Save raw HTML before parsing for debugging and reprocessing.
     try:
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         snapshot_path.write_text(html, encoding="utf-8")
     except OSError:
-        logger.exception("Could not save raw HTML snapshot to %s", snapshot_path)
+        logger.exception(
+            "Could not save raw HTML snapshot to %s",
+            snapshot_path,
+        )
 
     return parse_listing(html, url)

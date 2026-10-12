@@ -434,3 +434,66 @@ def test_fetch_html_logs_each_retry(monkeypatch, caplog) -> None:
 
     assert "retry 1 of 2" in caplog.text
     assert "retry 2 of 2" in caplog.text
+
+
+def test_external_redirect_is_rejected(monkeypatch, sleeps) -> None:
+    calls: list[str] = []
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+
+        if url.endswith("/robots.txt"):
+            return ROBOTS_OK
+
+        return FakeResponse(
+            status_code=302,
+            content_type="text/html",
+        )
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get,
+    )
+
+    # Supply the redirect target in the response headers.
+    def fake_get_with_redirect(url, **kwargs):
+        calls.append(url)
+
+        if url.endswith("/robots.txt"):
+            return ROBOTS_OK
+
+        response = FakeResponse(status_code=302)
+        response.headers["Location"] = "https://other.example/page"
+        return response
+
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.requests.get",
+        fake_get_with_redirect,
+    )
+
+    with pytest.raises(RuntimeError, match="External redirect rejected"):
+        fetch_html("https://example.com/page")
+
+    assert calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/page",
+    ]
+    assert sleeps == [settings.scrape_delay_seconds]
+
+
+def test_non_html_response_is_rejected(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(
+            status_code=200,
+            body="%PDF-1.7",
+            content_type="application/pdf",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Expected HTML"):
+        fetch_html("https://example.com/document")
+
+    assert len(calls) == 2
+    assert sleeps == [settings.scrape_delay_seconds]

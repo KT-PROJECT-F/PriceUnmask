@@ -125,8 +125,11 @@ async function loadTrustScore(productId) {
     typeof trustScore.label !== "string" ||
     !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
     (
-      trustScore.score !== null &&
-      trustScore.score !== undefined &&
+      trustScore.label === "insufficient_data" &&
+      trustScore.score !== null
+    ) ||
+    (
+      trustScore.label !== "insufficient_data" &&
       (
         typeof trustScore.score !== "number" ||
         !Number.isFinite(trustScore.score) ||
@@ -385,6 +388,38 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(latestPrice, lowestPrice);
 
+  if (!trustScore) {
+    const scoreHeading = document.createElement("h3");
+    scoreHeading.textContent = "Trust Score";
+
+    const unavailableMessage = document.createElement("p");
+    unavailableMessage.className = "trust-score-message";
+    unavailableMessage.setAttribute("role", "status");
+    unavailableMessage.textContent =
+      "Trust Score is temporarily unavailable.";
+
+    elements.push(scoreHeading, unavailableMessage);
+
+    const chartContainer = document.createElement("div");
+    chartContainer.className = "price-chart-container";
+
+    const chartHeading = document.createElement("h3");
+    chartHeading.textContent = "Price History";
+
+    const chartCanvas = document.createElement("canvas");
+    chartCanvas.id = "price-history-chart";
+    chartCanvas.setAttribute(
+      "aria-label",
+      `Price history chart for ${product.name}`
+    );
+    chartCanvas.setAttribute("role", "img");
+
+    chartContainer.append(chartHeading, chartCanvas);
+    elements.push(chartContainer);
+
+    return elements;
+  }
+  // Display the Trust Score and its label.
   const scoreHeading = document.createElement("h3");
   scoreHeading.textContent = "Trust Score";
 
@@ -400,6 +435,18 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(scoreHeading, scoreBadge);
 
+  // Explain when there is not enough data to calculate a reliable score.
+  if (trustScore.label === "insufficient_data") {
+    const insufficientMessage = document.createElement("p");
+    insufficientMessage.className = "trust-score-message";
+    insufficientMessage.setAttribute("role", "status");
+    insufficientMessage.textContent =
+      "There isn't enough price history yet to calculate a reliable Trust Score. Check back when more price data is available.";
+
+    elements.push(insufficientMessage);
+  }
+
+  // Display the reasons for the Trust Score.
   const reasonsHeading = document.createElement("h3");
   reasonsHeading.textContent = "Why?";
 
@@ -419,6 +466,22 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(reasonsHeading, reasonsList);
 
+  // Show the anomaly message only when non-empty text is available.
+  const anomalyMessage = document.createElement("p");
+  anomalyMessage.className = "anomaly-note";
+  anomalyMessage.hidden = true;
+
+  if (
+    typeof trustScore.anomaly_note === "string" &&
+    trustScore.anomaly_note.trim() !== ""
+  ) {
+    anomalyMessage.textContent = trustScore.anomaly_note;
+    anomalyMessage.hidden = false;
+  }
+
+  elements.push(anomalyMessage);
+
+  // Create the price history chart container.
   const chartContainer = document.createElement("div");
   chartContainer.className = "price-chart-container";
 
@@ -483,7 +546,13 @@ async function showProductDetail(product, showGrid) {
   app.append(detail);
 
   try {
-    const trustScore = await loadTrustScore(product.id);
+    let trustScore = null;
+
+    try {
+      trustScore = await loadTrustScore(product.id);
+    } catch (error) {
+      console.error("Error loading trust score:", error);
+    }
 
     // Avoid rendering if this detail view has already been removed.
     if (!detail.isConnected) {
@@ -660,7 +729,7 @@ async function loadProducts() {
       }
     }, 300);
   });
-await fetchProducts();
+  await fetchProducts();
 }
 
 loadProducts();

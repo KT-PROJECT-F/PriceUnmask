@@ -125,6 +125,10 @@ async function loadTrustScore(productId) {
     typeof trustScore.label !== "string" ||
     !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
     (
+      trustScore.label === "insufficient_data" &&
+      trustScore.score !== null
+    ) ||
+    (
       trustScore.score !== null &&
       trustScore.score !== undefined &&
       (
@@ -385,6 +389,7 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(latestPrice, lowestPrice);
 
+  // Display the Trust Score and its label.
   const scoreHeading = document.createElement("h3");
   scoreHeading.textContent = "Trust Score";
 
@@ -400,6 +405,18 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(scoreHeading, scoreBadge);
 
+  // Explain when there is not enough data to calculate a reliable score.
+  if (trustScore.label === "insufficient_data") {
+    const insufficientMessage = document.createElement("p");
+    insufficientMessage.className = "trust-score-message";
+    insufficientMessage.setAttribute("role", "status");
+    insufficientMessage.textContent =
+      "There isn't enough price history yet to calculate a reliable Trust Score. Check back when more price data is available.";
+
+    elements.push(insufficientMessage);
+  }
+
+  // Display the reasons for the Trust Score.
   const reasonsHeading = document.createElement("h3");
   reasonsHeading.textContent = "Why?";
 
@@ -419,6 +436,22 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(reasonsHeading, reasonsList);
 
+  // Show the anomaly message only when non-empty text is available.
+  const anomalyMessage = document.createElement("p");
+  anomalyMessage.className = "anomaly-note";
+  anomalyMessage.hidden = true;
+
+  if (
+    typeof trustScore.anomaly_note === "string" &&
+    trustScore.anomaly_note.trim() !== ""
+  ) {
+    anomalyMessage.textContent = trustScore.anomaly_note;
+    anomalyMessage.hidden = false;
+  }
+
+  elements.push(anomalyMessage);
+
+  // Create the price history chart container.
   const chartContainer = document.createElement("div");
   chartContainer.className = "price-chart-container";
 
@@ -660,7 +693,7 @@ async function loadProducts() {
       }
     }, 300);
   });
-await fetchProducts();
+  await fetchProducts();
 }
 
 loadProducts();

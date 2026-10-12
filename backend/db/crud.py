@@ -12,7 +12,7 @@ Read functions never commit.
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
@@ -138,6 +138,10 @@ def get_history(
     )
 
     if since is not None:
+        if since.tzinfo is None or since.utcoffset() is None:
+            raise ValueError("since must be a timezone-aware datetime")
+
+        since = since.astimezone(UTC)
         statement = statement.where(PriceSnapshot.scraped_at >= since)
 
     return session.scalars(statement).all()
@@ -152,3 +156,58 @@ def list_scrape_runs(
     statement = select(ScrapeRun).order_by(ScrapeRun.started_at.desc()).limit(limit)
 
     return session.scalars(statement).all()
+
+
+def count_runs_by_status(session: Session) -> dict[str, int]:
+    """Return the number of scrape runs for each status."""
+    rows = session.execute(
+        select(ScrapeRun.status, func.count(ScrapeRun.id)).group_by(ScrapeRun.status)
+    ).all()
+
+    return {status: count for status, count in rows}
+
+
+def count_products(session: Session) -> int:
+    """Return the total number of products, including inactive products."""
+    return session.scalar(select(func.count()).select_from(Product)) or 0
+
+
+def count_snapshots_by_run(session: Session) -> dict[int, int]:
+    """Return snapshot counts for runs that have snapshots."""
+    rows = session.execute(
+        select(
+            PriceSnapshot.scrape_run_id,
+            func.count(PriceSnapshot.id),
+        )
+        .where(PriceSnapshot.scrape_run_id.is_not(None))
+        .group_by(PriceSnapshot.scrape_run_id)
+    ).all()
+
+    return {run_id: count for run_id, count in rows}
+
+
+def list_products_not_seen_in_run(
+    session: Session,
+    run_id: int,
+) -> Sequence[Product]:
+    """Return products without a snapshot associated with the given run."""
+    seen_product_ids = select(PriceSnapshot.product_id).where(PriceSnapshot.scrape_run_id == run_id)
+
+    statement = select(Product).where(~Product.id.in_(seen_product_ids)).order_by(Product.name)
+
+    return session.scalars(statement).all()
+
+
+def list_duplicate_product_names(session: Session) -> list[tuple[str, str, int]]:
+    """Return (source, name, count) for names that appear more than once in a source.
+
+    (source, external_id) is unique, so these are the same product stored under two ids.
+    """
+    rows = session.execute(
+        select(Product.source, Product.name, func.count(Product.id))
+        .group_by(Product.source, Product.name)
+        .having(func.count(Product.id) > 1)
+        .order_by(Product.source, Product.name)
+    ).all()
+
+    return [(source, name, count) for source, name, count in rows]

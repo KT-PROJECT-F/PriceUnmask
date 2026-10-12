@@ -1,12 +1,18 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy.orm import Session
 
 from backend.db.crud import (
+    count_products,
+    count_runs_by_status,
+    count_snapshots_by_run,
     finish_scrape_run,
     get_history,
     get_product,
+    list_duplicate_product_names,
     list_products,
+    list_products_not_seen_in_run,
     list_scrape_runs,
     start_scrape_run,
     upsert_product_and_snapshot,
@@ -258,10 +264,7 @@ def test_upsert_same_product_twice_gives_one_product_two_snapshots(
     upsert_product_and_snapshot(
         session,
         "shop",
-        make_item(
-            price=9_000,
-            scraped_at=second_time,
-        ),
+        make_item(price=9_000, scraped_at=second_time),
         run,
     )
 
@@ -329,10 +332,7 @@ def test_second_upsert_does_not_change_first_snapshot(
     first = upsert_product_and_snapshot(
         session,
         "shop",
-        make_item(
-            price=10_000,
-            scraped_at=NOW,
-        ),
+        make_item(price=10_000, scraped_at=NOW),
         run,
     )
 
@@ -367,3 +367,227 @@ def test_second_upsert_does_not_change_first_snapshot(
     )
 
     assert before == after
+
+
+def assert_aware_utc(value: datetime) -> None:
+    assert value.tzinfo is not None
+    assert value.utcoffset() is not None
+    assert value.utcoffset().total_seconds() == 0
+    assert value.tzinfo == UTC
+
+
+def test_read_functions_return_aware_utc_timestamps(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(),
+        run,
+    )
+    product_id = snapshot.product_id
+
+    session.expire_all()
+
+    products = list_products(session)
+    product = get_product(session, product_id)
+    history = get_history(session, product_id)
+    runs = list_scrape_runs(session)
+
+    assert product is not None
+    assert products
+    assert history
+    assert runs
+
+    assert_aware_utc(product.created_at)
+    assert_aware_utc(product.last_seen_at)
+
+    for item in products:
+        assert_aware_utc(item.created_at)
+        assert_aware_utc(item.last_seen_at)
+
+    for item in history:
+        assert_aware_utc(item.scraped_at)
+
+    for item in runs:
+        assert_aware_utc(item.started_at)
+        if item.finished_at is not None:
+            assert_aware_utc(item.finished_at)
+
+
+def test_write_functions_return_aware_utc_timestamps(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    assert_aware_utc(run.started_at)
+    run_id = run.id
+
+    session.expire_all()
+
+    run = next(item for item in list_scrape_runs(session) if item.id == run_id)
+
+    assert_aware_utc(run.started_at)
+
+    snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(),
+        run,
+    )
+
+    assert_aware_utc(snapshot.scraped_at)
+
+    snapshot_id = snapshot.id
+    product_id = snapshot.product_id
+
+    session.expire_all()
+
+    snapshot = next(item for item in get_history(session, product_id) if item.id == snapshot_id)
+
+    product = get_product(session, product_id)
+
+    assert_aware_utc(snapshot.scraped_at)
+    assert product is not None
+    assert_aware_utc(product.created_at)
+    assert_aware_utc(product.last_seen_at)
+
+    finish_scrape_run(session, run, "success", 1)
+
+    session.expire_all()
+
+    run = next(item for item in list_scrape_runs(session) if item.id == run_id)
+
+    assert_aware_utc(run.started_at)
+    assert run.finished_at is not None
+    assert_aware_utc(run.finished_at)
+
+
+def test_get_history_rejects_naive_since(
+    session: Session,
+) -> None:
+    product = add_product(session, "Kettle")
+    naive_since = datetime(2026, 10, 1, 12, 0)
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        get_history(session, product.id, since=naive_since)
+
+
+def test_get_history_ist_since_matches_equivalent_utc(
+    session: Session,
+) -> None:
+    product = add_product(session, "Kettle")
+
+    add_snapshot(session, product, 3, 1100)
+    add_snapshot(session, product, 2, 1000)
+    add_snapshot(session, product, 1, 900)
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+
+    since_ist = datetime(2026, 10, 5, 12, 0, tzinfo=ist)
+    since_utc = datetime(2026, 10, 5, 6, 30, tzinfo=UTC)
+
+    history_ist = get_history(
+        session,
+        product.id,
+        since=since_ist,
+    )
+    history_utc = get_history(
+        session,
+        product.id,
+        since=since_utc,
+    )
+
+    assert [item.id for item in history_ist] == [item.id for item in history_utc]
+
+
+def test_counts_and_products_not_seen_in_run(session: Session) -> None:
+    first = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="a", name="Alpha"),
+        first,
+    )
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="b", name="Beta"),
+        first,
+    )
+
+    finish_scrape_run(session, first, "success", 2)
+
+    later = NOW + timedelta(hours=4)
+    second = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            external_id="a",
+            name="Alpha",
+            scraped_at=later,
+        ),
+        second,
+    )
+
+    finish_scrape_run(session, second, "partial", 1)
+
+    assert count_products(session) == 2
+    assert count_runs_by_status(session) == {"success": 1, "partial": 1}
+    assert count_snapshots_by_run(session) == {
+        first.id: 2,
+        second.id: 1,
+    }
+    assert [product.name for product in list_products_not_seen_in_run(session, second.id)] == [
+        "Beta"
+    ]
+    assert list_products_not_seen_in_run(session, first.id) == []
+
+
+def test_duplicate_product_names_are_reported(session: Session) -> None:
+    run = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="a", name="Phone"),
+        run,
+    )
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="b", name="Phone"),
+        run,
+    )
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="c", name="Laptop"),
+        run,
+    )
+
+    assert list_duplicate_product_names(session) == [("shop", "Phone", 2)]
+
+
+def test_no_duplicates_when_names_are_different(session: Session) -> None:
+    run = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="a", name="Phone"),
+        run,
+    )
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="b", name="Laptop"),
+        run,
+    )
+
+    assert list_duplicate_product_names(session) == []

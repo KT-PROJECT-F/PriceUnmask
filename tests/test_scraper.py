@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC
 from pathlib import Path
 
@@ -402,3 +403,93 @@ def test_parse_category_page_reads_product_fields():
     assert product.in_stock is True
     assert product.currency == "GBP"
     assert product.scraped_at.tzinfo is UTC
+
+
+def make_book_card(
+    title: str = "Example Book",
+    href: str = "catalogue/example-book_1000/index.html",
+    price: str | None = "£10.00",
+    rating: bool = True,
+) -> str:
+    """Create a small HTML book card for parser tests."""
+    price_html = f'<p class="price_color">{price}</p>' if price is not None else ""
+
+    rating_html = '<p class="star-rating Three"></p>' if rating else ""
+
+    return f"""
+    <article class="product_pod">
+        <h3>
+            <a href="{href}" title="{title}">
+                {title[:20]}...
+            </a>
+        </h3>
+        {rating_html}
+        <div class="product_price">
+            {price_html}
+            <p class="availability">
+                In stock
+            </p>
+        </div>
+    </article>
+    """
+
+
+def make_listing(*cards: str) -> str:
+    """Combine book cards into one listing page."""
+    return "<html><body>" + "".join(cards) + "</body></html>"
+
+
+def test_long_title_uses_full_title_attribute():
+    full_title = "The Complete Guide to Python Programming for Beginners"
+    html = make_listing(make_book_card(title=full_title))
+
+    products = parse_listing(html, BASE_URL)
+
+    assert len(products) == 1
+    assert products[0].name == full_title
+
+
+def test_non_ascii_title_is_preserved():
+    title = "Café München — 日本語"
+    html = make_listing(make_book_card(title=title))
+
+    products = parse_listing(html, BASE_URL)
+
+    assert len(products) == 1
+    assert products[0].name == title
+
+
+def test_missing_price_skips_card_and_logs_warning(caplog):
+    broken_card = make_book_card(
+        title="Book Without Price",
+        href="catalogue/no-price_1001/index.html",
+        price=None,
+    )
+    valid_card = make_book_card(
+        title="Valid Book",
+        href="catalogue/valid-book_1002/index.html",
+    )
+    html = make_listing(broken_card, valid_card)
+
+    with caplog.at_level(logging.WARNING):
+        products = parse_listing(html, BASE_URL)
+
+    assert len(products) == 1
+    assert products[0].name == "Valid Book"
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_missing_rating_does_not_skip_book():
+    html = make_listing(
+        make_book_card(
+            title="Book Without Rating",
+            href="catalogue/no-rating_1003/index.html",
+            rating=False,
+        )
+    )
+
+    products = parse_listing(html, BASE_URL)
+
+    assert len(products) == 1
+    assert products[0].name == "Book Without Rating"
+    assert products[0].current_price_minor == 1000

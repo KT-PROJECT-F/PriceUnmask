@@ -514,7 +514,6 @@ def test_compute_trust_score_matches_float_and_nullable_original_price_dtypes() 
     history = daily_history([1000] * 9 + [900], [None] * 9 + [1200])
     float_history = history.copy()
     nullable_history = history.copy()
-    float_history["original_price_minor"] = float_history["original_price_minor"].astype("float64")
     nullable_history["original_price_minor"] = nullable_history["original_price_minor"].astype(
         "Int64"
     )

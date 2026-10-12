@@ -1,6 +1,12 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from backend.devtools.check_db import find_problems
+from backend.db.crud import (
+    finish_scrape_run,
+    start_scrape_run,
+    upsert_product_and_snapshot,
+)
+from backend.devtools.check_db import find_problems, report
 
 
 def make_run(status: str = "success", products_seen: int = 24):
@@ -55,3 +61,39 @@ def test_find_problems_uses_plural_for_two_duplicate_names():
     )
 
     assert "2 product names stored more than once" in problems
+
+
+def test_report_prints_database_health(session, capsys):
+    now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
+
+    run = start_scrape_run(session)
+
+    for external_id in ("phone-a", "phone-b"):
+        item = SimpleNamespace(
+            external_id=external_id,
+            name="Phone",
+            url=f"https://example.com/{external_id}",
+            current_price_minor=10_000,
+            original_price_minor=None,
+            in_stock=True,
+            currency="INR",
+            scraped_at=now,
+        )
+        upsert_product_and_snapshot(session, "shop", item, run)
+
+    finish_scrape_run(session, run, "success", 2)
+
+    report(session)
+    output = capsys.readouterr().out
+
+    assert "=== PriceUnmask Database Health ===" in output
+    assert "Total products: 2" in output
+    assert f"Run {run.id} (success): 2 snapshots, products_seen 2" in output
+    assert "Duplicate product names:" in output
+    assert "shop / Phone: 2 times" in output
+    assert "Latest finished run:" in output
+    assert f"ID: {run.id}" in output
+    assert "Status: success" in output
+    assert "Products without a snapshot in this run: 0" in output
+    assert "Health status: CHECK REQUIRED" in output
+    assert "1 product name stored more than once" in output

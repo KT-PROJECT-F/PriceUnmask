@@ -36,13 +36,6 @@ def find_problems(
 
     return problems
 
-    if duplicates:
-        count = len(duplicates)
-        noun = "product name" if count == 1 else "product names"
-        problems.append(f"{count} {noun} stored more than once")
-
-    return problems
-
 
 def report(session: Session) -> None:
     runs = crud.list_scrape_runs(session)

@@ -34,3 +34,24 @@ def test_failed_run_and_unseen_products_are_problems() -> None:
 def test_duplicates_are_a_problem() -> None:
     problems = find_problems(make_run(), 24, 0, [("shop", "Phone", 2)])
     assert any("stored more than once" in problem for problem in problems)
+
+
+def test_find_problems_uses_singular_for_one_duplicate_name():
+    latest_run = SimpleNamespace(id=1, status="success", products_seen=0)
+
+    problems = find_problems(latest_run, 0, 0, [("shop", "Book A", 2)])
+
+    assert "1 product name stored more than once" in problems
+
+
+def test_find_problems_uses_plural_for_two_duplicate_names():
+    latest_run = SimpleNamespace(id=1, status="success", products_seen=0)
+
+    problems = find_problems(
+        latest_run,
+        0,
+        0,
+        [("shop", "Book A", 2), ("shop", "Book B", 2)],
+    )
+
+    assert "2 product names stored more than once" in problems

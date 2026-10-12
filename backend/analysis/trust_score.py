@@ -198,8 +198,8 @@ def compute_trust_score(history: pd.DataFrame) -> TrustScore:
     if signals.volatility_pct >= HIGH_VOLATILITY_THRESHOLD_PCT:
         deductions += HIGH_VOLATILITY_PENALTY
         reasons.append(
-            f"The price has changed substantially over time, with "
-            f"{signals.volatility_pct:.1f}% volatility."
+            "Prices have varied substantially over time, so today's price may not "
+            "represent what shoppers usually pay."
         )
 
     if not reasons:

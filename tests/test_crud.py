@@ -591,3 +591,121 @@ def test_no_duplicates_when_names_are_different(session: Session) -> None:
     )
 
     assert list_duplicate_product_names(session) == []
+
+
+def test_same_external_id_with_new_name_preserves_history(
+    session: Session,
+) -> None:
+    first_run = start_scrape_run(session)
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            external_id="book-001",
+            name="Old Book Name",
+            price=1000,
+        ),
+        first_run,
+    )
+
+    second_run = start_scrape_run(session)
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            external_id="book-001",
+            name="New Book Name",
+            price=900,
+        ),
+        second_run,
+    )
+
+    products = list_products(session)
+    assert len(products) == 1
+    assert products[0].name == "New Book Name"
+
+    history = get_history(session, products[0].id)
+    assert len(history) == 2
+    assert {item.current_price_minor for item in history} == {1000, 900}
+
+
+def test_snapshot_without_original_price(session: Session) -> None:
+    run = start_scrape_run(session)
+    item = make_item(external_id="book-002", price=1000)
+
+    snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        item,
+        run,
+    )
+
+    assert snapshot.current_price_minor == 1000
+    assert snapshot.original_price_minor is None
+
+    history = get_history(session, snapshot.product_id)
+    assert len(history) == 1
+    assert history[0].original_price_minor is None
+
+
+def test_successful_run_with_zero_products(session: Session) -> None:
+    run = start_scrape_run(session)
+    finish_scrape_run(
+        session,
+        run,
+        status="success",
+        products_seen=0,
+    )
+
+    assert run.status == "success"
+    assert run.products_seen == 0
+    assert run.finished_at is not None
+    assert list_products(session) == []
+
+
+def test_get_history_returns_empty_for_product_without_snapshots(
+    session: Session,
+) -> None:
+    product = add_product(session, "Product Without History")
+
+    history = get_history(session, product.id)
+
+    assert history == []
+
+
+def test_same_product_saved_in_two_runs_creates_two_snapshots(
+    session: Session,
+) -> None:
+    first_run = start_scrape_run(session)
+    first_snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            external_id="book-003",
+            price=1000,
+        ),
+        first_run,
+    )
+
+    second_run = start_scrape_run(session)
+    second_snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(
+            external_id="book-003",
+            price=800,
+        ),
+        second_run,
+    )
+
+    products = list_products(session)
+    history = get_history(session, first_snapshot.product_id)
+
+    assert len(products) == 1
+    assert first_snapshot.id != second_snapshot.id
+    assert len(history) == 2
+    assert {item.current_price_minor for item in history} == {1000, 800}
+    assert {item.scrape_run_id for item in history} == {
+        first_run.id,
+        second_run.id,
+    }

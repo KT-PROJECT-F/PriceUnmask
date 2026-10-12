@@ -8,6 +8,8 @@ from backend.analysis.trust_score import (
     compute_signals,
     compute_trust_score,
 )
+from backend.converters import snapshots_to_dataframe
+from backend.db.crud import get_history, list_products
 from backend.db.models import Product
 from backend.devtools.seed_fake_data import DAYS, SNAPSHOTS_PER_DAY, _series, seed
 
@@ -385,6 +387,43 @@ def test_compute_trust_score_classifies_seeded_patterns(
     assert score.score is not None
 
 
+def test_compute_trust_score_classifies_seeded_database_history(
+    session: Session,
+) -> None:
+    seed(session)
+
+    expected = {
+        "Demo Bluetooth Speaker (stable)": "genuine",
+        "Demo Running Shoes (real drop)": "genuine",
+        "Demo Air Fryer (fake discount)": "likely_inflated",
+    }
+    products = list_products(session)
+    assert {product.name for product in products} == set(expected)
+
+    actual: dict[str, str] = {}
+    for product in products:
+        snapshots = get_history(session, product.id)
+        assert len(snapshots) == DAYS * SNAPSHOTS_PER_DAY
+
+        history = snapshots_to_dataframe(snapshots)
+        assert isinstance(history["scraped_at"].dtype, pd.DatetimeTZDtype)
+        assert str(history["scraped_at"].dt.tz) == "UTC"
+        assert history["current_price_minor"].dtype == "int64"
+        assert str(history["original_price_minor"].dtype) == "Int64"
+
+        score = compute_trust_score(history)
+        assert score.reasons
+        actual[product.name] = score.label
+
+        if product.name == "Demo Air Fryer (fake discount)":
+            reasons = " ".join(score.reasons).casefold()
+            assert "rose sharply" in reasons
+            assert "advertised discount" in reasons
+            assert "volatility" in reasons
+
+    assert actual == expected
+
+
 def test_compute_trust_score_requires_at_least_six_snapshots() -> None:
     score = compute_trust_score(seeded_history("stable").iloc[: MIN_SNAPSHOTS - 1])
 
@@ -469,6 +508,22 @@ def test_compute_trust_score_discount_gap_thresholds(
     history = daily_history([1000] * 9 + [900], [None] * 9 + [original])
 
     assert compute_trust_score(history).score == expected_score
+
+
+def test_compute_trust_score_matches_float_and_nullable_original_price_dtypes() -> None:
+    history = daily_history([1000] * 9 + [900], [None] * 9 + [1200])
+    float_history = history.copy()
+    nullable_history = history.copy()
+    nullable_history["original_price_minor"] = nullable_history["original_price_minor"].astype(
+        "Int64"
+    )
+
+    float_score = compute_trust_score(float_history)
+    nullable_score = compute_trust_score(nullable_history)
+
+    assert float_score == nullable_score
+    assert float_score.label == "genuine"
+    assert float_score.score == 90
 
 
 @pytest.mark.parametrize(("today", "expected_score"), [(999, 100), (1000, 85)])

@@ -1,168 +1,65 @@
 # Shop Evaluation
 
-**Evaluation date:** 9 October 2026
+**Evaluation date:** 12 October 2026
 
-**Purpose:** Evaluate Croma and Reliance Digital as potential shops for future price tracking in PriceUnmask.
+**Purpose:** Evaluate Croma and Reliance Digital as potential shops for price tracking in PriceUnmask.
 
 ## 1. Croma
 
-* **Shop:** https://www.croma.com/
-* **Category URL evaluated:** https://www.croma.com/campaign/best-deals/c/7625
-* **Product evaluated:** Croma 6.5 kg 5 Star Semi Automatic Washing Machine with Built-in Soak Function (Burgundy)
-* **Product URL:** https://www.croma.com/croma-6-5-kg-5-star-semi-automatic-washing-machine-with-built-in-soak-function-burgundy-/p/307023
+**Shop:** https://www.croma.com/
+**Category URL:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
 
-### Evaluation
-
-| Check                   | Result                                              | Evidence                                                                                                                                                                                                                           |
-| ----------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| robots.txt              | Requires final verification                         | https://www.croma.com/robots.txt — initial notes recorded `User-agent: *` and `Allow: /*`. Recheck the rules applicable to the selected category path before implementation. robots.txt alone does not grant permission to scrape. |
-| Terms of Use            | Unclear                                             | https://www.croma.com/terms-of-use — initial notes identified sections 7(d) and 7(e) as potentially relevant to website use and unauthorized access. Verify the exact wording and applicable restrictions before implementation.   |
-| Price in raw HTML       | Reported in initial inspection; requires rechecking | Initial notes recorded pricing fields such as `formattedValue` and `mrp` in the category page source. Confirm these fields in the current page source before implementation.                                                       |
-| Discount display        | Reported in initial inspection; requires rechecking | Initial notes recorded a displayed price of ₹7,790, an MRP of ₹12,000, and savings of ₹4,210. Recheck the live product page before treating these figures as current.                                                              |
-| Price changes over time | Not verified                                        | Two independently recorded observations of the same product are required to establish price movement.                                                                                                                              |
-
-### Assessment
-
-The initial inspection reported that Croma displayed a product price, MRP, and discount, and that pricing fields were present in the category page source.
-
-However, the applicable Terms of Use do not yet establish permission for automated price collection. The relevant terms and robots.txt rules must be reviewed before implementation. Price movement has not been established through two observations.
+| Check             | Result                          | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Terms of Use      | Unclear                         | https://www.croma.com/terms-of-use — Section 7(d): “User shall not use the Website, services and/or materials therein in any manner which could damage, disable, overburden and/or impair the Website and/or any services therein and/or the network(s) connected to the Website and interfere with other Users use and enjoyment of the Website and/or services therein.” Section 7(e): “User shall not or shall not attempt to obtain any materials or information through any means not intentionally made available to User through the Website.” These sections do not explicitly mention automated price tracking. Sections 7(d)–7(e) reviewed in full on 12 October 2026. |
+| robots.txt        | Allowed by listed rules         | https://www.croma.com/robots.txt — In the `User-agent: *` block, `Allow: /*` matches `/home-appliances/washing-machines-dryers/c/48`; no listed `Disallow` matches this path. This is not, by itself, permission to scrape.                                                                                                                                                                                                                 |
+| Price in raw HTML | Found; one mismatch and one price not found | 10 kg product https://www.croma.com/croma-10-kg-5-star-fully-automatic-top-load-washing-machine-aqua-reserve-neel-black-/p/322406 — `offers.price` and `pdpPriceReducer.pdpPriceData.sellingPrice.value` = `19990.00`; `pdpPriceReducer.pdpPriceData.mrp.value` = `36000.00`, matching the displayed ₹19,990.00 and ₹36,000.00. 6.5 kg product https://www.croma.com/croma-6-5-kg-5-star-semi-automatic-washing-machine-with-built-in-soak-function-burgundy-/p/307023 — source `sellingPrice.value` = `7990.00`, while the page displayed ₹8,390.00; `mrp.value` = `12000.00`, matching ₹12,000.00. 7.5 kg product https://www.croma.com/croma-7-5-kg-5-star-fully-automatic-top-load-washing-machine-fuzzy-control-grey-/p/243594 — browser Find returned 0/0 for both `14390.00` and `14390`; the displayed selling-price value was not found in page source. |
+| Price changes     | No change in short repeat checks | The three Croma products showed the same displayed prices on repeat checks 13, 63, and 61 minutes after the initial observations. This does not establish whether prices move over several hours or days.                                                                                                                                                                                                                   |
 
 ## 2. Reliance Digital
 
-* **Shop:** https://www.reliancedigital.in/
-* **Category evaluated:** Washing Machines
-* **Example product URL from the initial inspection:** https://www.reliancedigital.in/product/oppo-k14x-5g-64-gb-4-gb-ram-prism-violet-mobile-phone-mnd10i-9996248
+**Shop:** https://www.reliancedigital.in/
+**Category URL:** https://www.reliancedigital.in/sections/washing-machines
 
-**Category consistency:** The OPPO product URL above is for a mobile phone, not a washing machine. The washing-machine products listed in Section 3 are used for the price comparison.
-
-### Evaluation
-
-| Check                   | Result                                              | Evidence                                                                                                                                                                                                                                              |
-| ----------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| robots.txt              | Requires rechecking                                 | https://www.reliancedigital.in/robots.txt — initial notes recorded `User-agent: *`, an empty `Disallow:` directive, and restrictions for some paths and query URLs. Recheck the rules applicable to the intended washing-machine category URL.        |
-| Terms of Use            | Unclear; manual verification required               | Open the official website's footer and select Policies → Terms of Use. Check the exact terms relating to automated access, crawling, scraping, bots, data mining, and extraction. Record the relevant section numbers and wording after verification. |
-| Price in raw HTML       | Reported in initial inspection; requires rechecking | Initial notes recorded structured pricing data on the OPPO product page, including `"priceCurrency": "INR"` and `"price": "17499"`. Confirm the price fields on a current washing-machine product page before relying on them.                        |
-| Discount display        | Reported in initial inspection; requires rechecking | Initial notes recorded a deal price of ₹17,499, an offer price of ₹18,999, an MRP of ₹31,999, and a displayed discount of 45% for the OPPO product. These historical notes do not establish current washing-machine prices.                           |
-| Price changes over time | Not verified                                        | Two independently recorded observations of the same product are required to establish price movement.                                                                                                                                                 |
-
-### Assessment
-
-The initial inspection reported structured pricing information on a Reliance Digital product page. Multiple price values were recorded, so the correct selling-price field must be identified before implementing a tracker.
-
-The applicable Terms of Use and robots.txt rules still need to be checked. The current evidence does not establish price movement over time or permission for automated price collection.
+| Check             | Result                                        | Evidence                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Terms of Use      | Forbidden                                     | https://www.reliancedigital.in/c/terms-of-use — Section 12: “Introduce any Trojans, viruses, any other malicious software, any bots or scrape Reliance Digital Platform for any information;” This prohibits using bots or scraping the platform for information. Reviewed 12 October 2026.                                                                                                                                                      |
+| robots.txt        | Allowed by listed rules                      | https://www.reliancedigital.in/robots.txt — In the `User-agent: *` block, the general `Disallow:` is empty and no listed path-specific rule matches `/sections/washing-machines`; `Disallow: /*?*` blocks query-string URLs. This is not, by itself, permission to scrape. Reviewed 12 October 2026. |
+| Price in raw HTML | Yes                                           | Lloyd washing machine https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo — source `offers.price` = `13590`, matching displayed Deal Price ₹13,590; `selling.min` and `selling.max` = `15490`, matching displayed Offer Price ₹15,490. |
+| Price changes     | Not assessed                                  | Reliance Digital is ruled out for automated tracking by section 12 of its Terms of Use; no second product-price visit was made.                                                                                                                                                                                                                          |
 
 ## 3. Price Observations
 
-The following prices and promotional details were recorded in the initial inspection notes on 9 October 2026. The exact observation time has not been confirmed here. No scraping scripts were used to collect these observations.
+Manual browser observations; bank, exchange and EMI offers are recorded separately from the displayed selling price.
 
-Three washing-machine products were selected from each shop. The second observation has not yet been recorded, so price movement cannot currently be established.
+| Shop             | Product URL                                                                                                                                    | Visit | Date and time                | Selling price           | MRP                   | Offer, badge or "was" price |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------- | ----------------------- | --------------------- | --------------------------- |
+| Croma | https://www.croma.com/croma-6-5-kg-5-star-semi-automatic-washing-machine-with-built-in-soak-function-burgundy-/p/307023 | 1 | 12 October 2026, 12:52 PM | ₹8,390.00 | ₹12,000.00 | Save ₹3,610 (30.08% off); exchange up to ₹1,700 off; ₹395/mo EMI |
+| Croma | https://www.croma.com/croma-6-5-kg-5-star-semi-automatic-washing-machine-with-built-in-soak-function-burgundy-/p/307023 | 2 (short repeat check) | 12 October 2026, 1:05 PM | ₹8,390.00 | ₹12,000.00 | Save ₹3,610 (30.08% off); exchange up to ₹1,700 off; ₹395/mo EMI |
+| Croma | https://www.croma.com/croma-10-kg-5-star-fully-automatic-top-load-washing-machine-aqua-reserve-neel-black-/p/322406 | 1 | 12 October 2026, 12:03 PM | ₹19,990.00 | ₹36,000.00 | Save ₹16,010 (44.47% off); extra ₹1,000 bank offer; exchange benefit up to ₹1,700; no-cost EMI |
+| Croma | https://www.croma.com/croma-10-kg-5-star-fully-automatic-top-load-washing-machine-aqua-reserve-neel-black-/p/322406 | 2 (short repeat check) | 12 October 2026, 1:06 PM | ₹19,990.00 | ₹36,000.00 | Save ₹16,010 (44.47% off); extra ₹1,000 bank offer; exchange benefit up to ₹1,700; no-cost EMI |
+| Croma | https://www.croma.com/croma-7-5-kg-5-star-fully-automatic-top-load-washing-machine-fuzzy-control-grey-/p/243594 | 1 | 12 October 2026, 12:06 PM | ₹14,390.00 | ₹24,000.00 | Save ₹9,610 (40.04% off); exchange up to ₹1,700 off; ₹677/mo EMI |
+| Croma | https://www.croma.com/croma-7-5-kg-5-star-fully-automatic-top-load-washing-machine-fuzzy-control-grey-/p/243594 | 2 (short repeat check) | 12 October 2026, 1:07 PM | ₹14,390.00 | ₹24,000.00 | Save ₹9,610 (40.04% off); exchange up to ₹1,700 off; ₹677/mo EMI |
+| Reliance Digital | https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo | 1 | 12 October 2026, 12:24 PM | ₹13,590.00 (Deal Price) | ₹19,990.00 | LIMITED_TIME_OFFER; Offer Price ₹15,490.00 (crossed out); ₹12,571.00 with all applicable offers |
 
-### First Observation
+**What changed:** No displayed price change in the Croma 6.5 kg product between 12:52 PM and 1:05 PM (13 minutes), the 10 kg product between 12:03 PM and 1:06 PM (63 minutes), or the 7.5 kg product between 12:06 PM and 1:07 PM (61 minutes). These are short repeat checks, not the several-hours-later comparison requested. The Lloyd observation was made before Reliance Digital’s section 12 restriction was reviewed.
 
-| Shop             | Product URL                                                                                                                                    | Observation Date | Displayed Price |     MRP | Displayed Discount or Offer                                          |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | --------------: | ------: | -------------------------------------------------------------------- |
-| Croma            | https://www.croma.com/croma-6-5-kg-5-star-semi-automatic-washing-machine-with-built-in-soak-function-burgundy-/p/307023                        | 9 Oct 2026       |          ₹7,790 | ₹12,000 | Save ₹4,210; 35.08% off; extra ₹800 discount                         |
-| Croma            | https://www.croma.com/croma-10-kg-5-star-fully-automatic-top-load-washing-machine-aqua-reserve-neel-black-/p/322406                            | 9 Oct 2026       |         ₹19,990 | ₹36,000 | Save ₹16,010; 44.47% off; extra ₹1,000 bank offer; exchange benefits |
-| Croma            | https://www.croma.com/croma-7-5-kg-5-star-fully-automatic-top-load-washing-machine-fuzzy-control-grey-/p/243594                                | 9 Oct 2026       |         ₹13,990 | ₹24,000 | Save ₹10,010; 41.71% off; extra discount and exchange benefits       |
-| Reliance Digital | https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo                        | 9 Oct 2026       |         ₹13,590 | ₹19,990 | 32% off; offer price ₹15,490; ₹12,571 with applicable offers         |
-| Reliance Digital | https://www.reliancedigital.in/product/bosch-9-kg-fully-automatic-front-loading-washing-machine-black-grey-wga244ztin-ly4e6h-7724948           | 9 Oct 2026       |         ₹43,990 | ₹58,990 | Deal price ₹43,990; offer price ₹47,490; 25% off                     |
-| Reliance Digital | https://www.reliancedigital.in/product/ifb-8-kg-fully-automatic-front-loading-washing-machine-metallic-silver-senator-msn-8012k-lzj0an-8112379 | 9 Oct 2026       |         ₹38,890 | ₹47,080 | Deal price ₹38,890; offer price ₹39,890; 17% off                     |
+**What this tells us:** The recorded pages show discounts against MRP. Prices did not change during the short repeat-check intervals; these observations do not establish longer-term price movement. No “deal ends” badge was visible in the supplied Croma screenshots.
 
-These figures are recorded observations, not independently reverified current prices. Recheck the live product pages before relying on them.
+## 4. Recommendation — 12 October 2026
 
-### Second Observation
+**Pick:** Croma is the only candidate of the two not expressly ruled out by the reviewed terms. This is not approval to begin automated collection.
 
-A second observation is required for each of the six selected products.
+**Category URL:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
 
-| Shop             | Product                                                        | Second Observation Date | Price        | MRP          | Result  |
-| ---------------- | -------------------------------------------------------------- | ----------------------- | ------------ | ------------ | ------- |
-| Croma            | 6.5 kg Semi-Automatic Washing Machine, Burgundy                | Pending                 | Not recorded | Not recorded | Pending |
-| Croma            | 10 kg Fully Automatic Top-Load Washing Machine, Aqua Reserve   | Pending                 | Not recorded | Not recorded | Pending |
-| Croma            | 7.5 kg Fully Automatic Top-Load Washing Machine, Fuzzy Control | Pending                 | Not recorded | Not recorded | Pending |
-| Reliance Digital | Lloyd 8 kg Semi-Automatic Washing Machine                      | Pending                 | Not recorded | Not recorded | Pending |
-| Reliance Digital | Bosch 9 kg Fully Automatic Front-Load Washing Machine          | Pending                 | Not recorded | Not recorded | Pending |
-| Reliance Digital | IFB 8 kg Fully Automatic Front-Load Washing Machine            | Pending                 | Not recorded | Not recorded | Pending |
+**Why Croma:**
 
-### What Changed?
+1. **Terms and robots.txt:** Croma sections 7(d)–7(e) do not explicitly mention automated price tracking; its `User-agent: *` robots rules include `Allow: /*` and no listed `Disallow` matching the selected category path. This is not legal permission to scrape. Reliance Digital section 12 prohibits bots or scraping.
+2. **Price fields:** The Croma 10 kg product’s source prices match the displayed page; the 6.5 kg source selling price does not (₹7,990 in source versus ₹8,390 displayed).
+3. **Price movement:** No movement appeared during the short repeat checks; longer-term movement remains unknown.
 
-Price movement cannot yet be established because only one observation is recorded for each selected product.
+**Main risk:** Croma’s terms are unclear about automated collection, and one product’s source selling price differs from its displayed price. Resolve the terms concern and validate price consistency before enabling automated collection.
 
-The difference between an MRP and a displayed selling price does not, by itself, prove that the product's price changed over time. Promotional badges, bank discounts, and exchange offers do not independently establish a historical price reduction.
+**Why not Reliance Digital:** Section 12 of its Terms of Use says not to use “any bots or scrape Reliance Digital Platform for any information.”
 
-### What This Tells Us
-
-The first observation provides an initial record of displayed prices and promotional offers for three products from each shop.
-
-However, the available evidence is insufficient to determine whether either shop changes prices over time. The actual selling price must also be distinguished from offer prices, bank discounts, exchange benefits, and other conditional offers.
-
-### Next Verification Steps
-
-1. Revisit the same six product pages and record the actual date and time of the second observation.
-2. Record the displayed selling price and MRP exactly as shown.
-3. Record promotional badges and conditional offers separately from the selling price.
-4. Compare each product's first and second observations.
-5. If a product's displayed selling price is unchanged, record "No price movement observed."
-6. If a price changes, record both observations and calculate the difference.
-7. If any price or offer cannot be verified, leave it marked as pending rather than inventing a value or timestamp.
-
-**Observation status:** Initial prices recorded; second observations pending. No verified price movement has been established.
-
-## 4. Recommendation (9 October 2026)
-
-**Provisional recommendation: Croma, pending verification.**
-
-**Category URL to evaluate:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
-
-### Why Croma Is the Provisional Candidate
-
-1. **Terms of Use and robots.txt**
-
-   The initial review recorded wording from section 7(d) of Croma's Terms of Use concerning website use that could damage, disable, overburden, or impair the website or interfere with other users.
-
-   The exact wording of section 7(e) still needs verification. These clauses do not establish whether the proposed automated price tracking is permitted. The current Terms of Use and robots.txt rules must be checked before implementation. robots.txt alone does not grant permission to scrape.
-
-2. **Price availability in HTML**
-
-   The initial inspection notes report that `formattedValue` and `mrp` appeared in Croma's category-page source. These fields must be verified again against the selected category URL before implementation.
-
-   Confirm the actual product title, product URL, selling price, and MRP in the current page source. Do not assume that the field names or structure remain unchanged.
-
-3. **Price changes**
-
-   Section 3 does not yet contain complete observations from two visits for every product. Therefore, price movement has not been established, and displayed discount claims have not been independently verified.
-
-4. **Comparison with Reliance Digital**
-
-   The initial notes report multiple price values on a Reliance Digital product page. The correct selling-price field has not yet been verified against the current page source.
-
-   Reliance Digital's applicable Terms of Use and robots.txt rules also need to be checked before it can be considered a suitable alternative.
-
-### Main Risk
-
-The main risk is that the applicable Terms of Use or robots.txt rules may not permit the proposed automated collection.
-
-Do not begin automated collection until the applicable restrictions have been reviewed. If Croma is ruled out, evaluate Reliance Digital only after checking its terms, robots.txt rules, category page, and price fields. Follow the fallback strategy in `docs/ARCHITECTURE.md`, section 8.
-
-### Why Not Reliance Digital Yet?
-
-The current evidence does not establish that Reliance Digital is a better choice. Its applicable Terms of Use, robots.txt rules, and actual selling-price field remain to be verified.
-
-Section 3 also lacks complete second observations, so neither shop has demonstrated price movement through the recorded evidence.
-
-### What Would Change in Our Code if Croma Is Approved?
-
-* **`parse_listing`:** Update the listing parser to match the verified product-card structure in Croma's category-page HTML. Extract the product title, product URL, displayed selling price, and MRP using fields or selectors confirmed against the actual response.
-* **`SOURCE_KEY` and `SCRAPE_TARGET_URL`:** Use the project's chosen Croma source identifier for `SOURCE_KEY`. Set `SCRAPE_TARGET_URL` to the verified category URL: `https://www.croma.com/home-appliances/washing-machines-dryers/c/48`.
-* **Currency:** Use INR if the inspected listing confirms that prices are displayed in Indian rupees.
-* **Price field:** Store the actual displayed selling price as the tracked price. Keep MRP and displayed discount as separate fields if supported by the project architecture. Verify the exact field names and meanings before implementing the parser.
-
-### Evidence Required Before Final Approval
-
-* Verify the current Terms of Use for both shops and record exact relevant section numbers and quotations.
-* Inspect the current robots.txt rules for both proposed category paths.
-* Confirm that Croma's selected category URL is stable and suitable for listing products.
-* Verify price fields in the actual HTML response.
-* Complete two observations for all six products in Section 3, recording the actual dates and times.
-* Confirm that the chosen shop satisfies the project's scraping rules before implementing automated collection.
-
-**Decision status:** Croma remains a provisional candidate. The evidence is not yet sufficient for a final recommendation.
+**Implementation changes if Croma is approved:** Set `SOURCE_KEY` to `croma` (currently `demo-shop`) and `SCRAPE_TARGET_URL` to the category URL above. `parse_listing` selectors still need verification against the category-card HTML, which was not inspected. Store the displayed selling price, not bank, exchange, EMI, or conditional-offer amounts; validate source/display consistency because one product’s source selling price differed from its displayed price.

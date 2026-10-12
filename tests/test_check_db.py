@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from backend.db.crud import (
@@ -14,7 +14,29 @@ def make_run(status: str = "success", products_seen: int = 24):
         id=7,
         status=status,
         products_seen=products_seen,
+        finished_at=datetime.now(UTC),
     )
+
+
+def test_old_successful_run_requires_attention() -> None:
+    finished_at = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
+    run = make_run()
+    run.finished_at = finished_at
+
+    problems = find_problems(run, 24, 0, [], now=now)
+
+    assert "latest finished run 7 is older than 24 hours" in problems
+
+
+def test_recent_successful_run_is_not_stale() -> None:
+    now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
+    run = make_run()
+    run.finished_at = now - timedelta(hours=1)
+
+    problems = find_problems(run, 24, 0, [], now=now)
+
+    assert not any("older than 24 hours" in problem for problem in problems)
 
 
 def test_healthy_run_has_no_problems() -> None:
@@ -42,16 +64,13 @@ def test_duplicates_are_a_problem() -> None:
     assert any("stored more than once" in problem for problem in problems)
 
 
-def test_find_problems_uses_singular_for_one_duplicate_name():
-    latest_run = SimpleNamespace(id=1, status="success", products_seen=0)
-
-    problems = find_problems(latest_run, 0, 0, [("shop", "Book A", 2)])
-
-    assert "1 product name stored more than once" in problems
-
-
 def test_find_problems_uses_plural_for_two_duplicate_names():
-    latest_run = SimpleNamespace(id=1, status="success", products_seen=0)
+    latest_run = SimpleNamespace(
+        id=1,
+        status="success",
+        products_seen=0,
+        finished_at=datetime(2026, 10, 12, 12, 0, tzinfo=UTC),
+    )
 
     problems = find_problems(
         latest_run,

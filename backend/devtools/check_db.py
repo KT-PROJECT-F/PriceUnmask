@@ -1,5 +1,7 @@
 """Print a read-only health report for the PriceUnmask database."""
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -7,15 +9,29 @@ from backend.db import crud
 from backend.db.database import SessionLocal
 from backend.db.models import ScrapeRun
 
+STALE_AFTER = timedelta(hours=24)
+
 
 def find_problems(
     latest_run: ScrapeRun,
     snapshots_in_run: int,
     missing_count: int,
     duplicates: list[tuple[str, str, int]],
+    now: datetime | None = None,
 ) -> list[str]:
     """Return one sentence per problem. An empty list means healthy."""
     problems: list[str] = []
+
+    finished_at = latest_run.finished_at
+
+    if finished_at is None:
+        problems.append(f"latest finished run {latest_run.id} has no finished_at timestamp")
+    elif finished_at.tzinfo is None or finished_at.utcoffset() is None:
+        problems.append(f"latest finished run {latest_run.id} has a naive finished_at timestamp")
+    else:
+        current_time = now or datetime.now(UTC)
+        if current_time - finished_at > STALE_AFTER:
+            problems.append(f"latest finished run {latest_run.id} is older than 24 hours")
 
     if latest_run.status != "success":
         problems.append(f"latest finished run {latest_run.id} has status {latest_run.status}")

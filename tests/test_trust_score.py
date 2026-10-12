@@ -420,7 +420,7 @@ def test_compute_trust_score_classifies_seeded_database_history(
             reasons = " ".join(score.reasons).casefold()
             assert "rose sharply" in reasons
             assert "advertised discount" in reasons
-            assert "volatility" in reasons
+            assert "varied substantially" in reasons
 
     assert actual == expected
 

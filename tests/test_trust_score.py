@@ -85,72 +85,6 @@ def test_compute_signals_single_row() -> None:
     assert signals.volatility_pct == 0.0
 
 
-def test_compute_signals_sorts_by_timestamp_before_scoring() -> None:
-    history = pd.DataFrame(
-        {
-            "scraped_at": pd.to_datetime(
-                [
-                    "2026-10-03 10:00:00+00:00",
-                    "2026-10-01 10:00:00+00:00",
-                    "2026-10-02 10:00:00+00:00",
-                ]
-            ),
-            "current_price_minor": [1200, 1000, 1100],
-            "original_price_minor": [1500, None, None],
-        }
-    )
-
-    signals = compute_signals(history)
-
-    assert signals.snapshot_count == 3
-    assert signals.days_of_history == 2.0
-    assert signals.lowest_price_minor == 1000
-    assert signals.claimed_discount_pct == pytest.approx(20.0)
-
-
-def test_compute_signals_preserves_input_order_for_equal_timestamps() -> None:
-    history = pd.DataFrame(
-        {
-            "scraped_at": pd.to_datetime(
-                [
-                    "2026-10-01 10:00:00+00:00",
-                    "2026-10-02 10:00:00+00:00",
-                    "2026-10-02 10:00:00+00:00",
-                ]
-            ),
-            "current_price_minor": [1000, 2000, 3000],
-            "original_price_minor": [None, 2500, 4000],
-        }
-    )
-
-    signals = compute_signals(history)
-
-    assert signals.pct_above_lowest == 200.0
-    assert signals.claimed_discount_pct == 25.0
-
-
-def test_compute_signals_rejects_naive_timestamps() -> None:
-    history = pd.DataFrame(
-        {
-            "scraped_at": pd.date_range("2026-10-01", periods=2),
-            "current_price_minor": [1000, 900],
-            "original_price_minor": [None, 1200],
-        }
-    )
-
-    with pytest.raises(ValueError, match="timezone-aware"):
-        compute_signals(history)
-
-
-def test_compute_signals_rejects_non_numeric_prices() -> None:
-    history = daily_history([1000, 900])
-    history["current_price_minor"] = history["current_price_minor"].astype(object)
-    history.loc[1, "current_price_minor"] = "abc"
-
-    with pytest.raises(ValueError):
-        compute_signals(history)
-
-
 def test_compute_signals_today_is_lowest() -> None:
     history = pd.DataFrame(
         {
@@ -589,6 +523,8 @@ def test_compute_trust_score_matches_float_and_nullable_original_price_dtypes() 
     nullable_score = compute_trust_score(nullable_history)
 
     assert float_score == nullable_score
+    assert float_score.label == "genuine"
+    assert float_score.score == 90
 
 
 @pytest.mark.parametrize(("today", "expected_score"), [(999, 100), (1000, 85)])

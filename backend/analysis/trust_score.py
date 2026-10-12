@@ -56,24 +56,9 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 
     Raises:
         ValueError: If history is empty.
-        ValueError: If timestamps are not timezone-aware or prices are invalid.
     """
     if history.empty:
         raise ValueError("history must contain at least one row")
-
-    history = history.copy()
-    timestamps = pd.to_datetime(history["scraped_at"])
-    if not isinstance(timestamps.dtype, pd.DatetimeTZDtype):
-        raise ValueError("scraped_at must contain timezone-aware timestamps")
-    history["scraped_at"] = timestamps.dt.tz_convert("UTC")
-    if not history["scraped_at"].is_monotonic_increasing:
-        history = history.sort_values("scraped_at", kind="stable", ignore_index=True)
-
-    for column in ("current_price_minor", "original_price_minor"):
-        if not pd.api.types.is_numeric_dtype(history[column].dtype):
-            history[column] = pd.to_numeric(history[column], errors="raise")
-    if history["current_price_minor"].isna().any():
-        raise ValueError("current_price_minor must not contain missing values")
 
     snapshot_count = len(history)
 

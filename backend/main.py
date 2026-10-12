@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Path as FastAPIPath
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,8 @@ from backend.db.database import get_session, init_db
 from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut, TrustScoreOut
 
 MAX_HISTORY_DAYS = 3650  # ten years; larger values would overflow datetime
-
+MAX_SEARCH_LENGTH = 200
+MAX_PRODUCT_ID = 2**63 - 1
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
@@ -41,7 +43,11 @@ def health() -> dict[str, str]:
 
 @app.get("/api/products", response_model=list[ProductOut])
 def list_products(
-    search: str | None = Query(default=None),
+    search: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=MAX_SEARCH_LENGTH,
+    ),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> list[ProductOut]:
     # Direct lookup by ID can return inactive products.
@@ -53,7 +59,10 @@ def list_products(
 
 @app.get("/api/products/{product_id}", response_model=ProductOut)
 def get_product(
-    product_id: int,
+    product_id: int = FastAPIPath(
+        ge=1,
+        le=MAX_PRODUCT_ID,
+    ),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> ProductOut:
     product = crud.get_product(session, product_id)
@@ -69,10 +78,14 @@ def get_product(
     response_model=HistoryOut,
 )
 def get_product_history(
-    product_id: int,
+    product_id: int = FastAPIPath(
+        ge=1,
+        le=MAX_PRODUCT_ID,
+    ),
     days: int | None = Query(default=None, ge=1, le=MAX_HISTORY_DAYS),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> HistoryOut:
+
     product = crud.get_product(session, product_id)
 
     if product is None:
@@ -92,7 +105,10 @@ def get_product_history(
     response_model=TrustScoreOut,
 )
 def get_product_trust_score(
-    product_id: int,
+    product_id: int = FastAPIPath(
+        ge=1,
+        le=MAX_PRODUCT_ID,
+    ),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> TrustScoreOut:
     product = crud.get_product(session, product_id)

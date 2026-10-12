@@ -98,6 +98,24 @@ def test_list_products_search_no_match(client):
     assert response.json() == []
 
 
+def test_list_products_search_empty(client):
+    response = client.get(
+        "/api/products",
+        params={"search": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_products_search_too_long(client):
+    response = client.get(
+        "/api/products",
+        params={"search": "a" * 201},
+    )
+
+    assert response.status_code == 422
+
+
 def test_get_product(client):
     products_response = client.get("/api/products")
 
@@ -121,11 +139,48 @@ def test_get_missing_product(client):
     response = client.get("/api/products/999999")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Product not found"
+    assert response.json() == {"detail": "Product not found"}
 
 
 def test_get_product_bad_id(client):
     response = client.get("/api/products/abc")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "/api/products/99999999999999999999",
+        "/api/products/99999999999999999999/history",
+        "/api/products/99999999999999999999/trust-score",
+        "/api/products/9223372036854775808",
+    ],
+)
+def test_product_endpoints_reject_huge_ids(client, endpoint):
+    response = client.get(endpoint)
+    assert response.status_code == 422
+
+
+def test_get_product_largest_valid_id_is_404(client):
+    response = client.get("/api/products/9223372036854775807")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Product not found"}
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "/api/products/0",
+        "/api/products/-1",
+        "/api/products/0/history",
+        "/api/products/-1/history",
+        "/api/products/0/trust-score",
+        "/api/products/-1/trust-score",
+    ],
+)
+def test_product_endpoints_reject_non_positive_ids(client, endpoint):
+    response = client.get(endpoint)
 
     assert response.status_code == 422
 
@@ -169,7 +224,7 @@ def test_get_product_history_missing_product(client):
     response = client.get("/api/products/999999/history")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Product not found"
+    assert response.json() == {"detail": "Product not found"}
 
 
 def test_get_product_history_without_snapshots_is_empty_not_404(client):
@@ -190,13 +245,24 @@ def test_get_product_history_without_snapshots_is_empty_not_404(client):
     assert response.json() == {"product_id": product_id, "points": []}
 
 
-@pytest.mark.parametrize("days", [0, -5, 3651, 1_000_000])
+@pytest.mark.parametrize("days", [0, -1, -5, 3651, 100000, 1_000_000])
 def test_get_product_history_invalid_days(client, days):
     product_id = client.get("/api/products").json()[0]["id"]
 
     response = client.get(
         f"/api/products/{product_id}/history",
         params={"days": days},
+    )
+
+    assert response.status_code == 422
+
+
+def test_get_product_history_non_numeric_days(client):
+    product_id = client.get("/api/products").json()[0]["id"]
+
+    response = client.get(
+        f"/api/products/{product_id}/history",
+        params={"days": "abc"},
     )
 
     assert response.status_code == 422
@@ -315,7 +381,7 @@ def test_get_product_trust_score_missing_product(client):
     response = client.get("/api/products/999999/trust-score")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Product not found"
+    assert response.json() == {"detail": "Product not found"}
 
 
 def test_get_product_trust_score_anomaly_note_is_null(client):

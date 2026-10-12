@@ -388,6 +388,37 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(latestPrice, lowestPrice);
 
+  if (!trustScore) {
+    const scoreHeading = document.createElement("h3");
+    scoreHeading.textContent = "Trust Score";
+
+    const unavailableMessage = document.createElement("p");
+    unavailableMessage.className = "trust-score-message";
+    unavailableMessage.setAttribute("role", "status");
+    unavailableMessage.textContent =
+      "Trust Score is temporarily unavailable.";
+
+    elements.push(scoreHeading, unavailableMessage);
+
+    const chartContainer = document.createElement("div");
+    chartContainer.className = "price-chart-container";
+
+    const chartHeading = document.createElement("h3");
+    chartHeading.textContent = "Price History";
+
+    const chartCanvas = document.createElement("canvas");
+    chartCanvas.id = "price-history-chart";
+    chartCanvas.setAttribute(
+      "aria-label",
+      `Price history chart for ${product.name}`
+    );
+    chartCanvas.setAttribute("role", "img");
+
+    chartContainer.append(chartHeading, chartCanvas);
+    elements.push(chartContainer);
+
+    return elements;
+  }
   // Display the Trust Score and its label.
   const scoreHeading = document.createElement("h3");
   scoreHeading.textContent = "Trust Score";
@@ -515,7 +546,13 @@ async function showProductDetail(product, showGrid) {
   app.append(detail);
 
   try {
-    const trustScore = await loadTrustScore(product.id);
+    let trustScore = null;
+
+    try {
+      trustScore = await loadTrustScore(product.id);
+    } catch (error) {
+      console.error("Error loading trust score:", error);
+    }
 
     // Avoid rendering if this detail view has already been removed.
     if (!detail.isConnected) {

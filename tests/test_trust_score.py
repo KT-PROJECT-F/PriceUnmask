@@ -482,7 +482,7 @@ def test_compute_trust_score_labels_exact_boundaries(
     expected_label: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    #  Patch the penalty to test exact label boundaries that current penalty combinations cannot produce.
+    # Patch the penalty to reach label boundaries current combinations cannot produce.
     monkeypatch.setattr(
         "backend.analysis.trust_score.PRICE_ABOVE_LOWEST_PENALTY",
         100 - expected_score,

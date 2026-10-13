@@ -10,7 +10,7 @@ from backend.analysis.trust_score import (
 )
 from backend.converters import snapshots_to_dataframe
 from backend.db.crud import get_history, list_products
-from backend.db.models import Product
+from backend.db.models import PriceSnapshot, Product
 from backend.devtools.seed_fake_data import DAYS, SNAPSHOTS_PER_DAY, _series, seed
 
 
@@ -370,21 +370,22 @@ def seeded_history(kind: str) -> pd.DataFrame:
 
 
 @pytest.mark.parametrize(
-    ("kind", "expected_label"),
+    ("kind", "expected_label", "expected_score"),
     [
-        ("stable", "genuine"),
-        ("real_drop", "genuine"),
-        ("fake_discount", "likely_inflated"),
+        ("stable", "genuine", 100),
+        ("real_drop", "genuine", 100),
+        ("fake_discount", "likely_inflated", 20),
     ],
 )
 def test_compute_trust_score_classifies_seeded_patterns(
     kind: str,
     expected_label: str,
+    expected_score: int,
 ) -> None:
     score = compute_trust_score(seeded_history(kind))
 
     assert score.label == expected_label
-    assert score.score is not None
+    assert score.score == expected_score
 
 
 def test_compute_trust_score_classifies_seeded_database_history(
@@ -393,14 +394,14 @@ def test_compute_trust_score_classifies_seeded_database_history(
     seed(session)
 
     expected = {
-        "Demo Bluetooth Speaker (stable)": "genuine",
-        "Demo Running Shoes (real drop)": "genuine",
-        "Demo Air Fryer (fake discount)": "likely_inflated",
+        "Demo Bluetooth Speaker (stable)": ("genuine", 100),
+        "Demo Running Shoes (real drop)": ("genuine", 100),
+        "Demo Air Fryer (fake discount)": ("likely_inflated", 20),
     }
     products = list_products(session)
     assert {product.name for product in products} == set(expected)
 
-    actual: dict[str, str] = {}
+    actual: dict[str, tuple[str, int | None]] = {}
     for product in products:
         snapshots = get_history(session, product.id)
         assert len(snapshots) == DAYS * SNAPSHOTS_PER_DAY
@@ -413,13 +414,13 @@ def test_compute_trust_score_classifies_seeded_database_history(
 
         score = compute_trust_score(history)
         assert score.reasons
-        actual[product.name] = score.label
+        actual[product.name] = (score.label, score.score)
 
         if product.name == "Demo Air Fryer (fake discount)":
             reasons = " ".join(score.reasons).casefold()
             assert "rose sharply" in reasons
             assert "advertised discount" in reasons
-            assert "volatility" in reasons
+            assert "varied substantially" in reasons
 
     assert actual == expected
 
@@ -433,6 +434,169 @@ def test_compute_trust_score_requires_at_least_six_snapshots() -> None:
     assert score.reasons
     assert "5 price snapshots" in score.reasons[0]
     assert "at least 6" in score.reasons[0]
+
+
+@pytest.mark.parametrize(
+    ("snapshot_count", "expected_label"),
+    [(5, "insufficient_data"), (6, "genuine")],
+)
+def test_compute_trust_score_snapshot_count_boundary(
+    snapshot_count: int,
+    expected_label: str,
+) -> None:
+    score = compute_trust_score(
+        pd.DataFrame(
+            {
+                "scraped_at": pd.date_range(
+                    "2026-10-01",
+                    periods=snapshot_count,
+                    tz="UTC",
+                ),
+                "current_price_minor": [1000] * snapshot_count,
+                "original_price_minor": [None] * snapshot_count,
+            }
+        )
+    )
+
+    assert score.label == expected_label
+    if snapshot_count == 5:
+        assert score.score is None
+        assert score.signals is None
+    else:
+        assert score.score == 100
+        assert score.signals is not None
+
+
+@pytest.mark.parametrize(
+    ("expected_score", "expected_label"),
+    [
+        (39, "likely_inflated"),
+        (40, "uncertain"),
+        (69, "uncertain"),
+        (70, "genuine"),
+    ],
+)
+def test_compute_trust_score_labels_exact_boundaries(
+    expected_score: int,
+    expected_label: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Patch the penalty to reach label boundaries current combinations cannot produce.
+    monkeypatch.setattr(
+        "backend.analysis.trust_score.PRICE_ABOVE_LOWEST_PENALTY",
+        100 - expected_score,
+    )
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
+            "current_price_minor": [1000] * 5 + [1300],
+            "original_price_minor": [None] * 6,
+        }
+    )
+
+    score = compute_trust_score(history)
+
+    assert score.score == expected_score
+    assert score.label == expected_label
+
+
+def test_compute_trust_score_without_original_prices_uses_history_signals() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
+            "current_price_minor": [1000, 1100, 900, 1050, 950, 900],
+            "original_price_minor": [None] * 6,
+        }
+    )
+
+    score = compute_trust_score(history)
+
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.claimed_discount_pct is None
+    assert score.signals.real_discount_vs_median_pct == 10.0
+    assert score.signals.volatility_pct > 0
+    assert score.reasons == ["The recorded prices show no strong signs of an inflated discount."]
+
+
+def test_compute_trust_score_same_price_every_day_is_genuine() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
+            "current_price_minor": [1000] * 6,
+            "original_price_minor": [None] * 6,
+        }
+    )
+
+    score = compute_trust_score(history)
+
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.volatility_pct == 0.0
+    assert score.reasons == ["The recorded prices show no strong signs of an inflated discount."]
+
+
+def test_compute_trust_score_converter_sorts_out_of_order_snapshots() -> None:
+    timestamps = pd.to_datetime(
+        [
+            "2026-10-04 00:00:00+00:00",
+            "2026-10-01 00:00:00+00:00",
+            "2026-10-06 00:00:00+00:00",
+            "2026-10-02 00:00:00+00:00",
+            "2026-10-05 00:00:00+00:00",
+            "2026-10-03 00:00:00+00:00",
+        ]
+    )
+    snapshots = [
+        PriceSnapshot(
+            scraped_at=timestamp.to_pydatetime(),
+            current_price_minor=1000,
+            original_price_minor=None,
+        )
+        for timestamp in timestamps
+    ]
+
+    history = snapshots_to_dataframe(snapshots)
+    score = compute_trust_score(history)
+
+    assert history["scraped_at"].is_monotonic_increasing
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.days_of_history == 5
+
+
+def test_compute_trust_score_accepts_duplicate_timestamps() -> None:
+    timestamps = pd.to_datetime(
+        [
+            "2026-10-01 00:00:00+00:00",
+            "2026-10-02 00:00:00+00:00",
+            "2026-10-03 00:00:00+00:00",
+            "2026-10-03 00:00:00+00:00",
+            "2026-10-04 00:00:00+00:00",
+            "2026-10-05 00:00:00+00:00",
+        ]
+    )
+    snapshots = [
+        PriceSnapshot(
+            scraped_at=timestamp.to_pydatetime(),
+            current_price_minor=1000,
+            original_price_minor=None,
+        )
+        for timestamp in timestamps
+    ]
+
+    history = snapshots_to_dataframe(snapshots)
+    score = compute_trust_score(history)
+
+    assert len(history) == 6
+    assert history["scraped_at"].duplicated().sum() == 1
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.days_of_history == 4
 
 
 @pytest.mark.parametrize("kind", ["stable", "real_drop", "fake_discount"])
@@ -457,9 +621,14 @@ def test_compute_trust_score_explains_seeded_fake_discount_warnings() -> None:
     assert score.label == "likely_inflated"
     assert score.score is not None
     assert score.score < 40
-    assert any("rose sharply" in reason for reason in score.reasons)
-    assert any("advertised discount" in reason for reason in score.reasons)
-    assert any("volatility" in reason for reason in score.reasons)
+    assert score.reasons == [
+        "The price rose sharply shortly before the current sale, which can make "
+        "the advertised discount misleading.",
+        "The advertised discount is 70.0 percentage points larger than the saving "
+        "against the product's earlier typical price.",
+        "Prices have varied substantially over time, so today's price may not "
+        "represent what shoppers usually pay.",
+    ]
 
 
 def daily_history(
@@ -473,6 +642,30 @@ def daily_history(
             "original_price_minor": originals if originals is not None else [None] * len(prices),
         }
     )
+
+
+def test_compute_trust_score_real_history_scores_70() -> None:
+    history = daily_history([800, 2000, 800, 2000, 800, 1000])
+
+    score = compute_trust_score(history)
+
+    assert score.score == 70
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.pct_above_lowest == 25.0
+    assert score.signals.volatility_pct >= 30.0
+    assert len(score.reasons) == 2
+
+
+def test_compute_trust_score_sorts_unsorted_dataframe_rows() -> None:
+    history = daily_history([1000] * 6).iloc[::-1]
+
+    score = compute_trust_score(history)
+
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.days_of_history == 5
 
 
 def test_compute_trust_score_seeded_fake_discount_is_exactly_20() -> None:
@@ -507,7 +700,13 @@ def test_compute_trust_score_discount_gap_thresholds(
     # Earlier typical price 1000, today 900: the real saving is 10%.
     history = daily_history([1000] * 9 + [900], [None] * 9 + [original])
 
-    assert compute_trust_score(history).score == expected_score
+    score = compute_trust_score(history)
+    assert score.score == expected_score
+    if original == 1200:
+        assert score.reasons == [
+            "The advertised discount is 15.0 percentage points larger than the saving "
+            "against the product's earlier typical price."
+        ]
 
 
 def test_compute_trust_score_matches_float_and_nullable_original_price_dtypes() -> None:
@@ -533,33 +732,43 @@ def test_compute_trust_score_price_above_lowest_threshold(
 ) -> None:
     # Lowest price 800: 999 is below 25% above it, 1000 is exactly 25% above.
     history = daily_history([800] + [1000] * 8 + [today])
+    score = compute_trust_score(history)
 
-    assert compute_trust_score(history).score == expected_score
+    assert score.score == expected_score
+    if today == 1000:
+        assert score.reasons == [
+            "Today's price is 25.0% above the lowest price seen in this history."
+        ]
 
 
 def test_compute_trust_score_high_volatility_costs_15_points() -> None:
     score = compute_trust_score(daily_history([1500, 500] * 5))
 
     assert score.score == 85
-    assert any("volatility" in reason for reason in score.reasons)
+    assert score.reasons == [
+        "Prices have varied substantially over time, so today's price may not "
+        "represent what shoppers usually pay."
+    ]
 
 
 @pytest.mark.parametrize(
-    ("rows", "expected"),
+    ("rows", "expected_reason"),
     [
-        (0, "Only 0 price snapshots are"),
-        (1, "Only 1 price snapshot is"),
-        (5, "Only 5 price snapshots are"),
+        (0, "Only 0 price snapshots are available; at least 6 are needed for a trustworthy score."),
+        (1, "Only 1 price snapshot is available; at least 6 are needed for a trustworthy score."),
+        (5, "Only 5 price snapshots are available; at least 6 are needed for a trustworthy score."),
     ],
 )
 def test_compute_trust_score_insufficient_data_message_grammar(
     rows: int,
-    expected: str,
+    expected_reason: str,
 ) -> None:
     score = compute_trust_score(daily_history([1000] * rows))
 
+    assert score.score is None
     assert score.label == "insufficient_data"
-    assert expected in score.reasons[0]
+    assert score.signals is None
+    assert score.reasons == [expected_reason]
 
 
 def test_compute_trust_score_does_not_crash_on_a_zero_price() -> None:

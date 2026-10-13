@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -312,6 +313,35 @@ def test_list_scrape_runs_empty(client):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_start_scrape_run_returns_202(client):
+    with patch("backend.main.run_scrape_cycle_for_run") as mock_scrape:
+        response = client.post("/api/scrape/run")
+
+    assert response.status_code == 202
+
+    data = response.json()
+    assert data["id"] > 0
+    assert data["status"] == "running"
+    assert data["finished_at"] is None
+    assert data["products_seen"] == 0
+    assert data["error_message"] is None
+
+    mock_scrape.assert_called_once_with(data["id"])
+
+
+def test_start_scrape_run_returns_409_when_run_is_running(client):
+    with TestingSessionLocal() as session:
+        session.add(ScrapeRun(status="running", products_seen=0))
+        session.commit()
+
+    with patch("backend.main.run_scrape_cycle_for_run") as mock_scrape:
+        response = client.post("/api/scrape/run")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A scrape run is already in progress"}
+    mock_scrape.assert_not_called()
 
 
 def test_list_scrape_runs_returns_at_most_20_newest_first(client):

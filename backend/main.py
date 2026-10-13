@@ -10,7 +10,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, status
 from fastapi import Path as FastAPIPath
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from backend import converters
 from backend.analysis.trust_score import compute_trust_score
 from backend.db import crud
 from backend.db.database import get_session, init_db
+from backend.scheduler.jobs import run_scrape_cycle_for_run
 from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut, TrustScoreOut
 
 MAX_HISTORY_DAYS = 3650  # ten years; larger values would overflow datetime
@@ -140,9 +141,30 @@ def get_scrape_runs(
     return list(runs)
 
 
+@app.post(
+    "/api/scrape/run",
+    response_model=ScrapeRunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def start_scrape_run(
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),  # noqa: B008
+) -> ScrapeRunOut:
+    if crud.has_running_scrape_run(session):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A scrape run is already in progress",
+        )
+
+    run = crud.start_scrape_run(session)
+    background_tasks.add_task(run_scrape_cycle_for_run, run.id)
+
+    return run
+
+
 # TODO(API track): add the endpoints listed in docs/ARCHITECTURE.md section 5:
 #   GET  /api/products/{product_id}/trust-score
-#   POST /api/scrape/run
+
 
 # Mount the dashboard LAST so it does not shadow /api routes.
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -209,6 +209,32 @@ def test_scrape_failure_finishes_run_as_failed(monkeypatch, calls, caplog):
     assert any(record.exc_info for record in caplog.records)
 
 
+def test_failed_cycle_does_not_prevent_next_cycle(monkeypatch, real_database):
+    attempts = iter(
+        [
+            RuntimeError("site down"),
+            [make_item("a")],
+        ]
+    )
+
+    def scrape_once_per_cycle(url):
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(jobs, "scrape", scrape_once_per_cycle)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        runs = list_scrape_runs(session)
+
+    assert [run.status for run in runs] == ["success", "failed"]
+    assert runs[1].error_message == "site down"
+
+
 @pytest.fixture
 def real_database(monkeypatch):
     engine = make_engine("sqlite:///:memory:")

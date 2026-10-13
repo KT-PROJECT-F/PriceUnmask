@@ -2,7 +2,6 @@ import pandas as pd
 import pytest
 from sqlalchemy.orm import Session
 
-from backend.analysis import trust_score as trust_score_module
 from backend.analysis.trust_score import (
     MIN_SNAPSHOTS,
     TrustSignals,
@@ -371,21 +370,22 @@ def seeded_history(kind: str) -> pd.DataFrame:
 
 
 @pytest.mark.parametrize(
-    ("kind", "expected_label"),
+    ("kind", "expected_label", "expected_score"),
     [
-        ("stable", "genuine"),
-        ("real_drop", "genuine"),
-        ("fake_discount", "likely_inflated"),
+        ("stable", "genuine", 100),
+        ("real_drop", "genuine", 100),
+        ("fake_discount", "likely_inflated", 20),
     ],
 )
 def test_compute_trust_score_classifies_seeded_patterns(
     kind: str,
     expected_label: str,
+    expected_score: int,
 ) -> None:
     score = compute_trust_score(seeded_history(kind))
 
     assert score.label == expected_label
-    assert score.score is not None
+    assert score.score == expected_score
 
 
 def test_compute_trust_score_classifies_seeded_database_history(
@@ -394,14 +394,14 @@ def test_compute_trust_score_classifies_seeded_database_history(
     seed(session)
 
     expected = {
-        "Demo Bluetooth Speaker (stable)": "genuine",
-        "Demo Running Shoes (real drop)": "genuine",
-        "Demo Air Fryer (fake discount)": "likely_inflated",
+        "Demo Bluetooth Speaker (stable)": ("genuine", 100),
+        "Demo Running Shoes (real drop)": ("genuine", 100),
+        "Demo Air Fryer (fake discount)": ("likely_inflated", 20),
     }
     products = list_products(session)
     assert {product.name for product in products} == set(expected)
 
-    actual: dict[str, str] = {}
+    actual: dict[str, tuple[str, int | None]] = {}
     for product in products:
         snapshots = get_history(session, product.id)
         assert len(snapshots) == DAYS * SNAPSHOTS_PER_DAY
@@ -414,7 +414,7 @@ def test_compute_trust_score_classifies_seeded_database_history(
 
         score = compute_trust_score(history)
         assert score.reasons
-        actual[product.name] = score.label
+        actual[product.name] = (score.label, score.score)
 
         if product.name == "Demo Air Fryer (fake discount)":
             reasons = " ".join(score.reasons).casefold()
@@ -482,8 +482,7 @@ def test_compute_trust_score_labels_exact_boundaries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        trust_score_module,
-        "PRICE_ABOVE_LOWEST_PENALTY",
+        "backend.analysis.trust_score.PRICE_ABOVE_LOWEST_PENALTY",
         100 - expected_score,
     )
     history = pd.DataFrame(
@@ -763,7 +762,9 @@ def test_compute_trust_score_insufficient_data_message_grammar(
 ) -> None:
     score = compute_trust_score(daily_history([1000] * rows))
 
+    assert score.score is None
     assert score.label == "insufficient_data"
+    assert score.signals is None
     assert score.reasons == [expected_reason]
 
 

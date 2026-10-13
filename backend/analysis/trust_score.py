@@ -59,6 +59,7 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     """
     if history.empty:
         raise ValueError("history must contain at least one row")
+    history = history.sort_values("scraped_at", ignore_index=True)
 
     snapshot_count = len(history)
 

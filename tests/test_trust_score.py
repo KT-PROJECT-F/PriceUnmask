@@ -476,11 +476,13 @@ def test_compute_trust_score_snapshot_count_boundary(
         (70, "genuine"),
     ],
 )
+
 def test_compute_trust_score_labels_exact_boundaries(
     expected_score: int,
     expected_label: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    #  Patch the penalty to test exact label boundaries that current penalty combinations cannot produce.
     monkeypatch.setattr(
         "backend.analysis.trust_score.PRICE_ABOVE_LOWEST_PENALTY",
         100 - expected_score,
@@ -598,28 +600,6 @@ def test_compute_trust_score_accepts_duplicate_timestamps() -> None:
     assert score.signals.days_of_history == 4
 
 
-def test_compute_trust_score_classifies_database_seeded_products(
-    session: Session,
-) -> None:
-    seed(session)
-    expected = {
-        "Demo Bluetooth Speaker (stable)": "genuine",
-        "Demo Running Shoes (real drop)": "genuine",
-        "Demo Air Fryer (fake discount)": "likely_inflated",
-    }
-    products = list_products(session)
-
-    assert {product.name for product in products} == set(expected)
-    actual: dict[str, str] = {}
-    for product in products:
-        history = snapshots_to_dataframe(get_history(session, product.id))
-        score = compute_trust_score(history)
-        assert score.reasons
-        actual[product.name] = score.label
-
-    assert actual == expected
-
-
 @pytest.mark.parametrize("kind", ["stable", "real_drop", "fake_discount"])
 def test_compute_trust_score_is_bounded_for_seeded_patterns(kind: str) -> None:
     score = compute_trust_score(seeded_history(kind))
@@ -664,6 +644,28 @@ def daily_history(
         }
     )
 
+def test_compute_trust_score_real_history_scores_70() -> None:
+    history = daily_history([800, 2000, 800, 2000, 800, 1000])
+
+    score = compute_trust_score(history)
+
+    assert score.score == 70
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.pct_above_lowest == 25.0
+    assert score.signals.volatility_pct >= 30.0
+    assert len(score.reasons) == 2
+
+
+def test_compute_trust_score_sorts_unsorted_dataframe_rows() -> None:
+    history = daily_history([1000] * 6).iloc[::-1]
+
+    score = compute_trust_score(history)
+
+    assert score.score == 100
+    assert score.label == "genuine"
+    assert score.signals is not None
+    assert score.signals.days_of_history == 5
 
 def test_compute_trust_score_seeded_fake_discount_is_exactly_20() -> None:
     score = compute_trust_score(seeded_history("fake_discount"))

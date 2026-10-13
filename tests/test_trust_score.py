@@ -476,7 +476,6 @@ def test_compute_trust_score_snapshot_count_boundary(
         (70, "genuine"),
     ],
 )
-
 def test_compute_trust_score_labels_exact_boundaries(
     expected_score: int,
     expected_label: str,
@@ -644,6 +643,7 @@ def daily_history(
         }
     )
 
+
 def test_compute_trust_score_real_history_scores_70() -> None:
     history = daily_history([800, 2000, 800, 2000, 800, 1000])
 
@@ -666,6 +666,7 @@ def test_compute_trust_score_sorts_unsorted_dataframe_rows() -> None:
     assert score.label == "genuine"
     assert score.signals is not None
     assert score.signals.days_of_history == 5
+
 
 def test_compute_trust_score_seeded_fake_discount_is_exactly_20() -> None:
     score = compute_trust_score(seeded_history("fake_discount"))

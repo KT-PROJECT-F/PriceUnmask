@@ -1,5 +1,7 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
+
 Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+
 Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
 against saved HTML files with zero network calls.
 """
@@ -43,21 +45,26 @@ def parse_price_to_minor(text: str) -> int | None:
     """'Rs. 1,299.50' / '£1,299' / '₹1,299' / '1299' -> minor units."""
     if not isinstance(text, str):
         return None
+
     value = text.strip()
     if not value:
         return None
+
     value = re.sub(
-        r"^(?:Rs\.?\s*|[£₹])\s*",
+        r"^(?:Rs\.?|[\u00a3\u20b9])\s*",
         "",
         value,
         flags=re.IGNORECASE,
     )
     value = value.replace(",", "").strip()
+
     match = re.fullmatch(r"(\d+)(?:\.(\d{1,2}))?", value)
     if not match:
         return None
+
     whole = match.group(1)
     decimal = match.group(2) or ""
+
     decimal = decimal.ljust(2, "0")
     return int(whole) * 100 + int(decimal)
 
@@ -81,11 +88,13 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
             continue
 
         name = link.get("title") or link.get_text(strip=True)
+
         if not name:
             logger.warning("Skipping product card with no name")
             continue
 
         relative_url = link.get("href")
+
         if not price_element:
             logger.warning("Skipping product card with no price: %s", name)
             continue
@@ -108,6 +117,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
         if original_price_element:
             original_price_minor = parse_price_to_minor(original_price_element.get_text(strip=True))
+
             if original_price_minor is not None and original_price_minor <= price_minor:
                 logger.warning(
                     "Ignoring old price that is not above the price: %s",
@@ -124,6 +134,7 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         currency = "INR" if ("₹" in price_text or "Rs" in price_text) else "GBP"
 
         in_stock = None
+
         if availability_element:
             availability = availability_element.get_text(" ", strip=True)
             in_stock = "In stock" in availability

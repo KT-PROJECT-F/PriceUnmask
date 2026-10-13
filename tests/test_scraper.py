@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC
+from html import escape
 from pathlib import Path
 
 import pytest
@@ -419,19 +420,17 @@ def make_book_card(
     return f"""
     <article class="product_pod">
         <h3>
-            <a href="{href}" title="{title}">
-                {title[:20]}...
-            </a>
+          <a href="{escape(href, quote=True)}" title="{escape(title, quote=True)}">
+            {escape(title[:20])}...
+          </a>
         </h3>
-        {rating_html}
-        <div class="product_price">
-            {price_html}
-            <p class="availability">
-                In stock
-            </p>
-        </div>
-    </article>
-    """
+       {rating_html}
+       <div class="product_price">
+        {price_html}
+        <p class="availability">In stock</p>
+       </div>
+</article>
+"""
 
 
 def make_listing(*cards: str) -> str:
@@ -476,10 +475,13 @@ def test_missing_price_skips_card_and_logs_warning(caplog):
 
     assert len(products) == 1
     assert products[0].name == "Valid Book"
-    assert any(record.levelno == logging.WARNING for record in caplog.records)
+    assert "no price: Book Without Price" in caplog.text
+    assert len(caplog.records) == 1
 
 
 def test_missing_rating_does_not_skip_book():
+    # ScrapedProduct has no rating field. This guards against a future
+    # change that makes the parser require a rating and drop the card.
     html = make_listing(
         make_book_card(
             title="Book Without Rating",
@@ -493,3 +495,14 @@ def test_missing_rating_does_not_skip_book():
     assert len(products) == 1
     assert products[0].name == "Book Without Rating"
     assert products[0].current_price_minor == 1000
+    assert products[0].in_stock is True
+
+
+def test_title_with_quotes_is_preserved():
+    title = 'The "Real" Story'
+    html = make_listing(make_book_card(title=title))
+
+    products = parse_listing(html, BASE_URL)
+
+    assert len(products) == 1
+    assert products[0].name == title

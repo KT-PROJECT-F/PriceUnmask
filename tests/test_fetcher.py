@@ -434,3 +434,122 @@ def test_fetch_html_logs_each_retry(monkeypatch, caplog) -> None:
 
     assert "retry 1 of 2" in caplog.text
     assert "retry 2 of 2" in caplog.text
+
+
+def test_external_redirect_is_rejected(monkeypatch, sleeps) -> None:
+    redirect = FakeResponse(status_code=302)
+    redirect.headers["Location"] = "https://other.example/page"
+    calls = script(monkeypatch, ROBOTS_OK, redirect)
+
+    with pytest.raises(RuntimeError, match="Redirect not followed"):
+        fetch_html("https://example.com/page")
+
+    assert calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/page",
+    ]
+    assert sleeps == [settings.scrape_delay_seconds]
+
+
+def test_same_site_redirect_is_rejected(monkeypatch, sleeps) -> None:
+    redirect = FakeResponse(status_code=301)
+    redirect.headers["Location"] = "/page/"
+    calls = script(monkeypatch, ROBOTS_OK, redirect)
+
+    with pytest.raises(RuntimeError, match="Redirect not followed"):
+        fetch_html("https://example.com/page")
+
+    assert len(calls) == 2
+
+
+def test_redirect_without_location_is_rejected(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(status_code=302),
+    )
+
+    with pytest.raises(RuntimeError, match="no Location header"):
+        fetch_html("https://example.com/page")
+
+    assert len(calls) == 2
+
+
+def test_redirect_is_not_retried(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(status_code=307),
+    )
+
+    with pytest.raises(RuntimeError):
+        fetch_html("https://example.com/page")
+
+    assert len(calls) == 2
+    assert sleeps == [settings.scrape_delay_seconds]
+
+
+def test_robots_txt_redirect_stops_before_the_page(
+    monkeypatch,
+    sleeps,
+) -> None:
+    calls = script(
+        monkeypatch,
+        FakeResponse(status_code=301),
+    )
+
+    with pytest.raises(RuntimeError, match="robots.txt redirected"):
+        fetch_html("https://example.com/page")
+
+    assert calls == ["https://example.com/robots.txt"]
+    assert sleeps == []
+
+
+def test_non_html_response_is_rejected(monkeypatch, sleeps) -> None:
+    calls = script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(
+            body="%PDF-1.7",
+            content_type="application/pdf",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Expected HTML"):
+        fetch_html("https://example.com/document")
+
+    assert len(calls) == 2
+
+
+def test_missing_content_type_is_rejected(monkeypatch, sleeps) -> None:
+    script(
+        monkeypatch,
+        ROBOTS_OK,
+        FakeResponse(
+            body="<html></html>",
+            content_type="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="no Content-Type"):
+        fetch_html("https://example.com/page")
+
+
+def test_disallowed_url_is_logged_once(monkeypatch, caplog) -> None:
+    script(
+        monkeypatch,
+        FakeResponse(
+            body="User-agent: *\nDisallow: /private",
+        ),
+    )
+
+    with (
+        caplog.at_level(
+            logging.WARNING,
+            logger="backend.scraper.product_scraper",
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        fetch_html("https://example.com/private/x")
+
+    assert caplog.text.count("robots.txt disallows") == 1

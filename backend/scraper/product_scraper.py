@@ -171,11 +171,19 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
             robots_url,
             headers=headers,
             timeout=FETCH_TIMEOUT_SECONDS,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         raise RuntimeError(f"Could not fetch robots.txt for {url}: {exc}") from exc
 
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(f"robots.txt redirected (HTTP {response.status_code}) for {url}")
+
     if response.status_code == 404:
+        logger.warning(
+            "robots.txt returned 404; allowing fetch of %s",
+            url,
+        )
         return True
 
     if response.status_code >= 400:
@@ -183,13 +191,24 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
 
     parser = RobotFileParser()
     parser.parse(response.text.splitlines())
-
     return parser.can_fetch(settings.scrape_user_agent, url)
 
 
 def fetch_html(url: str) -> str:
     """GET with our User-Agent, a timeout, 2 retries with backoff, and respect
     for robots.txt. Raise a clear exception on 4xx/5xx.
+
+    What happens when a fetch fails:
+    - Timeout or connection error: retried MAX_RETRIES times, then the
+      requests exception is raised.
+    - HTTP 500/502/503/504: retried MAX_RETRIES times, then RuntimeError.
+    - Any other 4xx (including 404): RuntimeError at once, no retry.
+    - robots.txt cannot be downloaded, redirects, or returns an error other
+      than 404: RuntimeError, and the page is never requested.
+      robots.txt 404 means "no rules": the page is fetched.
+    - The page redirects (same site or another site): RuntimeError.
+      We never follow redirects.
+    - The response is not HTML (or has no Content-Type): RuntimeError.
     """
     headers = {"User-Agent": settings.scrape_user_agent}
     logger.info("Using User-Agent: %s", headers["User-Agent"])
@@ -214,6 +233,7 @@ def fetch_html(url: str) -> str:
                 url,
                 headers=headers,
                 timeout=FETCH_TIMEOUT_SECONDS,
+                allow_redirects=False,
             )
         except (requests.Timeout, requests.ConnectionError):
             if attempt == MAX_RETRIES:
@@ -228,6 +248,12 @@ def fetch_html(url: str) -> str:
             )
             sleep(wait_seconds)
             continue
+
+        if 300 <= response.status_code < 400:
+            location = response.headers.get("Location", "no Location header")
+            raise RuntimeError(
+                f"Redirect not followed: {url} -> {location} (HTTP {response.status_code})"
+            )
 
         if response.status_code >= 400:
             if response.status_code not in RETRY_STATUSES:
@@ -247,9 +273,16 @@ def fetch_html(url: str) -> str:
             sleep(wait_seconds)
             continue
 
+        content_type = response.headers.get("Content-Type", "")
+        media_type = content_type.split(";")[0].strip().lower()
+
+        if media_type not in {"text/html", "application/xhtml+xml"}:
+            raise RuntimeError(f"Expected HTML from {url}, got {content_type or 'no Content-Type'}")
+
         logger.info("Fetched %s: HTTP %s", url, response.status_code)
+
         # No charset in the header: requests guesses ISO-8859-1.
-        if "charset" not in response.headers.get("Content-Type", "").lower():
+        if "charset" not in content_type.lower():
             response.encoding = response.apparent_encoding
 
         return response.text
@@ -258,9 +291,12 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """Fetch, save raw HTML, parse, and return products."""
-    html = fetch_html(url)
+    """Fetch, save raw HTML, parse, and return products.
 
+    Any fetch failure from fetch_html is raised to the caller, and no
+    snapshot is saved. The scheduler records it in scrape_runs.
+    """
+    html = fetch_html(url)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
 
@@ -270,6 +306,9 @@ def scrape(url: str) -> list[ScrapedProduct]:
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         snapshot_path.write_text(html, encoding="utf-8")
     except OSError:
-        logger.exception("Could not save raw HTML snapshot to %s", snapshot_path)
+        logger.exception(
+            "Could not save raw HTML snapshot to %s",
+            snapshot_path,
+        )
 
     return parse_listing(html, url)

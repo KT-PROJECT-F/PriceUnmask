@@ -40,7 +40,8 @@ function formatPrice(price, currency) {
   }
 }
 
-// Load the latest price collection run from the API.
+
+ // Load the latest price collection run from the API.
 async function loadCollectorStatus() {
   if (!collectorStatusMessage) {
     return;
@@ -68,15 +69,40 @@ async function loadCollectorStatus() {
     // The API returns the most recently started run first.
     const latestRun = runs[0];
 
-    if (latestRun.status === "running") {
-      collectorStatusMessage.textContent =
-        "Price collection is currently in progress.";
-      return;
-    }
+    // Find the most recent successful run for fallback information.
+    const latestSuccessfulRun = runs.find(
+      (run) =>
+        run.status === "success" &&
+        typeof run.finished_at === "string" &&
+        Number.isFinite(Date.parse(run.finished_at))
+    );
 
-    if (latestRun.status === "failed") {
+    // A running or failed run does not mean displayed prices are new.
+    if (latestRun.status === "running" || latestRun.status === "failed") {
+      const statusText =
+        latestRun.status === "running"
+          ? "Price collection is currently in progress."
+          : "The latest price collection failed.";
+
+      if (!latestSuccessfulRun) {
+        collectorStatusMessage.textContent =
+          `${statusText} No successful collection is recorded yet.`;
+        return;
+      }
+
+      const lastSuccessfulAt = new Date(
+        latestSuccessfulRun.finished_at
+      ).toLocaleString();
+
+      const productsSeen =
+        Number.isInteger(latestSuccessfulRun.products_seen) &&
+        latestSuccessfulRun.products_seen >= 0
+          ? latestSuccessfulRun.products_seen
+          : "Unavailable";
+
       collectorStatusMessage.textContent =
-        "The latest price collection failed.";
+        `${statusText} Last successful collection: ${lastSuccessfulAt} | ` +
+        `Products seen: ${productsSeen}`;
       return;
     }
 
@@ -95,9 +121,11 @@ async function loadCollectorStatus() {
       return;
     }
 
-    const finishedAt = new Date(latestRun.finished_at);
+    const finishedAt = new Date(latestRun.finished_at).toLocaleString();
+
     const productsSeen =
-      Number.isInteger(latestRun.products_seen) && latestRun.products_seen >= 0
+      Number.isInteger(latestRun.products_seen) &&
+      latestRun.products_seen >= 0
         ? latestRun.products_seen
         : "Unavailable";
 
@@ -107,7 +135,7 @@ async function loadCollectorStatus() {
         : "Completed with partial results";
 
     collectorStatusMessage.textContent =
-      `Last collected: ${finishedAt.toLocaleString()} | ` +
+      `Last collected: ${finishedAt} | ` +
       `Status: ${statusText} | Products seen: ${productsSeen}`;
   } catch (error) {
     console.error("Unable to load collector status:", error);

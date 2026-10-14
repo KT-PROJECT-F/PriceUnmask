@@ -328,6 +328,28 @@ def test_same_external_id_with_new_name_preserves_history(
     assert before == after
 
 
+def test_same_external_id_different_source_makes_two_products(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    upsert_product_and_snapshot(
+        session,
+        "shop-a",
+        make_item(),
+        run,
+    )
+
+    upsert_product_and_snapshot(
+        session,
+        "shop-b",
+        make_item(),
+        run,
+    )
+
+    assert len(list_products(session)) == 2
+
+
 def test_upsert_updates_name_but_keeps_one_product(
     session: Session,
 ) -> None:

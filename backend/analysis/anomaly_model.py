@@ -34,9 +34,10 @@ def detect_anomalies(history: pd.DataFrame) -> AnomalyResult:
     """Flag unusual prices using each row's five immediately preceding prices.
 
     Rows before the sixth snapshot cannot be scored because they lack a complete
-    prior window. A zero standard deviation produces no z-score, so flat windows
-    are not flagged. Any later row with an absolute z-score of at least 3 is
-    flagged; timestamps are returned in chronological order as UTC ISO strings.
+    prior window. A zero-standard-deviation window has no z-score; a price that
+    differs from that flat baseline is flagged as a departure. Otherwise, rows
+    with an absolute z-score of at least 3 are flagged. Timestamps are returned
+    in chronological order as UTC ISO strings.
     """
     if history.empty:
         return AnomalyResult(
@@ -70,7 +71,12 @@ def detect_anomalies(history: pd.DataFrame) -> AnomalyResult:
         ordered_history["current_price_minor"],
         window=ROLLING_WINDOW,
     )
-    flagged = z_scores.abs().ge(ZSCORE_THRESHOLD).fillna(False)
+    prices = ordered_history["current_price_minor"]
+    previous_prices = prices.shift(1)
+    previous_mean = previous_prices.rolling(window=ROLLING_WINDOW).mean()
+    previous_std = previous_prices.rolling(window=ROLLING_WINDOW).std()
+    departed_from_flat_baseline = previous_std.eq(0) & prices.ne(previous_mean)
+    flagged = z_scores.abs().ge(ZSCORE_THRESHOLD).fillna(False) | departed_from_flat_baseline
     anomalous_timestamps = [
         timestamp.isoformat().replace("+00:00", "Z")
         for timestamp in ordered_history.loc[flagged, "scraped_at"]
@@ -79,7 +85,8 @@ def detect_anomalies(history: pd.DataFrame) -> AnomalyResult:
     if anomalous_timestamps:
         note = (
             f"Flagged {len(anomalous_timestamps)} snapshot(s) with "
-            f"|z| >= {ZSCORE_THRESHOLD} using {ROLLING_WINDOW} prior prices."
+            f"|z| >= {ZSCORE_THRESHOLD} or a departure from a flat "
+            f"{ROLLING_WINDOW}-price baseline."
         )
     else:
         note = (

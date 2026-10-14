@@ -45,6 +45,13 @@ def test_detect_anomalies_does_not_flag_a_flat_price() -> None:
     assert "zero-standard-deviation" in result.note
 
 
+def test_detect_anomalies_flags_jump_after_flat_prices() -> None:
+    result = detect_anomalies(make_history([1000, 1000, 1000, 1000, 1000, 2000]))
+
+    assert result.anomalous_timestamps == ["2026-10-06T00:00:00Z"]
+    assert result.latest_is_anomalous
+
+
 def test_detect_anomalies_flags_an_obvious_high_spike() -> None:
     # The prior five average 1000; sample std is sqrt(50), so 1200 has z ~= 28.28.
     history = make_history([1000, 1010, 990, 1000, 1000, 1200])

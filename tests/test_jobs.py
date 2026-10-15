@@ -323,3 +323,55 @@ def test_run_cycle_rollback_failure_recorded(monkeypatch, calls, session, caplog
         "a: database error; Rollback failed: rollback failed",
     )
     assert "Could not roll back after saving item" in caplog.text
+
+
+def test_run_for_missing_run_id_returns_zero_and_logs(monkeypatch, calls, caplog):
+
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", lambda session, run_id: None)
+
+    def _must_not_scrape(url):
+        raise AssertionError("scrape must not be called")
+
+    monkeypatch.setattr(jobs, "scrape", _must_not_scrape)
+
+    assert jobs.run_scrape_cycle_for_run(99) == 0
+    assert calls == []
+    assert "Scrape run 99 was not found" in caplog.text
+
+
+def test_run_that_is_not_running_is_skipped(monkeypatch, calls, caplog):
+    finished = SimpleNamespace(id=7, status="success")
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", lambda session, run_id: finished)
+
+    def _must_not_scrape(url):
+        raise AssertionError("scrape must not be called")
+
+    monkeypatch.setattr(jobs, "scrape", _must_not_scrape)
+
+    assert jobs.run_scrape_cycle_for_run(7) == 0
+    assert calls == []
+    assert "Scrape run 7 is not running" in caplog.text
+
+
+def test_run_for_existing_run_records_failure_when_scrape_raises(monkeypatch, calls, caplog):
+    existing = SimpleNamespace(id=5, status="running")
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", lambda session, run_id: existing)
+
+    def _broken_scrape(url):
+        raise RuntimeError("site down")
+
+    monkeypatch.setattr(jobs, "scrape", _broken_scrape)
+
+    assert jobs.run_scrape_cycle_for_run(5) == 0
+    assert calls == [("finish", "failed", 0, "site down")]
+    assert "Scraping failed for run 5" in caplog.text
+
+
+def test_run_for_existing_run_never_raises(monkeypatch, session, caplog):
+    def _broken_lookup(session, run_id):
+        raise RuntimeError("database locked")
+
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", _broken_lookup)
+
+    assert jobs.run_scrape_cycle_for_run(3) == 0
+    assert "Scrape run 3 could not be processed" in caplog.text

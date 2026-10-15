@@ -35,10 +35,37 @@ def run_scrape_cycle() -> int:
         return 0
 
 
-def _run_cycle(session: Session) -> int:
-    run = crud.start_scrape_run(session)
-    run_id = run.id
+def run_scrape_cycle_for_run(run_id: int) -> int:
+    """Process an existing scrape run created by the API."""
+    try:
+        with SessionLocal() as session:
+            run = crud.get_scrape_run(session, run_id)
 
+            if run is None:
+                logger.error("Scrape run %s was not found", run_id)
+                return 0
+
+            if run.status != "running":
+                logger.warning(
+                    "Scrape run %s is not running; skipping it",
+                    run_id,
+                )
+                return 0
+
+            return _run_cycle(session, run)
+    except Exception:
+        logger.exception("Scrape run %s could not be processed", run_id)
+        return 0
+
+
+def _run_cycle(
+    session: Session,
+    run: ScrapeRun | None = None,
+) -> int:
+    if run is None:
+        run = crud.start_scrape_run(session)
+
+    run_id = run.id
     try:
         items = scrape(settings.scrape_target_url)
     except Exception as exc:

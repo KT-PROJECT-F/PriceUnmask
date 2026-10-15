@@ -32,6 +32,11 @@ def start_scrape_run(session: Session) -> ScrapeRun:
     return run
 
 
+def get_scrape_run(session: Session, run_id: int) -> ScrapeRun | None:
+    """Return a scrape run by ID, or None if it does not exist."""
+    return session.get(ScrapeRun, run_id)
+
+
 def finish_scrape_run(
     session: Session,
     run: ScrapeRun,
@@ -165,6 +170,12 @@ def count_runs_by_status(session: Session) -> dict[str, int]:
     ).all()
 
     return {status: count for status, count in rows}
+
+
+def has_running_scrape_run(session: Session) -> bool:
+    """Return whether any scrape run is currently running."""
+    statement = select(ScrapeRun.id).where(ScrapeRun.status == "running").limit(1)
+    return session.scalar(statement) is not None
 
 
 def count_products(session: Session) -> int:

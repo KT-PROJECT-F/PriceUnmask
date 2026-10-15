@@ -45,25 +45,35 @@ From another PowerShell window, check for the process:
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*backend.scheduler.jobs*' } | Select-Object ProcessId, CommandLine
 ```
 
-Each cycle, including failures, should create a row in `scrape_runs`. With the
-default database, inspect the 10 newest runs using Python's built-in SQLite
-module:
+Each cycle, including failures, creates a row in `scrape_runs`. To see the runs,
+snapshot counts and the health status:
 
 ```powershell
-python -c "import sqlite3; c=sqlite3.connect('data/priceunmask.db'); print(*c.execute('SELECT id, started_at, finished_at, status, products_seen, error_message FROM scrape_runs ORDER BY started_at DESC LIMIT 10'), sep='\n'); c.close()"
+python -m backend.devtools.check_db
 ```
 
-For another `DATABASE_URL`, inspect its SQLite file instead. Alternatively,
-open the configured database in DB Browser for SQLite and view the
-`scrape_runs` table. If the API is running against the same database, the runs
-are also available at `http://127.0.0.1:8000/api/scrape-runs`.
+For another database, set `DATABASE_URL` for that terminal first, for example
+`$env:DATABASE_URL = "sqlite:///data/exports/priceunmask-<timestamp>.db"`.
 
 ## Logs and snapshots
 
-Logs are written to the collector's terminal; the collector does not create a
-log file by default. Raw fetched HTML snapshots are saved under
-`data/snapshots/` as timestamped `.html` files. Product rows, price snapshots,
-and run history are stored in the configured database.
+By default, logs go only to the terminal. For a long or unattended run, write
+them to a file:
+
+```powershell
+python -m backend.scheduler.jobs *> data/collector.log
+```
+
+Use `*>>` instead of `*>` to append to an existing log. Raw HTML of each fetched
+page is saved in `data/snapshots/`. Products, price snapshots and runs are in
+the database set by `DATABASE_URL`.
+
+## If the laptop sleeps
+
+Nothing runs while the laptop sleeps or is off. After it wakes, the scheduler
+runs one missed cycle (not one per missed interval), then continues on its
+interval. In `scrape_runs` this shows as a gap between two `started_at` times.
+For a long run: plug in the laptop and turn sleep off.
 
 ## Stop
 

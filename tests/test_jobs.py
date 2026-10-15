@@ -126,6 +126,7 @@ def test_build_scheduler_configures_immediate_interval_job(monkeypatch):
     assert job.trigger.interval.total_seconds() == 2.5 * 60 * 60
     assert job.max_instances == 1
     assert job.coalesce is True
+    assert job.misfire_grace_time is None
     assert job.next_run_time <= datetime.now(UTC)
 
 
@@ -229,10 +230,11 @@ def test_failed_cycle_does_not_prevent_next_cycle(monkeypatch, real_database):
     assert jobs.run_scrape_cycle() == 1
 
     with real_database() as session:
-        runs = list_scrape_runs(session)
+        runs = sorted(list_scrape_runs(session), key=lambda run: run.id)
 
-    assert [run.status for run in runs] == ["success", "failed"]
-    assert runs[1].error_message == "site down"
+    assert [run.status for run in runs] == ["failed", "success"]
+    assert runs[0].error_message == "site down"
+    assert runs[1].products_seen == 1
 
 
 @pytest.fixture

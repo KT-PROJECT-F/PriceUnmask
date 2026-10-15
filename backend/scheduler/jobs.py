@@ -120,6 +120,7 @@ def build_scheduler() -> BlockingScheduler:
         next_run_time=datetime.now(UTC),
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=None,
     )
     return scheduler
 

@@ -42,7 +42,7 @@ def test_detect_anomalies_does_not_flag_a_flat_price() -> None:
 
     assert result.anomalous_timestamps == []
     assert not result.latest_is_anomalous
-    assert "zero-standard-deviation" in result.note
+    assert "10.0% threshold" in result.note
 
 
 def test_detect_anomalies_flags_jump_after_flat_prices() -> None:
@@ -52,11 +52,22 @@ def test_detect_anomalies_flags_jump_after_flat_prices() -> None:
     assert result.latest_is_anomalous
 
 
-def test_detect_anomalies_evaluates_small_fluctuations() -> None:
+def test_detect_anomalies_does_not_flag_a_3_percent_change() -> None:
     result = detect_anomalies(make_history([1000, 1010, 990, 1000, 1000, 1030]))
 
-    assert result.anomalous_timestamps == ["2026-10-06T00:00:00Z"]
-    assert result.latest_is_anomalous
+    # Previous average is 1000; (1030 - 1000) / 1000 * 100 = 3%.
+    # Because 3% is below the 10% minimum, this price is not flagged.
+    assert result.anomalous_timestamps == []
+    assert not result.latest_is_anomalous
+
+
+def test_detect_anomalies_does_not_flag_a_one_paisa_change_after_flat_prices() -> None:
+    result = detect_anomalies(make_history([1000, 1000, 1000, 1000, 1000, 1001]))
+
+    # Previous average is 1000; (1001 - 1000) / 1000 * 100 = 0.1%.
+    # Because 0.1% is below 10%, the small change is not flagged.
+    assert result.anomalous_timestamps == []
+    assert not result.latest_is_anomalous
 
 
 def test_detect_anomalies_flags_an_obvious_high_spike() -> None:

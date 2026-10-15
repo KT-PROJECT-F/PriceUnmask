@@ -150,6 +150,8 @@ def start_scrape_run(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),  # noqa: B008
 ) -> ScrapeRunOut:
+    # If the server stops during a scrape, its run may remain "running".
+    # New requests then return 409 until stale-run cleanup marks it failed.
     if crud.has_running_scrape_run(session):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -160,10 +162,6 @@ def start_scrape_run(
     background_tasks.add_task(run_scrape_cycle_for_run, run.id)
 
     return run
-
-
-# TODO(API track): add the endpoints listed in docs/ARCHITECTURE.md section 5:
-#   GET  /api/products/{product_id}/trust-score
 
 
 # Mount the dashboard LAST so it does not shadow /api routes.

@@ -95,3 +95,31 @@ header {
   font-size: 0.95rem;
   line-height: 1.5;
 }
+
+/* Collector status panel */
+.collector-status {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.collector-status h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.collector-status p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .collector-status {
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+  }
+}

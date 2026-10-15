@@ -6,6 +6,7 @@ const API_ENDPOINTS = {
   product: (id) => `${API_BASE_URL}/products/${id}`,
   history: (id) => `${API_BASE_URL}/products/${id}/history`,
   trustScore: (id) => `${API_BASE_URL}/products/${id}/trust-score`,
+  scrapeRuns: `${API_BASE_URL}/scrape-runs`,
 };
 
 // Load products from the live API and render the product grid.
@@ -13,6 +14,7 @@ const app = document.getElementById("app");
 const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
 const searchBox = document.getElementById("search-box");
+const collectorStatusMessage = document.getElementById("collector-status-message");
 let priceHistoryChart = null;
 
 const trustLabels = {
@@ -35,6 +37,111 @@ function formatPrice(price, currency) {
   } catch (error) {
     console.error("Invalid currency:", currency, error);
     return "—";
+  }
+}
+
+
+ // Load the latest price collection run from the API.
+async function loadCollectorStatus() {
+  if (!collectorStatusMessage) {
+    return;
+  }
+
+  try {
+    const response = await fetch(API_ENDPOINTS.scrapeRuns);
+
+    if (!response.ok) {
+      throw new Error(`Unable to load collector status: HTTP ${response.status}`);
+    }
+
+    const runs = await response.json();
+
+    if (!Array.isArray(runs)) {
+      throw new Error("Invalid collector status data");
+    }
+
+    if (runs.length === 0) {
+      collectorStatusMessage.textContent =
+        "No price collection has been recorded yet.";
+      return;
+    }
+
+    // The API returns the most recently started run first.
+    const latestRun = runs[0];
+
+    // Find the most recent successful run for fallback information.
+    const latestSuccessfulRun = runs.find(
+      (run) =>
+        run.status === "success" &&
+        typeof run.finished_at === "string" &&
+        Number.isFinite(Date.parse(run.finished_at))
+    );
+
+    // A running or failed run does not mean displayed prices are new.
+    if (latestRun.status === "running" || latestRun.status === "failed") {
+      const statusText =
+        latestRun.status === "running"
+          ? "Price collection is currently in progress."
+          : "The latest price collection failed.";
+
+      if (!latestSuccessfulRun) {
+        collectorStatusMessage.textContent =
+          `${statusText} No successful collection is recorded yet.`;
+        return;
+      }
+
+      const lastSuccessfulAt = new Date(
+        latestSuccessfulRun.finished_at
+      ).toLocaleString();
+
+      const productsSeen =
+        Number.isInteger(latestSuccessfulRun.products_seen) &&
+        latestSuccessfulRun.products_seen >= 0
+          ? latestSuccessfulRun.products_seen
+          : "Unavailable";
+
+      collectorStatusMessage.textContent =
+        `${statusText} Last successful collection: ${lastSuccessfulAt} | ` +
+        `Products seen: ${productsSeen}`;
+      return;
+    }
+
+    if (latestRun.status !== "success" && latestRun.status !== "partial") {
+      collectorStatusMessage.textContent =
+        "The latest price collection status is unknown.";
+      return;
+    }
+
+    if (
+      typeof latestRun.finished_at !== "string" ||
+      !Number.isFinite(Date.parse(latestRun.finished_at))
+    ) {
+      collectorStatusMessage.textContent =
+        "The latest collection's finish time is unavailable.";
+      return;
+    }
+
+    const finishedAt = new Date(latestRun.finished_at).toLocaleString();
+
+    const productsSeen =
+      Number.isInteger(latestRun.products_seen) &&
+      latestRun.products_seen >= 0
+        ? latestRun.products_seen
+        : "Unavailable";
+
+    const statusText =
+      latestRun.status === "success"
+        ? "Completed successfully"
+        : "Completed with partial results";
+
+    collectorStatusMessage.textContent =
+      `Last collected: ${finishedAt} | ` +
+      `Status: ${statusText} | Products seen: ${productsSeen}`;
+  } catch (error) {
+    console.error("Unable to load collector status:", error);
+
+    collectorStatusMessage.textContent =
+      "Collector status is temporarily unavailable.";
   }
 }
 
@@ -733,3 +840,4 @@ async function loadProducts() {
 }
 
 loadProducts();
+loadCollectorStatus();

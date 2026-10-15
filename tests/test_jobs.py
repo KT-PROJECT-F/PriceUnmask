@@ -126,6 +126,7 @@ def test_build_scheduler_configures_immediate_interval_job(monkeypatch):
     assert job.trigger.interval.total_seconds() == 2.5 * 60 * 60
     assert job.max_instances == 1
     assert job.coalesce is True
+    assert job.misfire_grace_time is None
     assert job.next_run_time <= datetime.now(UTC)
 
 
@@ -207,6 +208,33 @@ def test_scrape_failure_finishes_run_as_failed(monkeypatch, calls, caplog):
     assert jobs.run_scrape_cycle() == 0
     assert calls[-1] == ("finish", "failed", 0, "site down")
     assert any(record.exc_info for record in caplog.records)
+
+
+def test_failed_cycle_does_not_prevent_next_cycle(monkeypatch, real_database):
+    attempts = iter(
+        [
+            RuntimeError("site down"),
+            [make_item("a")],
+        ]
+    )
+
+    def scrape_once_per_cycle(url):
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(jobs, "scrape", scrape_once_per_cycle)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        runs = sorted(list_scrape_runs(session), key=lambda run: run.id)
+
+    assert [run.status for run in runs] == ["failed", "success"]
+    assert runs[0].error_message == "site down"
+    assert runs[1].products_seen == 1
 
 
 @pytest.fixture

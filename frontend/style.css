@@ -96,6 +96,45 @@ header {
   line-height: 1.5;
 }
 
+
+/* Anomaly status in the product detail view */
+.anomaly-panel {
+  margin-top: 0.75rem;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.anomaly-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.anomaly-badge-normal {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.anomaly-badge-unusual {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.anomaly-badge-insufficient {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.anomaly-message {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+
 /* Collector status panel */
 .collector-status {
   margin: 1rem 0;

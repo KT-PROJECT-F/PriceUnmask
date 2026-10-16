@@ -573,20 +573,44 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(reasonsHeading, reasonsList);
 
-  // Show the anomaly message only when non-empty text is available.
+  // Show an anomaly badge and its approved explanation.
+  const anomalyPanel = document.createElement("section");
+  anomalyPanel.className = "anomaly-panel";
+  anomalyPanel.setAttribute("aria-label", "Price anomaly status");
+
+  const anomalyBadge = document.createElement("span");
+  anomalyBadge.className = "anomaly-badge";
+
   const anomalyMessage = document.createElement("p");
-  anomalyMessage.className = "anomaly-note";
-  anomalyMessage.hidden = true;
+  anomalyMessage.className = "anomaly-message";
+  anomalyMessage.setAttribute("role", "status");
 
-  if (
-    typeof trustScore.anomaly_note === "string" &&
-    trustScore.anomaly_note.trim() !== ""
-  ) {
-    anomalyMessage.textContent = trustScore.anomaly_note;
-    anomalyMessage.hidden = false;
+  if (trustScore.label === "insufficient_data") {
+    anomalyBadge.classList.add("anomaly-badge-insufficient");
+    anomalyBadge.textContent = "Not enough data";
+    anomalyMessage.textContent =
+      "There are too few price snapshots to calculate a reliable trust score.";
+  } else if (typeof trustScore.latest_is_anomalous === "boolean") {
+    if (trustScore.latest_is_anomalous) {
+      anomalyBadge.classList.add("anomaly-badge-unusual");
+      anomalyBadge.textContent = "Unusual price";
+      anomalyMessage.textContent =
+        "The price rose sharply shortly before the current sale, which can make the advertised discount misleading.";
+    } else {
+      anomalyBadge.classList.add("anomaly-badge-normal");
+      anomalyBadge.textContent = "No anomaly detected";
+      anomalyMessage.textContent =
+        "The recorded prices show no strong signs of an inflated discount.";
+    }
+  } else {
+    anomalyBadge.classList.add("anomaly-badge-insufficient");
+    anomalyBadge.textContent = "Anomaly status unavailable";
+    anomalyMessage.textContent =
+      "We couldn't determine whether today's price is unusual.";
   }
+  anomalyPanel.append(anomalyBadge, anomalyMessage);
+  elements.push(anomalyPanel);
 
-  elements.push(anomalyMessage);
 
   // Create the price history chart container.
   const chartContainer = document.createElement("div");

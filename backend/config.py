@@ -17,6 +17,7 @@ class Settings:
         "SCRAPE_USER_AGENT",
         "PriceUnmaskBot/0.1 (learning project; contact: you@example.com)",
     )
+    stale_run_minutes: int = 30
     scrape_delay_seconds: float = float(os.getenv("SCRAPE_DELAY_SECONDS", "3"))
 
 

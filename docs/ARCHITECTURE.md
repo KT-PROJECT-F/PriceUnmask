@@ -68,6 +68,19 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/products/{id}` | `ProductOut` | 404 |
 | GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 |
 | GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 |
+
+The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
+
+- `anomaly_status`: `insufficient_history`, `normal`, or `unusual`.
+- `anomaly_result`: `null` when history is insufficient, `false` when no unusual change is detected, or `true` when an unusual change is detected.
+- `anomaly_message`: A shopper-friendly explanation of the anomaly status. Internal detector notes are not exposed.
+
+| Anomaly status | Shopper-facing message |
+|---|---|
+| `insufficient_history` | Not enough price history to detect unusual price changes. |
+| `normal` | No unusual price changes detected. The price looks normal based on the available history. |
+| `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
+
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202) | 409 if a run is already in progress |
 

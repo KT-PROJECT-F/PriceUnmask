@@ -10,7 +10,7 @@ Read functions never commit.
 """
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -222,3 +222,34 @@ def list_duplicate_product_names(session: Session) -> list[tuple[str, str, int]]
     ).all()
 
     return [(source, name, count) for source, name, count in rows]
+
+
+def mark_stale_runs_failed(
+    session: Session,
+    older_than: timedelta,
+    now: datetime | None = None,
+) -> int:
+    """Mark running scrape runs older than the threshold as failed."""
+    if now is None:
+        now = datetime.now(UTC)
+
+    cutoff = now - older_than
+
+    stale_runs = session.scalars(
+        select(ScrapeRun).where(
+            ScrapeRun.status == "running",
+            ScrapeRun.started_at < cutoff,
+        )
+    ).all()
+
+    for run in stale_runs:
+        run.status = "failed"
+        run.finished_at = now
+        run.error_message = (
+            f"Stale run: started at {run.started_at.isoformat()}, "
+            f"exceeded timeout of {older_than}; "
+            f"marked failed at {now.isoformat()}."
+        )
+
+    session.commit()
+    return len(stale_runs)

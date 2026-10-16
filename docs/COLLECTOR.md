@@ -55,6 +55,17 @@ python -m backend.devtools.check_db
 For another database, set `DATABASE_URL` for that terminal first, for example
 `$env:DATABASE_URL = "sqlite:///data/exports/priceunmask-<timestamp>.db"`.
 
+At startup, the collector marks runs that have been `running` for more than
+30 minutes as failed and logs how many it closed. A scheduled cycle logs
+`Scheduled scrape skipped; a run is already running` and returns without
+starting another run if a non-stale run is still active. This prevents the
+scheduled collector from overlapping an on-demand scrape. Let the active run
+finish, then check its status with `python -m backend.devtools.check_db`.
+If it remains `running` after a crash, restart the collector; startup cleanup
+will close it once it is older than the stale threshold. If the startup cleanup
+itself fails, the error is logged and the collector still starts, so investigate
+the database issue and restart after it is resolved.
+
 ## Logs and snapshots
 
 By default, logs go only to the terminal. For a long or unattended run, write

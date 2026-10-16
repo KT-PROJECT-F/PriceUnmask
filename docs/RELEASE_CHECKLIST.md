@@ -1,126 +1,141 @@
-# Release Checklist
+# Release checklist
 
-Run this checklist before each PriceUnmask release. Use a fresh clone so the test does not depend on an existing virtual environment, database, or uncommitted files. Follow the setup instructions in `README.md`; if the README conflicts with a command below, record the issue rather than silently changing the documented process.
+Run this before every release, on a **fresh clone** in a new folder, so nothing
+from your own working copy (venv, `.env`, database) can hide a problem. It takes
+about 30 minutes. Write what you see in the results table at the bottom.
 
-## Release smoke test
+Rules for the results:
 
-### 1. Clone the repository
+- Write only what you saw on your screen during this run.
+- `PASS` only when the expected result happened. `FAIL` if it did not.
+  `NOT RUN` if you skipped the step.
+- Every `FAIL` gets a GitHub issue, linked in the table.
 
-**Action (PowerShell):**
+## Steps
+
+### 1. Fresh clone
 
 ```powershell
-cd C:\Users\Windows\Desktop
+cd $HOME\Desktop
 git clone https://github.com/KT-PROJECT-F/PriceUnmask.git priceunmask-release-check
 cd priceunmask-release-check
 git switch dev
 git rev-parse HEAD
 ```
 
-If the folder already exists, use a new folder name or remove the old test clone before cloning again.
+If the folder already exists, delete it first or use a new name.
 
-**Expected result:** The clone succeeds, the checked-out branch is `dev`, and the exact commit hash is recorded in the results table.
+**Expected:** the clone works, you are on `dev`, and `git rev-parse HEAD` prints
+the commit hash. Write the hash in the results.
 
-### 2. Set up Python
+### 2. Python setup
 
-**Action:** Follow the Python and dependency-installation steps in `README.md` from the fresh clone. Use the commands documented there to create and activate the virtual environment and install dependencies.
+Follow `README.md`. On Windows PowerShell the README's
+`source .venv/bin/activate` does not work. Use:
 
-**Expected result:** The virtual environment activates and dependencies install without errors. Record any missing, incorrect, or Windows-incompatible README instructions.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+Copy-Item .env.example .env
+python --version
+```
 
-### 3. Create and seed the database
+**Expected:** the prompt starts with `(.venv)`, and `pip install` ends without
+errors. Write down every place where the README was wrong or missing a step.
 
-**Action:** Follow the README instructions for creating a fresh database and seeding demo data. If the README documents these project commands, run:
+### 3. Seed fake data
 
 ```powershell
 python -m backend.devtools.seed_fake_data
 python -m backend.devtools.check_db
 ```
 
-**Expected result:** Seeding completes successfully, the database check reports the expected demo products, and no database errors occur. Record the actual output.
+**Expected:**
 
-### 4. Start the application
+- The seed prints `Seeded 3 fake products.`
+- `check_db` shows `Total products: 3`, and `Health status: CHECK REQUIRED` with
+  the reason `no finished scrape run found`. That is correct: there are no
+  runs yet.
 
-**Action:** Follow the README instructions to start the app. If the documented command is Uvicorn, run:
+### 4. Start the app
 
 ```powershell
 uvicorn backend.main:app --reload
 ```
 
-Keep the server running while completing the dashboard and API checks. In a browser, open:
+Leave this terminal open. Open http://127.0.0.1:8000/api/health
 
-- Dashboard: `http://127.0.0.1:8000/`
-- API documentation: `http://127.0.0.1:8000/docs`
-- Health endpoint: `http://127.0.0.1:8000/api/health`
+**Expected:** `{"status":"ok"}`
 
-**Expected result:** The application starts without errors, the dashboard loads, and the health endpoint returns HTTP 200 with a healthy status. Record the actual response.
+### 5. Dashboard
 
-### 5. Check the dashboard
+Open http://127.0.0.1:8000/
 
-**Action:** Use the fresh database and check each item:
+| **Check**        | **Expected**                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| Product grid     | 3 products: Demo Bluetooth Speaker (stable), Demo Running Shoes (real drop), Demo Air Fryer (fake discount) |
+| Search `air`     | only Demo Air Fryer (fake discount)                                                                         |
+| Search `zzzz`    | "No products match your search."                                                                            |
+| Click a product  | detail view with its name, price and a price chart                                                          |
+| Trust Score      | Speaker: genuine. Shoes: genuine. Air Fryer: likely inflated                                                |
+| Collector status | a clear message that nothing has been collected yet                                                         |
 
-1. **Product grid:** All seeded demo products appear with their prices.
-2. **Search:** Search for `air`; only matching products, including `Demo Air Fryer (fake discount)` if present in the seed data, should appear.
-3. **No-results search:** Search for `zzzz`; a clear no-results state appears.
-4. **Product detail:** Open a product and confirm its name and price appear.
-5. **Price chart:** Confirm the product's price chart is displayed when history data is available; record the behavior if the seed data has no history.
-6. **Trust Score:** Confirm each demo product displays its trust label or score.
-7. **Collector status:** Confirm the dashboard shows the newest collector run or a clear “no runs yet” state.
+### 6. API, valid requests
 
-**Expected result:** Record each subcheck's actual result. Mark the overall dashboard step `FAIL` if any required subcheck fails; describe the failing subcheck in the results table and open a GitHub issue.
+Open http://127.0.0.1:8000/docs and use "Try it out".
 
-### 6. Check API endpoints with valid input
+| **Request**                           | **Expected**                             |
+| ------------------------------------- | ---------------------------------------- |
+| `GET /api/products`                   | 200, 3 products                          |
+| `GET /api/products?search=air`        | 200, only Demo Air Fryer (fake discount) |
+| `GET /api/products/1`                 | 200                                      |
+| `GET /api/products/1/history?days=30` | 200                                      |
+| `GET /api/products/3/trust-score`     | 200, label `likely_inflated`             |
+| `GET /api/scrape-runs`                | 200, `[]` (no runs yet)                  |
 
-**Action:** Open `/docs` and call every documented endpoint with valid input. At minimum, check the following requests:
+### 7. API, bad input
 
-| Request | Expected result |
-|---|---|
-| `GET /api/products` | HTTP 200 and a product list |
-| `GET /api/products?search=air` | HTTP 200 and only products matching `air` |
-| `GET /api/products/1` | HTTP 200 and product details, if product ID `1` exists in the fresh seed data |
-| `GET /api/products/1/history?days=30` | HTTP 200 and history data, if product ID `1` exists |
-| `GET /api/products/1/trust-score` | HTTP 200 and a trust score/label, if product ID `1` exists |
-| `GET /api/scrape-runs` | HTTP 200 and the scrape-run list, or an empty list before a run exists |
+| **Request**                                  | **Expected** |
+| -------------------------------------------- | ------------ |
+| `GET /api/products/999999`                   | 404          |
+| `GET /api/products/1/history?days=0`         | 422          |
+| `GET /api/products?search=` + 201 characters | 422          |
 
-**Expected result:** Status codes and response contents match the documented API behavior. Verify search results actually contain the query; HTTP 200 alone does not prove search is correct. If seeded IDs differ, use an ID returned by `GET /api/products` and record the ID tested.
+### 8. One real collector cycle
 
-### 7. Check invalid API inputs
-
-**Action:** Use `/docs` to run these negative tests:
-
-| Request | Expected result |
-|---|---|
-| `GET /api/products/999999` | HTTP 404 Not Found |
-| `GET /api/products/1/history?days=0` | HTTP 422 if `days=0` is outside the documented allowed range |
-| `GET /api/products?search=` followed by a 201-character query | HTTP 422 if the query-length validation limit is 200 characters |
-
-**Expected result:** Invalid inputs return the documented error status and a clear response; the application does not crash. Record the exact status and response for each request. Use an existing product ID for the `days=0` test if the endpoint requires it.
-
-### 8. Run one real collector cycle
-
-**Action:** Run the collector once against the real site, only when it is safe to do so and no other team member is running a competing integration collection. Follow any project-specific rate-limit and robots.txt rules. From the project root, with the virtual environment activated, run:
+Check first that nobody else on the team is running the collector against the
+site right now. Open a **second** terminal in the same folder:
 
 ```powershell
+.\.venv\Scripts\Activate.ps1
 python -m backend.scheduler.jobs
 ```
 
-Wait for the first collection cycle to finish, then press `Ctrl+C`. Record the actual logs, fetch result, completion status, and number of products seen. Do not assume the number of products in advance; the collector may visit multiple pages.
+Wait until the log shows the first cycle has finished, then press Ctrl+C.
 
-**Expected result:** The scheduler starts, the site fetch outcome is reported, and the collection job completes or reports a clear failure. A successful HTTP response by itself does not prove that the data was saved to the database.
+**Expected:** the log shows the page being fetched and the number of products
+seen. Write down that number and the time.
 
-### 9. Verify persisted collection data
+### 9. Was it saved?
 
-**Action:** With the application running, request:
-
-```text
-GET http://127.0.0.1:8000/api/scrape-runs
+```powershell
+python -m backend.devtools.check_db
 ```
 
-Inspect the newest run and verify the database using the project's documented database-check command or the appropriate database inspection method. Record the newest run ID, status, `products_seen`, and saved snapshot count. Compare these values with the collector's actual output.
+Then refresh http://127.0.0.1:8000/api/scrape-runs and the dashboard.
 
-**Expected result:** The latest run is persisted and visible through the API. Its status and product count agree with the collector outcome, and saved products and price snapshots reflect the collection. If the collector completed but the run or snapshots are missing, mark this step `FAIL` and open a GitHub issue.
+**Expected:**
 
-### 10. Run automated checks
+- The newest run is `success`.
+- Its `products_seen` is the number from step 8.
+- `check_db` shows the same number of snapshots for that run.
+- The dashboard's collector status now shows this run.
 
-**Action:** From the repository root, with the project's virtual environment activated, run each command separately:
+Write down the run id, status, `products_seen`, snapshot count and the health
+status that `check_db` prints.
+
+### 10. Automated checks
 
 ```powershell
 ruff check .
@@ -128,33 +143,34 @@ ruff format --check .
 pytest -q
 ```
 
-**Expected result:** All three commands pass. Record the actual lint result, formatting result, test count, warnings, and any failures. Do not reuse results from another branch or clone.
+**Expected:** all three pass. Write down the last line of each.
 
-### 11. Record and report failures
+### 11. Failures
 
-**Action:** Open a GitHub issue for every failed check. Include reproduction steps, the expected result, the actual result, relevant logs, and the tested commit hash. Link every issue in the results table or PR description. If all checks pass, explicitly record `No failures found`.
-
-**Expected result:** Every failure has a linked issue, or the results explicitly state `No failures found`. Do not mark a failed or unverified check as `PASS`.
+Open a GitHub issue for every `FAIL`: steps to reproduce, expected, actual, and
+the commit hash. Link each issue in the table. If nothing failed, write
+`No failures found`.
 
 ## v0.1 results
 
 - **Date:** 2026-10-16
 - **Tested by:** @mathango
-- **Branch tested:** `dev`
-- **Commit hash:** `d8dd893b5745b82443b0e6b0ca555215db5af7e8`
+- **Commit (`git rev-parse HEAD`):** `a420a5324f955807db59fb63e79a6e1977af59f8`
+- **Windows version:** Windows 11 Pro
+- **Python version:** Python 3.14.7
 
-| Step | Result | What I observed |
-|---|---|---|
-| 1. Fresh clone | PASS | Tested from a fresh clone. Recorded commit hash: `d8dd893b5745b82443b0e6b0ca555215db5af7e8`. |
-| 2. Python setup | PASS — reported | Application setup and testing were reported as successful. Keep the README setup output if exact evidence is requested. |
-| 3. Database and seed | PASS — reported | Demo products were available during dashboard and API testing. |
-| 4. Application startup | PASS — reported | The application was running for dashboard and API checks. |
-| 5. Dashboard | PASS — partially verified | Product grid, search, product detail, price chart, and Trust Score passed. Confirm collector status because earlier notes were inconsistent. |
-| 6. Valid API requests | PASS — reported | Product list and product detail returned HTTP 200. Verify that search results contain only products matching the query. |
-| 7. Invalid API inputs | PASS | Product ID `999999` returned HTTP 404; `days=0` returned HTTP 422; a 201-character search query returned HTTP 422. |
-| 8. Collector cycle | PASS — reported | Books to Scrape returned HTTP 200, `robots.txt` returned 404 and the scraper continued, a 3-second delay was observed, and 20 products were reported. Recorded collection time: `2026-10-15 13:18:44`. |
-| 9. Persisted collection data | NOT VERIFIED | Confirm the newest scrape-run record through `GET /api/scrape-runs` and verify the saved price snapshot count before marking this step as passed. |
-| 10. Ruff and pytest | PASS | `ruff check .` passed; `ruff format --check .` passed with 45 files already formatted; `pytest -q` reported 252 passed and 1 deprecation warning. |
-| 11. Failure tracking | COMPLETE | Add issue links for confirmed failures. Record `No failures found` only after all checks are verified and passing. |
+| **Step**                 | **Result** | **What I saw**                                                                                                                                                               |
+| ------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Fresh clone           | PASS       | Clone succeeded, on `dev`, working tree clean. Commit `a420a5324f955807db59fb63e79a6e1977af59f8`.                                                                            |
+| 2. Python setup          | PASS       | `(.venv)` prompt, `pip install` finished without errors. Python 3.14.7.                                                                                                      |
+| 3. Seed fake data        | PASS       | `Seeded 3 fake products.` `check_db`: Total products: 3, CHECK REQUIRED (no finished scrape run found).                                                                      |
+| 4. Start the app         | PASS       | `/api/health` returned HTTP 200 with `{"status":"ok"}`.                                                                                                                      |
+| 5. Dashboard             | PASS       | Grid showed 3 demo products; search `air` returned only Demo Air Fryer; search `zzzz` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
+| 6. API, valid requests   | PASS       | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/1` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
+| 7. API, bad input        | PASS       | `/api/products/999999` 404; `/history?days=0` 422; 201-char search 422.                                                                                                      |
+| 8. Collector cycle       | PASS       | Books to Scrape fetched HTTP 200, `robots.txt` 404 (warning logged, collector continued), 3-second delay observed, 20 products seen. Collector stopped `2026-10-16 17:21:43`. |
+| 9. Saved to the database | PASS       | run 1, success, products_seen 20, 20 snapshots. Database Health status: Healthy. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/16/2026, 5:19:22 PM`. Total products in database: 23 (3 products without a snapshot in this run). No duplicate product names. |
+| 10. ruff and pytest      | PASS       | `All checks passed!` / all files already formatted / 270 passed.                                                                                                             |
+| 11. Failures             | COMPLETE   | No failures found.                                                                                                                                                           |
 
 

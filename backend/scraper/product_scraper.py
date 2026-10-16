@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -159,6 +159,37 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         )
 
     return products
+
+
+def parse_next_page_url(html: str, base_url: str) -> str | None:
+    """Return the same-site URL of the next page, or None."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    next_link = soup.select_one("li.next a[href]")
+
+    if next_link is None:
+        return None
+
+    href = next_link.get("href")
+
+    if not isinstance(href, str) or not href.strip():
+        return None
+
+    next_url = urljoin(base_url, href.strip())
+
+    base_parts = urlsplit(base_url)
+    next_parts = urlsplit(next_url)
+
+    if next_parts.scheme not in {"http", "https"}:
+        return None
+
+    if next_parts.netloc.lower() != base_parts.netloc.lower():
+        return None
+
+    if next_url == base_url:
+        return None
+
+    return next_url
 
 
 def _robots_allows(url: str, headers: dict[str, str]) -> bool:

@@ -42,7 +42,9 @@ class TrustScoreOut(BaseModel):
     label: Literal["genuine", "uncertain", "likely_inflated", "insufficient_data"]
     reasons: list[str]
     signals: dict[str, float | int | bool | None] | None
-    anomaly_note: str | None = None
+    anomaly_status: Literal["insufficient_history", "normal", "unusual"]
+    anomaly_result: bool | None
+    anomaly_message: str
 
 
 class ScrapeRunOut(BaseModel):

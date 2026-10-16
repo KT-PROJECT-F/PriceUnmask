@@ -57,6 +57,7 @@ def calls(monkeypatch, session):
         "start_scrape_run",
         lambda session: (log.append(("start", run)), run)[1],
     )
+    monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: False)
 
     def fake_upsert(session, source, item, run):
         log.append(("upsert", source, item, run))
@@ -83,6 +84,29 @@ def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
     assert [call[2] for call in calls[1:3]] == items
     assert all(call[3] is calls[0][1] for call in calls[1:3])
     assert calls[-1] == ("finish", "success", 2, None)
+
+
+def test_running_scrape_run_skips_scheduled_cycle(monkeypatch, calls, caplog):
+    caplog.set_level("INFO")
+    monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: True)
+    monkeypatch.setattr(
+        jobs,
+        "scrape",
+        lambda url: pytest.fail("scrape must not start while another run is running"),
+    )
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls == []
+    assert "a run is already running" in caplog.text
+
+
+def test_no_running_scrape_run_starts_cycle(monkeypatch, calls):
+    monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: False)
+    monkeypatch.setattr(jobs, "scrape", lambda url: [])
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls[0][0] == "start"
+    assert calls[-1] == ("finish", "success", 0, None)
 
 
 def test_empty_scrape_finishes_with_zero_and_warns(monkeypatch, calls, caplog):
@@ -130,7 +154,8 @@ def test_build_scheduler_configures_immediate_interval_job(monkeypatch):
     assert job.next_run_time <= datetime.now(UTC)
 
 
-def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch):
+def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch, caplog):
+    caplog.set_level("INFO")
     calls = []
 
     class FakeScheduler:
@@ -145,12 +170,59 @@ def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch):
             self.running = False
 
     scheduler = FakeScheduler()
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(jobs, "init_db", lambda: calls.append("init_db"))
+    monkeypatch.setattr(
+        jobs.crud,
+        "mark_stale_runs_failed",
+        lambda session, older_than: calls.append(("cleanup", older_than)) or 2,
+        raising=False,
+    )
+    monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
+
+    jobs.main()
+
+    assert calls == [
+        "init_db",
+        ("cleanup", jobs.timedelta(minutes=30)),
+        "start",
+        ("shutdown", True),
+    ]
+    assert "Closed 2 stale scrape run(s)" in caplog.text
+
+
+def test_main_continues_when_stale_run_cleanup_fails(monkeypatch, caplog):
+    calls = []
+
+    class FakeScheduler:
+        running = True
+
+        def start(self):
+            calls.append("start")
+            raise KeyboardInterrupt
+
+        def shutdown(self, wait):
+            calls.append(("shutdown", wait))
+            self.running = False
+
+    def fail_cleanup(session, older_than):
+        raise RuntimeError("database unavailable")
+
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(jobs, "init_db", lambda: calls.append("init_db"))
+    monkeypatch.setattr(
+        jobs.crud,
+        "mark_stale_runs_failed",
+        fail_cleanup,
+        raising=False,
+    )
     monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
 
     jobs.main()
 
     assert calls == ["init_db", "start", ("shutdown", True)]
+    assert "Could not close stale scrape runs at startup" in caplog.text
 
 
 def test_failure_after_first_item_is_recorded_as_partial(monkeypatch, calls, session, caplog):

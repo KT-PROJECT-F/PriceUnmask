@@ -13,15 +13,11 @@ from backend.scraper.product_scraper import (
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent.parent / "data" / "snapshots"
 
-FIXTURE_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_page1.html"
-)
-BROKEN_FIXTURE_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_broken.html"
-)
-CATEGORY_FIXTURE_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_category.html"
-)
+FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_page1.html"
+
+BROKEN_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_broken.html"
+
+CATEGORY_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_category.html"
 
 
 BASE_URL = "https://books.toscrape.com/"
@@ -528,6 +524,40 @@ def test_page1_next_url():
     )
 
 
+@pytest.mark.parametrize(
+    "anchor",
+    [
+        '<a class="next">Next</a>',
+        '<a class="next" href="">Next</a>',
+        '<a class="next" href="https://example.com/page-2.html">Next</a>',
+        '<a class="next" href="//example.com/page-2.html">Next</a>',
+        '<a class="next" href="#">Next</a>',
+    ],
+)
+def test_parse_next_page_url_rejects_invalid_links(anchor):
+    html = make_listing(anchor)
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/catalogue/page-1.html",
+        )
+        is None
+    )
+
+
+def test_parse_next_page_url_rejects_hash_href():
+    html = make_listing('<a class="next" href="#">Next</a>')
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/catalogue/page-1.html",
+        )
+        is None
+    )
+
+
 def test_page25_next_url():
     html = read_html("sample_books_page25.html")
 
@@ -547,6 +577,30 @@ def test_page50_has_no_next_url():
         parse_next_page_url(
             html,
             "https://books.toscrape.com/catalogue/page-50.html",
+        )
+        is None
+    )
+
+
+def test_parse_next_page_url_rejects_external_absolute_url():
+    html = make_listing('<a class="next" href="https://example.com/page-2.html">Next</a>')
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/catalogue/page-1.html",
+        )
+        is None
+    )
+
+
+def test_parse_next_page_url_rejects_protocol_relative_url():
+    html = make_listing('<a class="next" href="//example.com/page-2.html">Next</a>')
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/catalogue/page-1.html",
         )
         is None
     )

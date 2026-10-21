@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urldefrag, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -175,9 +175,11 @@ def parse_next_page_url(html: str, base_url: str) -> str | None:
     if not isinstance(href, str) or not href.strip():
         return None
 
-    next_url = urljoin(base_url, href.strip())
+    # Remove fragments because they do not identify a different page.
+    next_url = urldefrag(urljoin(base_url, href.strip())).url
+    clean_base_url = urldefrag(base_url).url
 
-    base_parts = urlsplit(base_url)
+    base_parts = urlsplit(clean_base_url)
     next_parts = urlsplit(next_url)
 
     if next_parts.scheme not in {"http", "https"}:
@@ -186,7 +188,7 @@ def parse_next_page_url(html: str, base_url: str) -> str | None:
     if next_parts.netloc.lower() != base_parts.netloc.lower():
         return None
 
-    if next_url == base_url:
+    if next_url == clean_base_url:
         return None
 
     return next_url

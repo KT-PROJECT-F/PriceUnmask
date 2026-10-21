@@ -1,10 +1,9 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
-Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches
-the database.
+Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
 
-Keeping the scraper pure (HTML in, dataclasses out) means it can be
-unit-tested against saved HTML files with zero network calls.
+Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
+against saved HTML files with zero network calls.
 """
 
 import logging
@@ -13,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urldefrag, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -32,18 +31,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ScrapedProduct:
-    external_id: str
+    external_id: str  # stable id on the site (SKU, product slug from the URL, etc.)
     name: str
     url: str
-    current_price_minor: int
-    original_price_minor: int | None
+    current_price_minor: int  # Rs 1,299.50 -> 129950
+    original_price_minor: int | None  # strikethrough price, None if not shown
     in_stock: bool | None
     currency: str
-    scraped_at: datetime
+    scraped_at: datetime  # timezone-aware UTC
 
 
 def parse_price_to_minor(text: str) -> int | None:
-    """Convert a supported price string into minor currency units."""
+    """'Rs. 1,299.50' / '£1,299' / '₹1,299' / '1299' -> minor units."""
     if not isinstance(text, str):
         return None
 
@@ -64,13 +63,16 @@ def parse_price_to_minor(text: str) -> int | None:
         return None
 
     whole = match.group(1)
-    decimal = (match.group(2) or "").ljust(2, "0")
+    decimal = match.group(2) or ""
 
+    decimal = decimal.ljust(2, "0")
     return int(whole) * 100 + int(decimal)
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
-    """Parse one listing page and skip invalid product cards."""
+    """Parse one listing page. Skip (and log) cards with missing name or price;
+    never crash the whole page because one card is weird.
+    """
     soup = BeautifulSoup(html, "html.parser")
     products: list[ScrapedProduct] = []
     scraped_at = datetime.now(UTC)
@@ -108,6 +110,8 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
             )
             continue
 
+        # Assumption: the shop marks the old price with <del>
+        # or class "old-price".
         original_price_minor = None
         original_price_element = card.select_one("del, .old-price")
 
@@ -126,7 +130,8 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
         external_id = slug.rsplit("_", 1)[0]
 
-        currency = "INR" if ("\u20b9" in price_text or "Rs" in price_text) else "GBP"
+        # This site sells in GBP; a rupee sign or "Rs" means INR.
+        currency = "INR" if ("₹" in price_text or "Rs" in price_text) else "GBP"
 
         in_stock = None
 
@@ -156,33 +161,34 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
     return products
 
 
-def parse_next_page_url(html: str, current_url: str) -> str | None:
-    """Return the next listing page URL, or None if no next page exists."""
+def parse_next_page_url(html: str, base_url: str) -> str | None:
+    """Return the same-site URL of the next page, or None."""
     soup = BeautifulSoup(html, "html.parser")
 
     next_link = soup.select_one("li.next a[href]")
 
     if next_link is None:
-        next_link = soup.select_one('a[rel="next"][href]')
-
-    if next_link is None:
         return None
 
-    next_url = urljoin(current_url, next_link["href"])
+    href = next_link.get("href")
 
-    current = urlparse(current_url)
-    next_page = urlparse(next_url)
-
-    # Do not follow pagination links to another host.
-    if next_page.scheme not in {"http", "https"} or next_page.netloc != current.netloc:
-        logger.warning(
-            "Ignoring pagination link outside the current host: %s",
-            next_url,
-        )
+    if not isinstance(href, str) or not href.strip():
         return None
 
-    # Avoid repeatedly fetching the same page.
-    if next_url == current_url:
+    # Remove fragments because they do not identify a different page.
+    next_url = urldefrag(urljoin(base_url, href.strip())).url
+    clean_base_url = urldefrag(base_url).url
+
+    base_parts = urlsplit(clean_base_url)
+    next_parts = urlsplit(next_url)
+
+    if next_parts.scheme not in {"http", "https"}:
+        return None
+
+    if next_parts.netloc.lower() != base_parts.netloc.lower():
+        return None
+
+    if next_url == clean_base_url:
         return None
 
     return next_url
@@ -218,12 +224,25 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
 
     parser = RobotFileParser()
     parser.parse(response.text.splitlines())
-
     return parser.can_fetch(settings.scrape_user_agent, url)
 
 
 def fetch_html(url: str) -> str:
-    """Fetch HTML with robots checks, timeouts, retries, and backoff."""
+    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect
+    for robots.txt. Raise a clear exception on 4xx/5xx.
+
+    What happens when a fetch fails:
+    - Timeout or connection error: retried MAX_RETRIES times, then the
+      requests exception is raised.
+    - HTTP 500/502/503/504: retried MAX_RETRIES times, then RuntimeError.
+    - Any other 4xx (including 404): RuntimeError at once, no retry.
+    - robots.txt cannot be downloaded, redirects, or returns an error other
+      than 404: RuntimeError, and the page is never requested.
+      robots.txt 404 means "no rules": the page is fetched.
+    - The page redirects (same site or another site): RuntimeError.
+      We never follow redirects.
+    - The response is not HTML (or has no Content-Type): RuntimeError.
+    """
     headers = {"User-Agent": settings.scrape_user_agent}
     logger.info("Using User-Agent: %s", headers["User-Agent"])
 
@@ -231,6 +250,8 @@ def fetch_html(url: str) -> str:
         logger.warning("robots.txt disallows fetching %s", url)
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
+    # robots.txt and the page are two requests to the same site.
+    # Wait politely before requesting the page.
     if settings.scrape_delay_seconds > 0:
         logger.info(
             "Waiting %.2f seconds before fetching %s",
@@ -293,6 +314,7 @@ def fetch_html(url: str) -> str:
 
         logger.info("Fetched %s: HTTP %s", url, response.status_code)
 
+        # No charset in the header: requests guesses ISO-8859-1.
         if "charset" not in content_type.lower():
             response.encoding = response.apparent_encoding
 
@@ -302,15 +324,21 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """Fetch, save raw HTML, parse, and return products from multiple pages.
+    """Fetch, save raw HTML, parse, and return products from up to
+    settings.scrape_max_pages listing pages.
 
-    Collects up to settings.scrape_max_pages listing pages.
-    Saves each page as a separate HTML snapshot and removes duplicate
-    products when their external IDs are available.
+    Follows the next page link (parse_next_page_url) until there is no next
+    page, the maximum is reached, or a page links back to one already visited.
+    Every page goes through fetch_html, so robots.txt, the delay and the
+    retries apply to each page. Each page gets its own raw HTML file.
+    A product that appears on two pages is returned once.
 
-    Any fetch failure is raised to the caller.
+    If any page fails to fetch, the error is raised to the caller and no
+    products are returned, so the scheduler records the whole run as failed
+    (see the plan on #117). Snapshots of the pages fetched before the failure
+    are kept.
     """
-    max_pages = max(1, int(settings.scrape_max_pages))
+    max_pages = max(1, settings.scrape_max_pages)
 
     current_url: str | None = url
     visited_urls: set[str] = set()
@@ -329,24 +357,18 @@ def scrape(url: str) -> list[ScrapedProduct]:
             break
 
         visited_urls.add(current_url)
-
-        logger.info(
-            "Scraping listing page %s of %s: %s",
-            page_number,
-            max_pages,
-            current_url,
-        )
+        logger.info("Scraping listing page %s of %s: %s", page_number, max_pages, current_url)
 
         html = fetch_html(current_url)
 
-        # Preserve the original snapshot filename format for page 1.
+        # Page 1 keeps the old file name; later pages add _pageN so two pages
+        # fetched in the same second never overwrite each other.
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        suffix = "" if page_number == 1 else f"_page{page_number}"
+        snapshot_path = SNAPSHOT_DIR / f"{timestamp}{suffix}.html"
 
-        if page_number == 1:
-            snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
-        else:
-            snapshot_path = SNAPSHOT_DIR / f"{timestamp}_page{page_number}.html"
-
+        # Keep the raw page first: if the parser has a bug, we can re-parse it later.
+        # A failed backup must not cost us the prices, so we only log it.
         try:
             SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
             snapshot_path.write_text(html, encoding="utf-8")
@@ -359,20 +381,11 @@ def scrape(url: str) -> list[ScrapedProduct]:
         page_products = parse_listing(html, current_url)
 
         for product in page_products:
-            # Keep compatibility with existing tests and parsers that return
-            # objects without an external_id attribute.
-            external_id = getattr(product, "external_id", None)
+            if product.external_id in seen_product_ids:
+                logger.info("Skipping duplicate product ID: %s", product.external_id)
+                continue
 
-            if external_id is not None:
-                if external_id in seen_product_ids:
-                    logger.info(
-                        "Skipping duplicate product ID: %s",
-                        external_id,
-                    )
-                    continue
-
-                seen_product_ids.add(external_id)
-
+            seen_product_ids.add(product.external_id)
             all_products.append(product)
 
         logger.info(
@@ -389,7 +402,6 @@ def scrape(url: str) -> list[ScrapedProduct]:
 
         if current_url is None:
             logger.info("No next listing page found; collection complete")
-            break
 
     logger.info(
         "Scraping complete: %s products collected across %s pages",

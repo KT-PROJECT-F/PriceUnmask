@@ -19,6 +19,7 @@ class Settings:
     )
     scrape_delay_seconds: float = float(os.getenv("SCRAPE_DELAY_SECONDS", "3"))
     scrape_max_pages: int = int(os.getenv("SCRAPE_MAX_PAGES", "3"))
+    stale_run_minutes: int = int(os.getenv("STALE_RUN_MINUTES", "30"))
 
 
 settings = Settings()

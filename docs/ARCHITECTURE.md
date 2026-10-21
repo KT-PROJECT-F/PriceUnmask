@@ -96,8 +96,7 @@ fewer than 6 snapshots `insufficient_data`. `reasons` lists the sentences shown 
 ## 8. Scraping rules (non-negotiable)
 
 - One public site with no login wall. Check its `robots.txt` and Terms before choosing it.
-- Identify ourselves via User-Agent, wait `SCRAPE_DELAY_SECONDS` between requests,
-  no more than one listing page per run per category.
+- Identify ourselves via User-Agent, wait `SCRAPE_DELAY_SECONDS` before every page, and fetch at most `SCRAPE_MAX_PAGES` (default 3) listing pages per run, following the site's own "next" links. Every page goes through `fetch_html`.
 - If the site blocks us, we stop and pick another site; we do not rotate proxies or fake browsers.
 - Tests never hit the network. Save real HTML to `data/snapshots/sample_*.html` and parse that.
 

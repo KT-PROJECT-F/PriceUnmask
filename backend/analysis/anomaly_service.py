@@ -5,14 +5,15 @@ from typing import Literal
 
 import pandas as pd
 
-from backend.analysis.anomaly_model import detect_anomalies
+from backend.analysis.anomaly_model import ROLLING_WINDOW, detect_anomalies
+
+MIN_SNAPSHOTS = ROLLING_WINDOW + 1
 
 AnomalyStatus = Literal["insufficient_history", "normal", "unusual"]
 
 INSUFFICIENT_HISTORY_MESSAGE = "Not enough price history to detect unusual price changes."
-NORMAL_MESSAGE = (
-    "No unusual price changes detected. The price looks normal based on the available history."
-)
+NORMAL_MESSAGE = "Today's price looks normal based on the available history."
+
 UNUSUAL_MESSAGE = (
     "An unusual price change was detected. "
     "Please review the price history before making a purchase."
@@ -28,7 +29,7 @@ class AnomalySummary:
 
 def summarize_anomalies(history: pd.DataFrame) -> AnomalySummary:
     """Return a shopper-friendly status without exposing the detector's note."""
-    if len(history) < 6:
+    if len(history) < MIN_SNAPSHOTS:
         return AnomalySummary(
             status="insufficient_history",
             result=None,

@@ -1,5 +1,6 @@
 import logging
 import re
+from dataclasses import replace
 
 import pytest
 import requests
@@ -58,6 +59,7 @@ def sleeps(monkeypatch):
 def test_success(monkeypatch) -> None:
     calls: list = []
     use_fake(monkeypatch, FakeResponse(body="<html>OK</html>"), calls)
+
     assert fetch_html("https://example.com") == "<html>OK</html>"
     assert len(calls) == 2
 
@@ -65,7 +67,9 @@ def test_success(monkeypatch) -> None:
 def test_user_agent_and_timeout(monkeypatch) -> None:
     calls: list = []
     use_fake(monkeypatch, FakeResponse(body="ok"), calls)
+
     fetch_html("https://example.com")
+
     _, kwargs = calls[0]
     assert kwargs["headers"]["User-Agent"] == settings.scrape_user_agent
     assert kwargs["timeout"] == FETCH_TIMEOUT_SECONDS
@@ -73,9 +77,7 @@ def test_user_agent_and_timeout(monkeypatch) -> None:
 
 def test_pound_sign_survives_without_charset(monkeypatch) -> None:
     responses = [
-        FakeResponse(
-            body="User-agent: *\nAllow: /",
-        ),
+        FakeResponse(body="User-agent: *\nAllow: /"),
         FakeResponse(
             body="<p>£51.77</p>",
             content_type="text/html",
@@ -90,7 +92,9 @@ def test_pound_sign_survives_without_charset(monkeypatch) -> None:
         "backend.scraper.product_scraper.requests.get",
         fake_get,
     )
+
     html = fetch_html("https://books.toscrape.com")
+
     assert "£51.77" in html
     assert "Â£" not in html
 
@@ -113,20 +117,21 @@ def script(monkeypatch, *steps):
     def fake_get(url, **kwargs):
         calls.append(url)
         step = queue.pop(0)
+
         if isinstance(step, Exception):
             raise step
+
         return step
 
     monkeypatch.setattr(
         "backend.scraper.product_scraper.requests.get",
         fake_get,
     )
+
     return calls
 
 
-ROBOTS_OK = FakeResponse(
-    body="User-agent: *\nAllow: /",
-)
+ROBOTS_OK = FakeResponse(body="User-agent: *\nAllow: /")
 
 
 def test_configured_delay_between_robots_and_page(monkeypatch, sleeps) -> None:
@@ -144,8 +149,10 @@ def test_configured_delay_between_robots_and_page(monkeypatch, sleeps) -> None:
         "backend.scraper.product_scraper.requests.get",
         fake_get,
     )
+
     delay = settings.scrape_delay_seconds
     fetch_html("https://example.com/p")
+
     assert calls == [
         "https://example.com/robots.txt",
         "https://example.com/p",
@@ -161,6 +168,7 @@ def test_fails_twice_then_succeeds(monkeypatch, sleeps) -> None:
         FakeResponse(503),
         FakeResponse(body="ok"),
     )
+
     assert fetch_html("https://example.com/p") == "ok"
     assert len(calls) == 4
     assert sleeps == [settings.scrape_delay_seconds, 1, 2]
@@ -174,8 +182,10 @@ def test_fails_three_times_then_raises(monkeypatch, sleeps) -> None:
         FakeResponse(503),
         FakeResponse(503),
     )
+
     with pytest.raises(RuntimeError, match="HTTP 503"):
         fetch_html("https://example.com/p")
+
     assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
 
@@ -185,8 +195,10 @@ def test_404_is_not_retried(monkeypatch, sleeps) -> None:
         ROBOTS_OK,
         FakeResponse(404),
     )
+
     with pytest.raises(RuntimeError, match="HTTP 404"):
         fetch_html("https://example.com/p")
+
     assert len(calls) == 2
     assert sleeps == [settings.scrape_delay_seconds]
 
@@ -204,8 +216,10 @@ def test_temporary_status_is_retried_then_raises(
         FakeResponse(status),
         FakeResponse(status),
     )
+
     with pytest.raises(RuntimeError, match=f"HTTP {status}"):
         fetch_html("https://example.com/p")
+
     assert len(calls) == 4
     assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
@@ -217,6 +231,7 @@ def test_timeout_is_retried(monkeypatch, sleeps) -> None:
         requests.Timeout(),
         FakeResponse(body="ok"),
     )
+
     assert fetch_html("https://example.com/p") == "ok"
     assert sleeps == [settings.scrape_delay_seconds, 1]
 
@@ -228,6 +243,7 @@ def test_connection_error_is_retried(monkeypatch, sleeps) -> None:
         requests.ConnectionError(),
         FakeResponse(body="ok"),
     )
+
     assert fetch_html("https://example.com/p") == "ok"
     assert sleeps == [settings.scrape_delay_seconds, 1]
 
@@ -243,8 +259,10 @@ def test_timeout_on_every_attempt_raises_after_three_tries(
         requests.Timeout(),
         requests.Timeout(),
     )
+
     with pytest.raises(requests.Timeout):
         fetch_html("https://example.com/p")
+
     assert len(calls) == 4
     assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
@@ -252,12 +270,12 @@ def test_timeout_on_every_attempt_raises_after_three_tries(
 def test_disallowed_url_never_requests_the_page(monkeypatch, sleeps) -> None:
     calls = script(
         monkeypatch,
-        FakeResponse(
-            body="User-agent: *\nDisallow: /private",
-        ),
+        FakeResponse(body="User-agent: *\nDisallow: /private"),
     )
+
     with pytest.raises(RuntimeError, match="robots.txt disallows"):
         fetch_html("https://example.com/private/x")
+
     assert calls == ["https://example.com/robots.txt"]
     assert sleeps == []
 
@@ -268,17 +286,17 @@ def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
         FakeResponse(status_code=404),
         FakeResponse(body="ok"),
     )
+
     assert fetch_html("https://example.com/p") == "ok"
     assert sleeps == [settings.scrape_delay_seconds]
 
 
 def test_robots_txt_timeout_raises_clear_error(monkeypatch, sleeps) -> None:
-    script(
-        monkeypatch,
-        requests.Timeout(),
-    )
+    script(monkeypatch, requests.Timeout())
+
     with pytest.raises(RuntimeError, match="robots.txt"):
         fetch_html("https://example.com/p")
+
     assert sleeps == []
 
 
@@ -292,11 +310,13 @@ def test_robots_txt_error_status_raises_and_page_is_not_requested(
         monkeypatch,
         FakeResponse(status_code=status),
     )
+
     with pytest.raises(
         RuntimeError,
         match=f"robots.txt returned HTTP {status}",
     ):
         fetch_html("https://example.com/p")
+
     assert calls == ["https://example.com/robots.txt"]
     assert sleeps == []
 
@@ -304,6 +324,7 @@ def test_robots_txt_error_status_raises_and_page_is_not_requested(
 def test_scrape_saves_raw_html(monkeypatch, tmp_path) -> None:
     html = "<html><body>saved page</body></html>"
     seen = {}
+
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
     monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
 
@@ -313,9 +334,11 @@ def test_scrape_saves_raw_html(monkeypatch, tmp_path) -> None:
         return []
 
     monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
+
     product_scraper.scrape("https://example.com/list")
 
     [snapshot] = list(tmp_path.glob("*.html"))
+
     assert re.fullmatch(r"\d{8}T\d{6}Z\.html", snapshot.name)
     assert snapshot.read_text(encoding="utf-8") == html
     assert seen == {
@@ -328,6 +351,7 @@ def test_scrape_returns_parsed_products(monkeypatch, tmp_path) -> None:
     html = "<html>test</html>"
     expected_products = ["product-1", "product-2"]
     seen = {}
+
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
     monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
 
@@ -337,7 +361,9 @@ def test_scrape_returns_parsed_products(monkeypatch, tmp_path) -> None:
         return expected_products
 
     monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
+
     result = product_scraper.scrape("https://example.com/list")
+
     assert result == expected_products
     assert seen == {
         "html": html,
@@ -352,8 +378,10 @@ def test_scrape_does_not_save_when_fetch_fails(monkeypatch, tmp_path) -> None:
         raise RuntimeError("fetch failed")
 
     monkeypatch.setattr(product_scraper, "fetch_html", fail_fetch)
+
     with pytest.raises(RuntimeError, match="fetch failed"):
         product_scraper.scrape("https://example.com")
+
     assert list(tmp_path.iterdir()) == []
 
 
@@ -405,10 +433,16 @@ def test_scrape_returns_products_when_the_snapshot_cannot_be_saved(
     assert product_scraper.scrape("https://example.com/list") == ["product"]
 
 
-def test_fetch_html_logs_robots_user_agent_and_delay(monkeypatch, caplog) -> None:
+def test_fetch_html_logs_robots_user_agent_and_delay(
+    monkeypatch,
+    caplog,
+) -> None:
     script(monkeypatch, ROBOTS_OK, FakeResponse(body="ok"))
 
-    with caplog.at_level(logging.INFO, logger="backend.scraper.product_scraper"):
+    with caplog.at_level(
+        logging.INFO,
+        logger="backend.scraper.product_scraper",
+    ):
         fetch_html("https://example.com/p")
 
     assert "Checking robots.txt: https://example.com/robots.txt" in caplog.text
@@ -439,6 +473,7 @@ def test_fetch_html_logs_each_retry(monkeypatch, caplog) -> None:
 def test_external_redirect_is_rejected(monkeypatch, sleeps) -> None:
     redirect = FakeResponse(status_code=302)
     redirect.headers["Location"] = "https://other.example/page"
+
     calls = script(monkeypatch, ROBOTS_OK, redirect)
 
     with pytest.raises(RuntimeError, match="Redirect not followed"):
@@ -454,6 +489,7 @@ def test_external_redirect_is_rejected(monkeypatch, sleeps) -> None:
 def test_same_site_redirect_is_rejected(monkeypatch, sleeps) -> None:
     redirect = FakeResponse(status_code=301)
     redirect.headers["Location"] = "/page/"
+
     calls = script(monkeypatch, ROBOTS_OK, redirect)
 
     with pytest.raises(RuntimeError, match="Redirect not followed"):
@@ -538,9 +574,7 @@ def test_missing_content_type_is_rejected(monkeypatch, sleeps) -> None:
 def test_disallowed_url_is_logged_once(monkeypatch, caplog) -> None:
     script(
         monkeypatch,
-        FakeResponse(
-            body="User-agent: *\nDisallow: /private",
-        ),
+        FakeResponse(body="User-agent: *\nDisallow: /private"),
     )
 
     with (
@@ -553,3 +587,201 @@ def test_disallowed_url_is_logged_once(monkeypatch, caplog) -> None:
         fetch_html("https://example.com/private/x")
 
     assert caplog.text.count("robots.txt disallows") == 1
+
+
+def test_scrape_follows_next_page(monkeypatch, tmp_path):
+    """Collect products from page 1 and page 2."""
+
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class FakeProduct:
+        external_id: str
+        name: str
+
+    page1 = """
+    <html>
+      <article class="product_pod">
+        <h3><a href="book1.html">Book 1</a></h3>
+      </article>
+      <li class="next"><a href="page-2.html">next</a></li>
+    </html>
+    """
+
+    page2 = """
+    <html>
+      <article class="product_pod">
+        <h3><a href="book2.html">Book 2</a></h3>
+      </article>
+    </html>
+    """
+
+    pages = {
+        "https://example.com/catalogue/page-1.html": page1,
+        "https://example.com/catalogue/page-2.html": page2,
+    }
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        return pages[url]
+
+    def fake_parse(html, base_url):
+        if base_url.endswith("page-1.html"):
+            return [FakeProduct("book1", "Book 1")]
+
+        return [FakeProduct("book2", "Book 2")]
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", fake_fetch)
+    monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
+    monkeypatch.setattr(
+        product_scraper,
+        "settings",
+        replace(settings, scrape_max_pages=3),
+    )
+
+    products = product_scraper.scrape("https://example.com/catalogue/page-1.html")
+
+    assert calls == [
+        "https://example.com/catalogue/page-1.html",
+        "https://example.com/catalogue/page-2.html",
+    ]
+    assert [product.external_id for product in products] == [
+        "book1",
+        "book2",
+    ]
+    assert len(list(tmp_path.glob("*.html"))) == 2
+
+
+def test_scrape_stops_when_no_next_page(monkeypatch, tmp_path):
+    """Stop after the first page when no next link exists."""
+
+    html = """
+    <html>
+      <article class="product_pod">
+        <h3><a href="book1.html">Book 1</a></h3>
+      </article>
+    </html>
+    """
+
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        return html
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", fake_fetch)
+    monkeypatch.setattr(
+        product_scraper,
+        "parse_listing",
+        lambda html, url: [],
+    )
+    monkeypatch.setattr(
+        product_scraper,
+        "settings",
+        replace(settings, scrape_max_pages=3),
+    )
+
+    products = product_scraper.scrape("https://example.com/catalogue/page-1.html")
+
+    assert products == []
+    assert calls == [
+        "https://example.com/catalogue/page-1.html",
+    ]
+    assert len(list(tmp_path.glob("*.html"))) == 1
+
+
+def test_scrape_removes_duplicate_products(monkeypatch, tmp_path):
+    """Return each external product ID only once."""
+
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class FakeProduct:
+        external_id: str
+        name: str
+
+    page1 = """
+    <li class="next"><a href="page-2.html">next</a></li>
+    """
+
+    page2 = "<html></html>"
+
+    def fake_fetch(url):
+        if url.endswith("page-1.html"):
+            return page1
+
+        return page2
+
+    def fake_parse(html, base_url):
+        if base_url.endswith("page-1.html"):
+            return [
+                FakeProduct("book1", "Book 1"),
+                FakeProduct("book2", "Book 2"),
+            ]
+
+        return [
+            FakeProduct("book2", "Book 2 duplicate"),
+            FakeProduct("book3", "Book 3"),
+        ]
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", fake_fetch)
+    monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
+    monkeypatch.setattr(
+        product_scraper,
+        "settings",
+        replace(settings, scrape_max_pages=3),
+    )
+
+    products = product_scraper.scrape("https://example.com/catalogue/page-1.html")
+
+    assert [product.external_id for product in products] == [
+        "book1",
+        "book2",
+        "book3",
+    ]
+
+
+def test_scrape_respects_max_pages(monkeypatch, tmp_path):
+    """Never fetch more pages than the configured maximum."""
+
+    pages = {
+        "https://example.com/catalogue/page-1.html": (
+            '<li class="next"><a href="page-2.html">next</a></li>'
+        ),
+        "https://example.com/catalogue/page-2.html": (
+            '<li class="next"><a href="page-3.html">next</a></li>'
+        ),
+        "https://example.com/catalogue/page-3.html": "<html></html>",
+    }
+
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        return pages[url]
+
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", fake_fetch)
+    monkeypatch.setattr(
+        product_scraper,
+        "parse_listing",
+        lambda html, url: [],
+    )
+    monkeypatch.setattr(
+        product_scraper,
+        "settings",
+        replace(settings, scrape_max_pages=2),
+    )
+
+    products = product_scraper.scrape("https://example.com/catalogue/page-1.html")
+
+    assert products == []
+    assert calls == [
+        "https://example.com/catalogue/page-1.html",
+        "https://example.com/catalogue/page-2.html",
+    ]
+    assert len(list(tmp_path.glob("*.html"))) == 2

@@ -18,6 +18,7 @@ class Settings:
         "PriceUnmaskBot/0.1 (learning project; contact: you@example.com)",
     )
     scrape_delay_seconds: float = float(os.getenv("SCRAPE_DELAY_SECONDS", "3"))
+    scrape_max_pages: int = int(os.getenv("SCRAPE_MAX_PAGES", "3"))
 
 
 settings = Settings()

@@ -12,6 +12,7 @@ from backend.analysis.anomaly_service import (
     NORMAL_MESSAGE,
     UNUSUAL_MESSAGE,
 )
+from backend.config import settings
 from backend.db.database import Base, get_session
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
@@ -376,6 +377,52 @@ def test_start_scrape_run_returns_409_when_run_is_running(client):
 
     assert response.status_code == 409
     assert response.json() == {"detail": "A scrape run is already in progress"}
+    mock_scrape.assert_not_called()
+
+
+def test_start_scrape_run_closes_stale_run(client):
+    stale_started_at = datetime.now(UTC) - timedelta(minutes=settings.stale_run_minutes + 5)
+
+    with TestingSessionLocal() as session:
+        stale_run = ScrapeRun(
+            started_at=stale_started_at,
+            status="running",
+            products_seen=0,
+        )
+        session.add(stale_run)
+        session.commit()
+        stale_run_id = stale_run.id
+
+    with patch("backend.main.run_scrape_cycle_for_run") as mock_scrape:
+        response = client.post("/api/scrape/run")
+
+    assert response.status_code == 202
+    new_run_id = response.json()["id"]
+    assert new_run_id != stale_run_id
+
+    with TestingSessionLocal() as session:
+        stale_run = session.get(ScrapeRun, stale_run_id)
+        assert stale_run.status == "failed"
+        assert stale_run.finished_at is not None
+        assert stale_run.error_message is not None
+
+    mock_scrape.assert_called_once_with(new_run_id)
+
+
+def test_start_scrape_run_returns_500_when_cleanup_fails(client):
+    with (
+        patch(
+            "backend.main.crud.mark_stale_runs_failed",
+            side_effect=RuntimeError("database cleanup failed"),
+        ),
+        patch("backend.main.crud.has_running_scrape_run") as mock_running,
+        patch("backend.main.run_scrape_cycle_for_run") as mock_scrape,
+    ):
+        response = client.post("/api/scrape/run")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not close stale scrape runs"}
+    mock_running.assert_not_called()
     mock_scrape.assert_not_called()
 
 

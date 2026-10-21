@@ -7,18 +7,18 @@ import pytest
 
 from backend.scraper.product_scraper import (
     parse_listing,
+    parse_next_page_url,
     parse_price_to_minor,
 )
 
-FIXTURE_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_page1.html"
-)
-BROKEN_FIXTURE_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_broken.html"
-)
-CATEGORY_FIXTURE_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "snapshots" / "sample_books_category.html"
-)
+SNAPSHOT_DIR = Path(__file__).resolve().parent.parent / "data" / "snapshots"
+
+FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_page1.html"
+
+BROKEN_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_broken.html"
+
+CATEGORY_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_category.html"
+
 
 BASE_URL = "https://books.toscrape.com/"
 CATEGORY_BASE_URL = "https://books.toscrape.com/catalogue/category/books/travel_2/index.html"
@@ -506,3 +506,91 @@ def test_title_with_quotes_is_preserved():
 
     assert len(products) == 1
     assert products[0].name == title
+
+
+def read_html(filename: str) -> str:
+    return (SNAPSHOT_DIR / filename).read_text(encoding="utf-8")
+
+
+def test_page1_next_url():
+    html = read_html("sample_books_page1.html")
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/",
+        )
+        == "https://books.toscrape.com/catalogue/page-2.html"
+    )
+
+
+def test_page25_next_url():
+    html = read_html("sample_books_page25.html")
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/catalogue/page-25.html",
+        )
+        == "https://books.toscrape.com/catalogue/page-26.html"
+    )
+
+
+def test_page50_has_no_next_url():
+    html = read_html("sample_books_page50.html")
+
+    assert (
+        parse_next_page_url(
+            html,
+            "https://books.toscrape.com/catalogue/page-50.html",
+        )
+        is None
+    )
+
+
+def make_pager(href: str | None) -> str:
+    """Build a pager like the real Books to Scrape markup."""
+    link = "<a>Next</a>" if href is None else f'<a href="{escape(href, quote=True)}">Next</a>'
+    return f'<html><body><ul class="pager"><li class="next">{link}</li></ul></body></html>'
+
+
+PAGE_1_URL = "https://books.toscrape.com/catalogue/page-1.html"
+
+
+def test_make_pager_link_is_found():
+    # Proves the helper matches the real site's markup.
+    assert (
+        parse_next_page_url(
+            make_pager("page-2.html"),
+            PAGE_1_URL,
+        )
+        == "https://books.toscrape.com/catalogue/page-2.html"
+    )
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        None,
+        "",
+        "   ",
+        "https://example.com/page-2.html",
+        "//example.com/page-2.html",
+        "javascript:alert(1)",
+        "#",
+        "page-1.html",
+        "page-1.html#top",
+    ],
+)
+def test_parse_next_page_url_rejects_invalid_links(href):
+    assert parse_next_page_url(make_pager(href), PAGE_1_URL) is None
+
+
+def test_next_link_fragment_is_dropped():
+    assert (
+        parse_next_page_url(
+            make_pager("page-2.html#top"),
+            PAGE_1_URL,
+        )
+        == "https://books.toscrape.com/catalogue/page-2.html"
+    )

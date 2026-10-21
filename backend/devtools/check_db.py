@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from backend.config import settings
 from backend.db import crud
 from backend.db.database import SessionLocal
 from backend.db.models import ScrapeRun
@@ -54,6 +55,8 @@ def find_problems(
 
 
 def report(session: Session) -> None:
+    """Print a read-only database health report."""
+    now = datetime.now(UTC)
     runs = crud.list_scrape_runs(session)
     runs_by_status = crud.count_runs_by_status(session)
     snapshots_by_run = crud.count_snapshots_by_run(session)
@@ -81,11 +84,34 @@ def report(session: Session) -> None:
     else:
         print("  None")
 
-    # A run that is still running has no final numbers yet, so it is not judged.
+    problems: list[str] = []
+
+    # Report old running runs without changing their database status.
+    stale_after = timedelta(minutes=settings.stale_run_minutes)
+
+    for run in runs:
+        if run.status != "running":
+            continue
+
+        started_at = run.started_at
+
+        if started_at.tzinfo is None or started_at.utcoffset() is None:
+            problems.append(f"running run {run.id} has a naive started_at timestamp")
+        elif now - started_at > stale_after:
+            age_minutes = int((now - started_at).total_seconds() // 60)
+            problems.append(
+                f"running run {run.id} started at {started_at.isoformat()} "
+                f"and has been running for {age_minutes} minutes "
+                f"(threshold: {settings.stale_run_minutes} minutes)"
+            )
+
     finished = [run for run in runs if run.status != "running"]
+
     if not finished:
+        problems.append("no finished scrape run found")
         print("\nHealth status: CHECK REQUIRED")
-        print("Reason: no finished scrape run found.")
+        for problem in problems:
+            print(f"  - {problem}")
         return
 
     latest_run = finished[0]
@@ -98,11 +124,14 @@ def report(session: Session) -> None:
     print(f"  Error: {latest_run.error_message or '-'}")
     print(f"  Products without a snapshot in this run: {len(missing)}")
 
-    problems = find_problems(
-        latest_run,
-        snapshots_by_run.get(latest_run.id, 0),
-        len(missing),
-        duplicates,
+    problems.extend(
+        find_problems(
+            latest_run,
+            snapshots_by_run.get(latest_run.id, 0),
+            len(missing),
+            duplicates,
+            now=now,
+        )
     )
 
     if problems:

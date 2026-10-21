@@ -116,3 +116,47 @@ def test_report_prints_database_health(session, capsys):
     assert "Products without a snapshot in this run: 0" in output
     assert "Health status: CHECK REQUIRED" in output
     assert "1 product name stored more than once" in output
+
+
+def test_report_flags_stale_running_run_without_changing_status(session, capsys, monkeypatch):
+    from backend.devtools import check_db
+
+    now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+    started_at = now - timedelta(minutes=45)
+
+    run = start_scrape_run(session)
+    run.started_at = started_at
+    session.commit()
+
+    monkeypatch.setattr(check_db, "settings", SimpleNamespace(stale_run_minutes=30))
+    monkeypatch.setattr(check_db, "datetime", SimpleNamespace(now=lambda tz=None: now))
+
+    report(session)
+    output = capsys.readouterr().out
+
+    assert "Health status: CHECK REQUIRED" in output
+    assert f"running run {run.id}" in output
+    assert "45 minutes" in output
+    assert run.status == "running"
+
+
+def test_report_does_not_flag_recent_running_run_as_stale(session, capsys, monkeypatch):
+    from backend.devtools import check_db
+
+    now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+    started_at = now - timedelta(minutes=5)
+
+    run = start_scrape_run(session)
+    run.started_at = started_at
+    session.commit()
+
+    monkeypatch.setattr(check_db, "settings", SimpleNamespace(stale_run_minutes=30))
+    monkeypatch.setattr(check_db, "datetime", SimpleNamespace(now=lambda tz=None: now))
+
+    report(session)
+    output = capsys.readouterr().out
+
+    assert "no finished scrape run found" in output
+    assert "Health status: CHECK REQUIRED" in output
+    assert "has been running for" not in output
+    assert run.status == "running"

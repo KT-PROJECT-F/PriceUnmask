@@ -201,11 +201,33 @@ def list_products_not_seen_in_run(
     session: Session,
     run_id: int,
 ) -> Sequence[Product]:
-    """Return products without a snapshot associated with the given run."""
+    """Return unseen products only from sources represented in this run.
+
+    If the run has no snapshots, its source cannot be identified, so return
+    no missing products rather than incorrectly flagging every product.
+    """
+    run_sources = (
+        select(Product.source)
+        .join(PriceSnapshot, PriceSnapshot.product_id == Product.id)
+        .where(PriceSnapshot.scrape_run_id == run_id)
+        .distinct()
+    )
+
+    sources = session.scalars(run_sources).all()
+
+    if not sources:
+        return []
+
     seen_product_ids = select(PriceSnapshot.product_id).where(PriceSnapshot.scrape_run_id == run_id)
 
-    statement = select(Product).where(~Product.id.in_(seen_product_ids)).order_by(Product.name)
-
+    statement = (
+        select(Product)
+        .where(
+            Product.source.in_(sources),
+            ~Product.id.in_(seen_product_ids),
+        )
+        .order_by(Product.name)
+    )
     return session.scalars(statement).all()
 
 

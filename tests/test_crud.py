@@ -684,9 +684,7 @@ def test_run_with_zero_products_keeps_history_and_reports_missing(
 
     assert count_runs_by_status(session) == {"success": 2}
     assert count_snapshots_by_run(session) == {first_run.id: 1}
-    assert [product.name for product in list_products_not_seen_in_run(session, empty_run.id)] == [
-        "Alpha"
-    ]
+    assert list_products_not_seen_in_run(session, empty_run.id) == []
     assert len(get_history(session, snapshot.product_id)) == 1
 
 

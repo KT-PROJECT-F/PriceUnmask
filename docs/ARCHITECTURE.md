@@ -71,6 +71,19 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202) | 409 if a run is already in progress |
 
+The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
+
+- `anomaly_status`: `insufficient_history`, `normal`, or `unusual`.
+- `anomaly_result`: `null` when history is insufficient, `false` when no unusual change is detected, or `true` when an unusual change is detected.
+- `anomaly_message`: A shopper-friendly explanation of the anomaly status. Internal detector notes are not exposed.
+
+| Anomaly status | Shopper-facing message |
+|---|---|
+| `insufficient_history` | Not enough price history to detect unusual price changes. |
+| `normal` | Today's price looks normal based on the available history. |
+| `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
+
+
 ## 6. Trust Score signals (each must be explainable in one sentence)
 
 | Signal | Plain-English meaning | Fake-discount pattern |

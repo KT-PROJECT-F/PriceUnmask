@@ -7,8 +7,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.analysis.anomaly_service import (
+    INSUFFICIENT_HISTORY_MESSAGE,
+    NORMAL_MESSAGE,
+    UNUSUAL_MESSAGE,
+)
 from backend.db.database import Base, get_session
-from backend.db.models import Product, ScrapeRun
+from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
 from backend.main import app
 
@@ -48,6 +53,36 @@ def client(seeded_database):
         yield c
 
     app.dependency_overrides.clear()
+
+
+def add_product_with_prices(external_id: str, prices: list[int]) -> int:
+    with TestingSessionLocal() as session:
+        product = Product(
+            source="test",
+            external_id=external_id,
+            name=external_id,
+            url=f"https://example.com/{external_id}",
+        )
+        session.add(product)
+        session.flush()
+
+        session.add_all(
+            [
+                PriceSnapshot(
+                    product_id=product.id,
+                    scraped_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day),
+                    current_price_minor=price,
+                    original_price_minor=None,
+                    in_stock=True,
+                )
+                for day, price in enumerate(prices)
+            ]
+        )
+
+        product_id = product.id
+        session.commit()
+
+    return product_id
 
 
 def test_list_products(client):
@@ -378,7 +413,10 @@ def test_get_product_trust_score_air_fryer(client):
     assert data["score"] is not None
     assert data["reasons"]
     assert data["signals"] is not None
-    assert data["anomaly_note"] is None
+    assert data["anomaly_status"] == "normal"
+    assert data["anomaly_result"] is False
+    assert data["anomaly_message"] == NORMAL_MESSAGE
+    assert "anomaly_note" not in data
 
 
 def test_get_product_trust_score_insufficient_data(client):
@@ -404,7 +442,40 @@ def test_get_product_trust_score_insufficient_data(client):
     assert data["score"] is None
     assert data["signals"] is None
     assert data["reasons"]
-    assert data["anomaly_note"] is None
+    assert data["anomaly_status"] == "insufficient_history"
+    assert data["anomaly_result"] is None
+    assert data["anomaly_message"] == INSUFFICIENT_HISTORY_MESSAGE
+
+
+def test_get_product_trust_score_normal_price(client):
+    product_id = add_product_with_prices("normal-price", [10000] * 6)
+
+    response = client.get(f"/api/products/{product_id}/trust-score")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["anomaly_status"] == "normal"
+    assert data["anomaly_result"] is False
+    assert data["anomaly_message"] == NORMAL_MESSAGE
+
+
+def test_get_product_trust_score_unusual_price(client):
+    product_id = add_product_with_prices(
+        "unusual-price",
+        [10000] * 5 + [15000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/trust-score")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["anomaly_status"] == "unusual"
+    assert data["anomaly_result"] is True
+    assert data["anomaly_message"] == UNUSUAL_MESSAGE
 
 
 def test_get_product_trust_score_missing_product(client):
@@ -414,11 +485,46 @@ def test_get_product_trust_score_missing_product(client):
     assert response.json() == {"detail": "Product not found"}
 
 
-def test_get_product_trust_score_anomaly_note_is_null(client):
+def test_trust_score_anomaly_five_snapshots_is_insufficient(client):
+    product_id = add_product_with_prices("five-snapshots", [10000] * 5)
+
+    data = client.get(f"/api/products/{product_id}/trust-score").json()
+
+    assert data["anomaly_status"] == "insufficient_history"
+    assert data["anomaly_result"] is None
+
+
+def test_trust_score_anomaly_six_snapshots_is_scored(client):
+    product_id = add_product_with_prices("six-snapshots", [10000] * 6)
+
+    data = client.get(f"/api/products/{product_id}/trust-score").json()
+
+    assert data["anomaly_status"] == "normal"
+    assert data["anomaly_result"] is False
+
+
+def test_trust_score_anomaly_old_spike_but_normal_today(client):
+    product_id = add_product_with_prices(
+        "old-spike",
+        [10000] * 5 + [15000] + [10000] * 3,
+    )
+
+    data = client.get(f"/api/products/{product_id}/trust-score").json()
+
+    assert data["anomaly_status"] == "normal"
+    assert data["anomaly_message"] == NORMAL_MESSAGE
+
+
+def test_get_product_trust_score_does_not_expose_anomaly_note(client):
     products = client.get("/api/products").json()
 
     for product in products:
         response = client.get(f"/api/products/{product['id']}/trust-score")
 
         assert response.status_code == 200
-        assert response.json()["anomaly_note"] is None
+
+        data = response.json()
+        assert "anomaly_status" in data
+        assert "anomaly_result" in data
+        assert "anomaly_message" in data
+        assert "anomaly_note" not in data

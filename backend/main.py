@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from backend import converters
+from backend.analysis.anomaly_service import summarize_anomalies
 from backend.analysis.trust_score import compute_trust_score
 from backend.db import crud
 from backend.db.database import get_session, init_db
@@ -119,6 +120,7 @@ def get_product_trust_score(
 
     history = crud.get_history(session, product_id)
     history_df = converters.snapshots_to_dataframe(history)
+    anomaly = summarize_anomalies(history_df)
     trust_score = compute_trust_score(history_df)
 
     signals = asdict(trust_score.signals) if trust_score.signals is not None else None
@@ -129,7 +131,9 @@ def get_product_trust_score(
         label=trust_score.label,
         reasons=trust_score.reasons,
         signals=signals,
-        anomaly_note=None,
+        anomaly_status=anomaly.status,
+        anomaly_result=anomaly.result,
+        anomaly_message=anomaly.message,
     )
 
 

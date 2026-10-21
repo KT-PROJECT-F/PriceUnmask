@@ -784,6 +784,27 @@ def test_mark_one_stale_run_failed(session: Session) -> None:
     assert run.started_at == NOW - timedelta(minutes=45)
 
 
+def test_run_started_exactly_at_the_threshold_is_not_stale(
+    session: Session,
+) -> None:
+    run = add_run(
+        session,
+        started_at=NOW - timedelta(minutes=30),
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(run)
+
+    # Exactly 30 minutes is not more than 30 minutes ago.
+    assert changed == 0
+    assert run.status == "running"
+
+
 def test_mark_fresh_run_keeps_running(session: Session) -> None:
     run = add_run(
         session,

@@ -57,10 +57,10 @@ For another database, set `DATABASE_URL` for that terminal first, for example
 
 ### Stale and overlapping runs
 
-- **At startup**, the collector marks every run that has been `running` for
-  longer than `STALE_RUN_MINUTES` (default 30) as `failed`, and logs
-  `Closed N stale scrape run(s)`. If that clean-up fails, the error is logged
-  and the collector still starts.
+- **At startup and before every scheduled cycle**, the collector marks every
+   run that has been 'running' for longer than 'STALE_RUN_MINUTES' (default 30)
+   as 'failed', and logs 'Closed N stale scrape run(s)' (only when N>0). If that 
+   clean-up fails, the error is logged and the collector still starts.
 - **Before each cycle**, if another run is still `running` (for example a
   "Run now" from the dashboard), the cycle is skipped and the log shows
   `Scheduled scrape skipped; a run is already running`. One skip is normal.

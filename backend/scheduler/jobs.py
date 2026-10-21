@@ -25,10 +25,23 @@ def run_scrape_cycle() -> int:
     Must NEVER raise out of this function: catch errors, record status 'failed' or
     'partial' with the error message, log it, and return. An exception that kills the
     scheduler thread means history silently stops growing.
+
+    Tries to close stale runs before checking for overlap. If the clean-up fails
+    (e.g. DB locked) it is logged and the cycle still tries to proceed; a fresh
+    running run will still cause the cycle to skip. Never raises.
     Returns the number of products saved.
     """
     try:
         with SessionLocal() as session:
+            try:
+                stale_count = crud.mark_stale_runs_failed(
+                    session, older_than_minutes=settings.stale_run_minutes
+                )
+                if stale_count:
+                    logger.info(f"Closed {stale_count} stale scrape run(s)")
+            except Exception:
+                logger.exception("Could not close stale runs before scheduled cycle")
+
             if crud.has_running_scrape_run(session):
                 logger.warning("Scheduled scrape skipped; a run is already running")
                 return 0

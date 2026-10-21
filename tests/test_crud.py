@@ -14,6 +14,7 @@ from backend.db.crud import (
     list_products,
     list_products_not_seen_in_run,
     list_scrape_runs,
+    mark_stale_runs_failed,
     start_scrape_run,
     upsert_product_and_snapshot,
 )
@@ -737,3 +738,236 @@ def test_same_product_saved_in_two_runs_creates_two_snapshots(
         first_run.id,
         second_run.id,
     ]
+
+
+def add_run(
+    session: Session,
+    *,
+    status: str = "running",
+    started_at: datetime,
+    finished_at: datetime | None = None,
+    error_message: str | None = None,
+) -> ScrapeRun:
+    """Create a scrape run with fixed timestamps for testing."""
+    run = ScrapeRun(
+        status=status,
+        started_at=started_at,
+        finished_at=finished_at,
+        error_message=error_message,
+        products_seen=0,
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    return run
+
+
+def test_mark_one_stale_run_failed(session: Session) -> None:
+    run = add_run(
+        session,
+        started_at=NOW - timedelta(minutes=45),
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(run)
+
+    assert changed == 1
+    assert run.status == "failed"
+    assert run.finished_at == NOW
+    assert run.error_message is not None
+    assert "stale" in run.error_message.lower()
+    assert run.started_at == NOW - timedelta(minutes=45)
+
+
+def test_run_started_exactly_at_the_threshold_is_not_stale(
+    session: Session,
+) -> None:
+    run = add_run(
+        session,
+        started_at=NOW - timedelta(minutes=30),
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(run)
+
+    # Exactly 30 minutes is not more than 30 minutes ago.
+    assert changed == 0
+    assert run.status == "running"
+
+
+def test_mark_fresh_run_keeps_running(session: Session) -> None:
+    run = add_run(
+        session,
+        started_at=NOW - timedelta(minutes=5),
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(run)
+
+    assert changed == 0
+    assert run.status == "running"
+    assert run.finished_at is None
+    assert run.error_message is None
+
+
+def test_mark_stale_does_not_change_success_run(
+    session: Session,
+) -> None:
+    finished_at = NOW - timedelta(minutes=20)
+
+    run = add_run(
+        session,
+        status="success",
+        started_at=NOW - timedelta(hours=2),
+        finished_at=finished_at,
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(run)
+
+    assert changed == 0
+    assert run.status == "success"
+    assert run.finished_at == finished_at
+    assert run.error_message is None
+
+
+def test_mark_stale_runs_when_database_is_empty(
+    session: Session,
+) -> None:
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    assert changed == 0
+
+
+def test_mark_two_stale_runs_failed(session: Session) -> None:
+    first = add_run(
+        session,
+        started_at=NOW - timedelta(minutes=45),
+    )
+    second = add_run(
+        session,
+        started_at=NOW - timedelta(hours=2),
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(first)
+    session.refresh(second)
+
+    assert changed == 2
+
+    for run in (first, second):
+        assert run.status == "failed"
+        assert run.finished_at == NOW
+        assert run.error_message is not None
+        assert "stale" in run.error_message.lower()
+
+
+@pytest.mark.parametrize("status", ["failed", "partial"])
+def test_mark_stale_does_not_change_failed_or_partial_runs(
+    session: Session,
+    status: str,
+) -> None:
+    finished_at = NOW - timedelta(hours=1)
+
+    run = add_run(
+        session,
+        status=status,
+        started_at=NOW - timedelta(hours=2),
+        finished_at=finished_at,
+        error_message="Original error",
+    )
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.refresh(run)
+
+    assert changed == 0
+    assert run.status == status
+    assert run.finished_at == finished_at
+    assert run.error_message == "Original error"
+
+
+def test_mark_stale_does_not_modify_snapshots(
+    session: Session,
+) -> None:
+    run = start_scrape_run(session)
+
+    snapshot = upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(scraped_at=NOW),
+        run,
+    )
+
+    original_snapshot = (
+        snapshot.id,
+        snapshot.product_id,
+        snapshot.scrape_run_id,
+        snapshot.scraped_at,
+        snapshot.current_price_minor,
+        snapshot.original_price_minor,
+        snapshot.in_stock,
+    )
+
+    # Make the run stale using a fixed UTC timestamp.
+    run.started_at = NOW - timedelta(hours=1)
+    session.commit()
+
+    changed = mark_stale_runs_failed(
+        session,
+        older_than=timedelta(minutes=30),
+        now=NOW,
+    )
+
+    session.expire_all()
+
+    saved_run = session.get(ScrapeRun, run.id)
+    saved_snapshot = session.get(PriceSnapshot, snapshot.id)
+
+    assert changed == 1
+    assert saved_run is not None
+    assert saved_run.status == "failed"
+
+    assert saved_snapshot is not None
+    assert (
+        saved_snapshot.id,
+        saved_snapshot.product_id,
+        saved_snapshot.scrape_run_id,
+        saved_snapshot.scraped_at,
+        saved_snapshot.current_price_minor,
+        saved_snapshot.original_price_minor,
+        saved_snapshot.in_stock,
+    ) == original_snapshot

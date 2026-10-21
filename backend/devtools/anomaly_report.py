@@ -2,7 +2,7 @@
 
 From PowerShell, point DATABASE_URL at an exported SQLite database and run:
 
-    $env:DATABASE_URL = 'sqlite:///data/exports/priceunmask-20261013T052735Z 2.db'
+    $env:DATABASE_URL = 'sqlite:///data/exports/priceunmask-20261019.db'
     python -m backend.devtools.anomaly_report
 """
 
@@ -73,7 +73,10 @@ def _print_worked_row(analysis: ProductAnalysis, *, prefer_flagged: bool) -> Non
         f"  Row: {_timestamp_key(history.iloc[row_index]['scraped_at'])}, "
         f"price {_display_price(current_price, currency)}"
     )
-    print("  Previous five: " + ", ".join(_display_price(int(price), currency) for price in window))
+    print(
+        f"  Previous {ROLLING_WINDOW}: "
+        + ", ".join(_display_price(int(price), currency) for price in window)
+    )
     print(f"  Mean: {mean:.4f} minor units ({_display_price(mean, currency)})")
     print(f"  Sample std (ddof=1): {std:.4f} minor units")
     if z_score is None:
@@ -124,12 +127,7 @@ def report() -> None:
     with SessionLocal() as session:
         product_count = crud.count_products(session)
         products = crud.list_products(session)
-        if len(products) != product_count:
-            raise RuntimeError(
-                "crud.list_products returned only active products, but the database "
-                f"contains {product_count} products and {len(products)} are active. "
-                "Refusing to report partial coverage."
-            )
+        inactive_count = product_count - len(products)
         if not products:
             raise RuntimeError(f"No products found in database: {database_path.name}")
 
@@ -157,6 +155,8 @@ def report() -> None:
 
     print(f"Database file: {database_path.name}")
     print(f"Products analyzed: {len(analyses)} of {product_count}")
+    if inactive_count:
+        print(f"Inactive products skipped: {inactive_count}")
     print(
         "Snapshots per product: "
         f"min={min(snapshot_counts)}, median={pd.Series(snapshot_counts).median():g}, "
@@ -217,6 +217,8 @@ def main() -> None:
         report()
     except OperationalError as exc:
         raise SystemExit(f"Cannot read the configured database: {exc}") from exc
+    except (FileNotFoundError, RuntimeError) as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":

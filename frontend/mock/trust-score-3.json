@@ -12,5 +12,7 @@
     "discount_consistency": 0.27,
     "anomaly_detected": true
   },
-  "anomaly_note": "The pricing pattern suggests the reference price may have been increased before the discount."
+  "anomaly_status": "unusual",
+  "anomaly_result": true,
+  "anomaly_message": "An unusual price change was detected. Please review the price history before making a purchase."
 }

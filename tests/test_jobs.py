@@ -176,7 +176,6 @@ def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch, capl
         jobs.crud,
         "mark_stale_runs_failed",
         lambda session, older_than: calls.append(("cleanup", older_than)) or 2,
-        raising=False,
     )
     monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
 
@@ -184,7 +183,7 @@ def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch, capl
 
     assert calls == [
         "init_db",
-        ("cleanup", jobs.timedelta(minutes=30)),
+        ("cleanup", jobs.timedelta(minutes=jobs.settings.stale_run_minutes)),
         "start",
         ("shutdown", True),
     ]
@@ -215,7 +214,6 @@ def test_main_continues_when_stale_run_cleanup_fails(monkeypatch, caplog):
         jobs.crud,
         "mark_stale_runs_failed",
         fail_cleanup,
-        raising=False,
     )
     monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
 

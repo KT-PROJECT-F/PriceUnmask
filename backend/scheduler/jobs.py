@@ -30,7 +30,7 @@ def run_scrape_cycle() -> int:
     try:
         with SessionLocal() as session:
             if crud.has_running_scrape_run(session):
-                logger.info("Scheduled scrape skipped; a run is already running")
+                logger.warning("Scheduled scrape skipped; a run is already running")
                 return 0
             return _run_cycle(session)
     except Exception:
@@ -165,7 +165,7 @@ def main() -> None:
         with SessionLocal() as session:
             stale_count = crud.mark_stale_runs_failed(
                 session,
-                older_than=timedelta(minutes=30),
+                older_than=timedelta(minutes=settings.stale_run_minutes),
             )
         logger.info("Closed %s stale scrape run(s)", stale_count)
     except Exception:

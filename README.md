@@ -9,8 +9,22 @@ genuine, uncertain, likely inflated, or not enough data yet.
 
 ## Quick start
 
+### Windows (PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+Copy-Item .env.example .env
+python -m backend.devtools.seed_fake_data
+uvicorn backend.main:app --reload
+```
+
+### macOS / Linux
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 python -m backend.devtools.seed_fake_data

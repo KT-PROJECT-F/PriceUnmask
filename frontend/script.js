@@ -455,6 +455,52 @@ async function showPriceHistory(detail, product) {
   }
 }
 
+function buildAnomalyPanel(trustScore) {
+  const anomalyPanel = document.createElement("section");
+  anomalyPanel.className = "anomaly-panel";
+  anomalyPanel.setAttribute("aria-label", "Price anomaly status");
+
+  const anomalyBadge = document.createElement("span");
+  anomalyBadge.className = "anomaly-badge";
+
+  const anomalyMessage = document.createElement("p");
+  anomalyMessage.className = "anomaly-message";
+
+  const status = trustScore?.anomaly_status;
+  const message = trustScore?.anomaly_message;
+
+  const badges = {
+    normal: {
+      text: "No anomaly detected",
+      className: "anomaly-badge-normal",
+    },
+    unusual: {
+      text: "Unusual price",
+      className: "anomaly-badge-unusual",
+    },
+    insufficient_history: {
+      text: "Not enough data",
+      className: "anomaly-badge-insufficient",
+    },
+  };
+
+  const badge = badges[status];
+
+  if (badge && typeof message === "string" && message.trim()) {
+    anomalyBadge.classList.add(badge.className);
+    anomalyBadge.textContent = badge.text;
+    anomalyMessage.textContent = message;
+  } else {
+    anomalyBadge.classList.add("anomaly-badge-insufficient");
+    anomalyBadge.textContent = "Anomaly status unavailable";
+    anomalyMessage.textContent =
+      "We couldn't check whether today's price is unusual.";
+  }
+
+  anomalyPanel.append(anomalyBadge, anomalyMessage);
+  return anomalyPanel;
+}
+
 function buildDetailContent(product, trustScore) {
   const elements = [];
 
@@ -506,6 +552,7 @@ function buildDetailContent(product, trustScore) {
       "Trust Score is temporarily unavailable.";
 
     elements.push(scoreHeading, unavailableMessage);
+    elements.push(buildAnomalyPanel(null));
 
     const chartContainer = document.createElement("div");
     chartContainer.className = "price-chart-container";
@@ -573,44 +620,9 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(reasonsHeading, reasonsList);
 
-  // Show an anomaly badge and its approved explanation.
-  const anomalyPanel = document.createElement("section");
-  anomalyPanel.className = "anomaly-panel";
-  anomalyPanel.setAttribute("aria-label", "Price anomaly status");
-
-  const anomalyBadge = document.createElement("span");
-  anomalyBadge.className = "anomaly-badge";
-
-  const anomalyMessage = document.createElement("p");
-  anomalyMessage.className = "anomaly-message";
-  anomalyMessage.setAttribute("role", "status");
-
-  if (trustScore.label === "insufficient_data") {
-    anomalyBadge.classList.add("anomaly-badge-insufficient");
-    anomalyBadge.textContent = "Not enough data";
-    anomalyMessage.textContent =
-      "There are too few price snapshots to calculate a reliable trust score.";
-  } else if (typeof trustScore.latest_is_anomalous === "boolean") {
-    if (trustScore.latest_is_anomalous) {
-      anomalyBadge.classList.add("anomaly-badge-unusual");
-      anomalyBadge.textContent = "Unusual price";
-      anomalyMessage.textContent =
-        "The price rose sharply shortly before the current sale, which can make the advertised discount misleading.";
-    } else {
-      anomalyBadge.classList.add("anomaly-badge-normal");
-      anomalyBadge.textContent = "No anomaly detected";
-      anomalyMessage.textContent =
-        "The recorded prices show no strong signs of an inflated discount.";
-    }
-  } else {
-    anomalyBadge.classList.add("anomaly-badge-insufficient");
-    anomalyBadge.textContent = "Anomaly status unavailable";
-    anomalyMessage.textContent =
-      "We couldn't determine whether today's price is unusual.";
-  }
-  anomalyPanel.append(anomalyBadge, anomalyMessage);
+  // Show the API-provided anomaly status and explanation.
+  const anomalyPanel = buildAnomalyPanel(trustScore);
   elements.push(anomalyPanel);
-
 
   // Create the price history chart container.
   const chartContainer = document.createElement("div");

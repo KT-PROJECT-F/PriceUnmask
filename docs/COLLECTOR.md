@@ -55,6 +55,18 @@ python -m backend.devtools.check_db
 For another database, set `DATABASE_URL` for that terminal first, for example
 `$env:DATABASE_URL = "sqlite:///data/exports/priceunmask-<timestamp>.db"`.
 
+### Stale and overlapping runs
+
+- **At startup**, the collector marks every run that has been `running` for
+  longer than `STALE_RUN_MINUTES` (default 30) as `failed`, and logs
+  `Closed N stale scrape run(s)`. If that clean-up fails, the error is logged
+  and the collector still starts.
+- **Before each cycle**, if another run is still `running` (for example a
+  "Run now" from the dashboard), the cycle is skipped and the log shows
+  `Scheduled scrape skipped; a run is already running`. One skip is normal.
+  If you see it cycle after cycle, a run is stuck: check it with
+  `python -m backend.devtools.check_db`, then restart the collector so the
+  startup clean-up closes it.
 ## Logs and snapshots
 
 By default, logs go only to the terminal. For a long or unattended run, write

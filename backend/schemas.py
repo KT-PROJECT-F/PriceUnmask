@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.analysis.anomaly_service import AnomalyStatus
+
 
 class ProductOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -42,7 +44,9 @@ class TrustScoreOut(BaseModel):
     label: Literal["genuine", "uncertain", "likely_inflated", "insufficient_data"]
     reasons: list[str]
     signals: dict[str, float | int | bool | None] | None
-    anomaly_note: str | None = None
+    anomaly_status: AnomalyStatus
+    anomaly_result: bool | None
+    anomaly_message: str
 
 
 class ScrapeRunOut(BaseModel):

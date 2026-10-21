@@ -4,7 +4,7 @@ Run the collector with:  python -m backend.scheduler.jobs
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy.orm import Session
@@ -29,6 +29,9 @@ def run_scrape_cycle() -> int:
     """
     try:
         with SessionLocal() as session:
+            if crud.has_running_scrape_run(session):
+                logger.warning("Scheduled scrape skipped; a run is already running")
+                return 0
             return _run_cycle(session)
     except Exception:
         logger.exception("Scrape cycle could not run")
@@ -158,6 +161,16 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     init_db()
+    try:
+        with SessionLocal() as session:
+            stale_count = crud.mark_stale_runs_failed(
+                session,
+                older_than=timedelta(minutes=settings.stale_run_minutes),
+            )
+        logger.info("Closed %s stale scrape run(s)", stale_count)
+    except Exception:
+        logger.exception("Could not close stale scrape runs at startup")
+
     scheduler = build_scheduler()
     try:
         scheduler.start()

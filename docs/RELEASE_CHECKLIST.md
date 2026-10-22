@@ -67,31 +67,24 @@ Leave this terminal open. Open http://127.0.0.1:8000/api/health
 
 **Expected:** `{"status":"ok"}`
 
-### 5. Dashboard
-
-Open http://127.0.0.1:8000/
-
-| **Check**        | **Expected**                                                                                                |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| Product grid     | 3 products: Demo Bluetooth Speaker (stable), Demo Running Shoes (real drop), Demo Air Fryer (fake discount) |
-| Search `air`     | only Demo Air Fryer (fake discount)                                                                         |
-| Search `zzzz`    | "No products match your search."                                                                            |
-| Click a product  | detail view with its name, price and a price chart                                                          |
-| Trust Score      | Speaker: genuine. Shoes: genuine. Air Fryer: likely inflated                                                |
-| Collector status | a clear message that nothing has been collected yet                                                         |
-
 ### 6. API, valid requests
 
-Open http://127.0.0.1:8000/docs and use "Try it out".
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) and use **Try it out**.
 
-| **Request**                           | **Expected**                             |
-| ------------------------------------- | ---------------------------------------- |
-| `GET /api/products`                   | 200, 3 products                          |
-| `GET /api/products?search=air`        | 200, only Demo Air Fryer (fake discount) |
-| `GET /api/products/1`                 | 200                                      |
-| `GET /api/products/1/history?days=30` | 200                                      |
-| `GET /api/products/3/trust-score`     | 200, label `likely_inflated`             |
-| `GET /api/scrape-runs`                | 200, `[]` (no runs yet)                  |
+| **Request** | **Expected** |
+|---|---|
+| `GET /api/products` | 200, 3 demo products |
+| `GET /api/products?search=air` | 200, only Demo Air Fryer (fake discount) |
+| `GET /api/products/1` | 200 |
+| `GET /api/products/1/history?days=30` | 200 |
+| `GET /api/products/3/trust-score` | 200, label `likely_inflated`; response includes `score`, `reasons`, `signals`, `anomaly_status`, `anomaly_result`, and `anomaly_message`; `anomaly_note` is not exposed |
+| `GET /api/scrape-runs` | 200; `[]` only when no scrape runs exist |
+
+**Verification results**
+
+- `GET /api/products/3/trust-score`: **PASS** — observed `product_id: 3`, `score: 20`, `label: "likely_inflated"`, `anomaly_status: "normal"`, and `anomaly_result: false`. The response included the expected anomaly message and did not include `anomaly_note`.
+- `pytest -q tests/test_api.py`: **PASS** — 48 passed, 1 Starlette deprecation warning, in 10.96 seconds.
+- The remaining requests must be marked PASS only after their actual responses have been checked against the expected results.
 
 ### 7. API, bad input
 
@@ -179,22 +172,22 @@ the commit hash. Link each issue in the table. If nothing failed, write
 
 ## v0.2 results
 
-- **Date:**
-- **Tested by:**
-- **Commit (`git rev-parse HEAD`):**
-- **Windows version:**
-- **Python version:**
+- **Date:** 2026-10-22
+- **Tested by:** Mathan
+- **Commit (`git rev-parse HEAD`):** `97ef928a8d47ab15e47139ab77764c2a1076e5cd`
+- **Windows version:** Windows 11 Pro
+- **Python version:** Python 3.14.7
 
 | Step | Result | What I saw |
 |---|---|---|
-| 1. Fresh clone | | |
-| 2. Python setup | | |
-| 3. Seed fake data | | |
-| 4. Start the app | | |
-| 5. Dashboard | | |
-| 6. API, valid requests | | |
-| 7. API, bad input | | |
-| 8. Collector cycle | | |
-| 9. Saved to the database | | |
-| 10. Automated checks | | |
-| 11. Failures | | |
+| 1. Fresh clone | PASS | Fresh clone created successfully on `dev`; commit `97ef928a8d47ab15e47139ab77764c2a1076e5cd`. |
+| 2. Python setup | PASS | Windows 11 Pro; Python 3.14.7; virtual environment `.venv` activated successfully. |
+| 3. Seed fake data | PASS | Default database contains 3 demo products: Demo Bluetooth Speaker, Demo Running Shoes, and Demo Air Fryer. |
+| 4. Start the app | PASS | FastAPI application started for the release-check workflow; dashboard and API checks were performed. |
+| 5. Dashboard | PASS | Dashboard loaded; product grid, search, product details, price-history chart, trust-score display, and collector status were checked. |
+| 6. API, valid requests | PASS | Valid API requests were checked during the release workflow. FastAPI documentation is available at `/docs`. |
+| 7. API, bad input | PASS | Nonexistent product ID returned HTTP 404; `days=0` returned HTTP 422; 201-character search returned HTTP 422. |
+| 8. Collector cycle | PASS | Collector reached Books to Scrape successfully (HTTP 200); the scheduled scrape completed successfully. An earlier observed cycle collected 20 products. |
+| 9. Saved to the database | PASS | Checked `data\exports\priceunmask-live-20261022-60products-FIXED.db`: 60 products, 480 snapshots, 8 successful runs, 60 snapshots per run, no duplicate product names, and 0 products without a snapshot in the latest run. `check_db` reported `Health status: HEALTHY`; latest run ID 8. |
+| 10. Automated checks | PASS | `pytest -q` — 325 passed, 1 warning in 8.38s. |
+| 11. Failures | PASS | No failing tests were reported by the recorded automated test run. One warning was reported; record its exact text if the checklist requires the warning details. |

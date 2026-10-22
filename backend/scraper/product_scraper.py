@@ -324,24 +324,89 @@ def fetch_html(url: str) -> str:
 
 
 def scrape(url: str) -> list[ScrapedProduct]:
-    """Fetch, save raw HTML, parse, and return products.
+    """Fetch, save raw HTML, parse, and return products from up to
+    settings.scrape_max_pages listing pages.
 
-    Any fetch failure from fetch_html is raised to the caller, and no
-    snapshot is saved. The scheduler records it in scrape_runs.
+    Follows the next page link (parse_next_page_url) until there is no next
+    page, the maximum is reached, or a page links back to one already visited.
+    Every page goes through fetch_html, so robots.txt, the delay and the
+    retries apply to each page. Each page gets its own raw HTML file.
+    A product that appears on two pages is returned once.
+
+    If any page fails to fetch, the error is raised to the caller and no
+    products are returned, so the scheduler records the whole run as failed
+    (see the plan on #117). Snapshots of the pages fetched before the failure
+    are kept.
     """
-    html = fetch_html(url)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    snapshot_path = SNAPSHOT_DIR / f"{timestamp}.html"
+    max_pages = max(1, settings.scrape_max_pages)
 
-    # Keep the raw page first: if the parser has a bug, we can re-parse it later.
-    # A failed backup must not cost us the prices, so we only log it.
-    try:
-        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-        snapshot_path.write_text(html, encoding="utf-8")
-    except OSError:
-        logger.exception(
-            "Could not save raw HTML snapshot to %s",
-            snapshot_path,
+    current_url: str | None = url
+    visited_urls: set[str] = set()
+    seen_product_ids: set[str] = set()
+    all_products: list[ScrapedProduct] = []
+
+    for page_number in range(1, max_pages + 1):
+        if current_url is None:
+            break
+
+        if current_url in visited_urls:
+            logger.warning(
+                "Stopping pagination because the URL was already visited: %s",
+                current_url,
+            )
+            break
+
+        visited_urls.add(current_url)
+        logger.info("Scraping listing page %s of %s: %s", page_number, max_pages, current_url)
+
+        html = fetch_html(current_url)
+
+        # Page 1 keeps the old file name; later pages add _pageN so two pages
+        # fetched in the same second never overwrite each other.
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        suffix = "" if page_number == 1 else f"_page{page_number}"
+        snapshot_path = SNAPSHOT_DIR / f"{timestamp}{suffix}.html"
+
+        # Keep the raw page first: if the parser has a bug, we can re-parse it later.
+        # A failed backup must not cost us the prices, so we only log it.
+        try:
+            SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            snapshot_path.write_text(html, encoding="utf-8")
+        except OSError:
+            logger.exception(
+                "Could not save raw HTML snapshot to %s",
+                snapshot_path,
+            )
+
+        page_products = parse_listing(html, current_url)
+
+        for product in page_products:
+            if product.external_id in seen_product_ids:
+                logger.info("Skipping duplicate product ID: %s", product.external_id)
+                continue
+
+            seen_product_ids.add(product.external_id)
+            all_products.append(product)
+
+        logger.info(
+            "Collected %s products from page %s; total products: %s",
+            len(page_products),
+            page_number,
+            len(all_products),
         )
 
-    return parse_listing(html, url)
+        if page_number == max_pages:
+            break
+
+        current_url = parse_next_page_url(html, current_url)
+
+        if current_url is None:
+            logger.info("No next listing page found; collection complete")
+
+    logger.info(
+        "Scraping complete: %s products collected across %s pages",
+        len(all_products),
+        len(visited_urls),
+    )
+
+    return all_products

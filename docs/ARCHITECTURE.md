@@ -64,12 +64,12 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | Method | Path | Returns | Errors |
 |---|---|---|---|
 | GET | `/api/health` | `{"status":"ok"}` | |
-| GET | `/api/products?search=` | `list[ProductOut]` | |
-| GET | `/api/products/{id}` | `ProductOut` | 404 |
-| GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 |
-| GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 |
+| GET | `/api/products?search=` | `list[ProductOut]` | 422 for invalid search length |
+| GET | `/api/products/{id}` | `ProductOut` | 404 if not found; 422 for invalid ID |
+| GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 if not found; 422 for invalid ID or days |
+| GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 if not found; 422 for invalid ID |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
-| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; returns 409 if a run is already in progress |
+| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | 409 if a run is already in progress; 500 if stale-run cleanup fails |
 
 The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 

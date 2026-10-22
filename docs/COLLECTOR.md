@@ -109,3 +109,12 @@ attempt should be recorded as `failed`; leave the process running for at least
 15 minutes and confirm another run appears. Stop it with **Ctrl+C**, restore
 `SCRAPE_TARGET_URL=https://books.toscrape.com/` and
 `SCRAPE_INTERVAL_HOURS=4`, then restart for routine operation.
+
+## Live collector (until 31 Oct)
+
+- Owner: Saidivya
+- Machine: <actual machine running the collector> (Windows 11) - Sleep disabled, plugged in, terminal stays open
+- Database: data/collector.db (own DB, no demo seed, 20 products currently - will be 60 after pages=3)
+- Log file: data/collector.log (also data/collector-run2.log)
+- Health checks: Run check_db every working morning and post the results in issue #155.
+- Exports: Request an export from Saidivya, who will run the project's database export command and share the resulting file with the team.

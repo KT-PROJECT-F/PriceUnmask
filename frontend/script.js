@@ -7,6 +7,7 @@ const API_ENDPOINTS = {
   history: (id) => `${API_BASE_URL}/products/${id}/history`,
   trustScore: (id) => `${API_BASE_URL}/products/${id}/trust-score`,
   scrapeRuns: `${API_BASE_URL}/scrape-runs`,
+  runScrape: `${API_BASE_URL}/scrape/run`,
 };
 
 // Load products from the live API and render the product grid.
@@ -15,6 +16,8 @@ const productStatus = document.getElementById("product-status");
 const searchInput = document.getElementById("product-search");
 const searchBox = document.getElementById("search-box");
 const collectorStatusMessage = document.getElementById("collector-status-message");
+const runCollectorButton = document.getElementById("run-collector-button");
+const collectorActionMessage = document.getElementById("collector-action-message");
 let priceHistoryChart = null;
 
 const trustLabels = {
@@ -39,7 +42,6 @@ function formatPrice(price, currency) {
     return "—";
   }
 }
-
 
  // Load the latest price collection run from the API.
 async function loadCollectorStatus() {
@@ -143,6 +145,113 @@ async function loadCollectorStatus() {
     collectorStatusMessage.textContent =
       "Collector status is temporarily unavailable.";
   }
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForScrapeCompletion(runId) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await sleep(5000);
+
+    const response = await fetch(API_ENDPOINTS.scrapeRuns);
+
+    if (!response.ok) {
+      throw new Error("Unable to refresh collector status.");
+    }
+
+    const runs = await response.json();
+    const currentRun = runs.find((run) => run.id === runId);
+
+    await loadCollectorStatus();
+
+    if (!currentRun) {
+      throw new Error("Could not find the new collection run.");
+    }
+
+    if (currentRun.status !== "running") {
+      if (currentRun.status === "success") {
+        collectorActionMessage.textContent =
+          "Price collection completed successfully.";
+      } else if (currentRun.status === "partial") {
+        collectorActionMessage.textContent =
+          "Price collection finished with partial results.";
+      } else {
+        collectorActionMessage.textContent =
+          "Price collection failed. Check the collector status for details.";
+      }
+
+      return;
+    }
+  }
+
+  collectorActionMessage.textContent =
+    "Collection is taking longer than expected. Check the collector status again shortly.";
+}
+
+async function handleRunCollector() {
+  if (!runCollectorButton || !collectorActionMessage) {
+    return;
+  }
+
+  runCollectorButton.disabled = true;
+  runCollectorButton.textContent = "Starting...";
+  collectorActionMessage.textContent = "Requesting a price collection run...";
+
+  try {
+    const response = await fetch(API_ENDPOINTS.runScrape, {
+      method: "POST",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (response.status === 409) {
+      collectorActionMessage.textContent =
+        "A price collection is already running.";
+      await loadCollectorStatus();
+      return;
+    }
+
+    if (response.status !== 202) {
+      let detail = "";
+
+      try {
+        const body = await response.json();
+        detail = typeof body.detail === "string" ? ` ${body.detail}` : "";
+      } catch {
+        // The server may return a response without JSON.
+      }
+
+      throw new Error(
+        `Unable to start collection (HTTP ${response.status}).${detail}`
+      );
+    }
+
+    const startedRun = await response.json();
+
+    if (startedRun.id === undefined || startedRun.id === null) {
+      throw new Error("The server did not return the new run ID.");
+    }
+
+    collectorActionMessage.textContent =
+      "Price collection started. Refresh the status to check its progress.";
+
+    await loadCollectorStatus();
+    await waitForScrapeCompletion(startedRun.id);
+  } catch (error) {
+    console.error("Unable to start price collection:", error);
+    collectorActionMessage.textContent =
+      error instanceof Error
+        ? error.message
+        : "Unable to start price collection. Please try again.";
+  } finally {
+    runCollectorButton.disabled = false;
+    runCollectorButton.textContent = "Run now";
+  }
+}
+
+if (runCollectorButton) {
+  runCollectorButton.addEventListener("click", handleRunCollector);
 }
 
 function createProductCard(product, onSelect) {

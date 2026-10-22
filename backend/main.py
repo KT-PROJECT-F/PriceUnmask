@@ -5,6 +5,7 @@ so there is no CORS setup and one command runs everything:
        uvicorn backend.main:app --reload
 """
 
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -18,11 +19,13 @@ from sqlalchemy.orm import Session
 from backend import converters
 from backend.analysis.anomaly_service import summarize_anomalies
 from backend.analysis.trust_score import compute_trust_score
+from backend.config import settings
 from backend.db import crud
 from backend.db.database import get_session, init_db
 from backend.scheduler.jobs import run_scrape_cycle_for_run
 from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut, TrustScoreOut
 
+logger = logging.getLogger(__name__)
 MAX_HISTORY_DAYS = 3650  # ten years; larger values would overflow datetime
 MAX_SEARCH_LENGTH = 200
 MAX_PRODUCT_ID = 2**63 - 1
@@ -154,8 +157,21 @@ def start_scrape_run(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),  # noqa: B008
 ) -> ScrapeRunOut:
-    # If the server stops during a scrape, its run may remain "running".
-    # New requests then return 409 until stale-run cleanup marks it failed.
+    # Close stale runs before checking whether a scrape is already running.
+    try:
+        stale_count = crud.mark_stale_runs_failed(
+            session,
+            older_than=timedelta(minutes=settings.stale_run_minutes),
+        )
+        if stale_count:
+            logger.info("Closed %s stale scrape run(s)", stale_count)
+    except Exception as exc:
+        logger.exception("Could not close stale scrape runs before starting a run")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not close stale scrape runs",
+        ) from exc
+
     if crud.has_running_scrape_run(session):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

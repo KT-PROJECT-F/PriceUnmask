@@ -69,7 +69,7 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 |
 | GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
-| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | 409 if a run is already in progress |
+| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; returns 409 if a run is already in progress |
 
 The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 

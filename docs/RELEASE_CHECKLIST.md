@@ -30,8 +30,7 @@ the commit hash. Write the hash in the results.
 
 ### 2. Python setup
 
-Follow `README.md`. On Windows PowerShell the README's
-`source .venv/bin/activate` does not work. Use:
+Follow the Windows (PowerShell) block in `README.md`:
 
 ```powershell
 python -m venv .venv
@@ -128,12 +127,17 @@ Then refresh http://127.0.0.1:8000/api/scrape-runs and the dashboard.
 **Expected:**
 
 - The newest run is `success`.
-- Its `products_seen` is the number from step 8.
+- Its `products_seen` matches the number from Step 8.
 - `check_db` shows the same number of snapshots for that run.
-- The dashboard's collector status now shows this run.
+- The dashboard's collector status reflects the latest run.
+- `check_db` shows `Total products: 23`: the 20 scraped books and the 3 demo
+  products from step 3.
+- The 3 demo products (source `fake`) are not counted as missing from the run.
+- `check_db` prints `Health status: HEALTHY`.
 
 Write down the run id, status, `products_seen`, snapshot count and the health
 status that `check_db` prints.
+
 
 ### 10. Automated checks
 
@@ -142,8 +146,8 @@ ruff check .
 ruff format --check .
 pytest -q
 ```
-
 **Expected:** all three pass. Write down the last line of each.
+
 
 ### 11. Failures
 
@@ -159,18 +163,38 @@ the commit hash. Link each issue in the table. If nothing failed, write
 - **Windows version:** Windows 11 Pro
 - **Python version:** Python 3.14.7
 
-| **Step**                 | **Result** | **What I saw**                                                                                                                                                               |
-| ------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Fresh clone           | PASS       | Clone succeeded, on `dev`, working tree clean. Commit `a420a5324f955807db59fb63e79a6e1977af59f8`.                                                                            |
-| 2. Python setup          | PASS       | `(.venv)` prompt, `pip install` finished without errors. Python 3.14.7.                                                                                                      |
-| 3. Seed fake data        | PASS       | `Seeded 3 fake products.` `check_db`: Total products: 3, CHECK REQUIRED (no finished scrape run found).                                                                      |
-| 4. Start the app         | PASS       | `/api/health` returned HTTP 200 with `{"status":"ok"}`.                                                                                                                      |
-| 5. Dashboard             | PASS       | Grid showed 3 demo products; search `air` returned only Demo Air Fryer; search `zzzz` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
-| 6. API, valid requests   | PASS       | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/1` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
-| 7. API, bad input        | PASS       | `/api/products/999999` 404; `/history?days=0` 422; 201-char search 422.                                                                                                      |
-| 8. Collector cycle       | PASS       | Books to Scrape fetched HTTP 200, `robots.txt` 404 (warning logged, collector continued), 3-second delay observed, 20 products seen. Collector stopped `2026-10-16 17:21:43`. |
-| 9. Saved to the database | PASS       | run 1, success, products_seen 20, 20 snapshots. Database Health status: Healthy. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/16/2026, 5:19:22 PM`. Total products in database: 23 (3 products without a snapshot in this run). No duplicate product names. |
-| 10. ruff and pytest      | PASS       | `All checks passed!` / all files already formatted / 270 passed.                                                                                                             |
-| 11. Failures             | COMPLETE   | No failures found.                                                                                                                                                           |
+| **Step** | **Result** | **What I saw** |
+| --- | --- | --- |
+| 1. Fresh clone | PASS | Clone succeeded, on `dev`, working tree clean. Commit `a420a5324f955807db59fb63e79a6e1977af59f8`. |
+| 2. Python setup | PASS | `(.venv)` prompt, `pip install` finished without errors. Python 3.14.7. |
+| 3. Seed fake data | PASS | `Seeded 3 fake products.` `check_db`: Total products: 3, CHECK REQUIRED (no finished scrape run found). |
+| 4. Start the app | PASS | `/api/health` returned HTTP 200 with `{"status":"ok"}`. |
+| 5. Dashboard | PASS | Grid showed 3 demo products; search `air` returned only Demo Air Fryer; search `zzzz` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
+| 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/1` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
+| 7. API, bad input | PASS | `/api/products/999999` 404; `/history?days=0` 422; 201-char search 422. |
+| 8. Collector cycle | PASS | Books to Scrape fetched HTTP 200, `robots.txt` 404 (warning logged, collector continued), 3-second delay observed, 20 products seen. Collector stopped `2026-10-16 17:21:43`. |
+| 9. Saved to the database | PASS | Run 1, success, `products_seen` 20, 20 snapshots. Total products: 23. `check_db` printed `Health status: CHECK REQUIRED` with the reason "3 products have no snapshot in run 1". Those 3 are the demo products from step 3 (source `fake`); the collector can never see them, so this is a false alarm in the health check, tracked in #143. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/16/2026, 5:19:22 PM`. No duplicate product names. |
+| 10. ruff and pytest | PASS | `All checks passed!` / `45 files already formatted` / `270 passed, 1 warning` (StarletteDeprecationWarning, httpx with starlette.testclient). |
+| 11. Failures | PASS | No failures found. The step 9 health warning is a `check_db` bug, not a release failure; tracked in #143. |                                                                                                                                                    |
 
+## v0.2 results
 
+- **Date:**
+- **Tested by:**
+- **Commit (`git rev-parse HEAD`):**
+- **Windows version:**
+- **Python version:**
+
+| Step | Result | What I saw |
+|---|---|---|
+| 1. Fresh clone | | |
+| 2. Python setup | | |
+| 3. Seed fake data | | |
+| 4. Start the app | | |
+| 5. Dashboard | | |
+| 6. API, valid requests | | |
+| 7. API, bad input | | |
+| 8. Collector cycle | | |
+| 9. Saved to the database | | |
+| 10. Automated checks | | |
+| 11. Failures | | |

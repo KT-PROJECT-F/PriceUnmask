@@ -667,7 +667,7 @@ def test_snapshot_without_original_price(session: Session) -> None:
     assert history[0].original_price_minor is None
 
 
-def test_run_with_zero_products_keeps_history_and_reports_missing(
+def test_run_with_zero_products_keeps_history_without_marking_products_missing(
     session: Session,
 ) -> None:
     first_run = start_scrape_run(session)
@@ -684,9 +684,7 @@ def test_run_with_zero_products_keeps_history_and_reports_missing(
 
     assert count_runs_by_status(session) == {"success": 2}
     assert count_snapshots_by_run(session) == {first_run.id: 1}
-    assert [product.name for product in list_products_not_seen_in_run(session, empty_run.id)] == [
-        "Alpha"
-    ]
+    assert list_products_not_seen_in_run(session, empty_run.id) == []
     assert len(get_history(session, snapshot.product_id)) == 1
 
 
@@ -971,3 +969,63 @@ def test_mark_stale_does_not_modify_snapshots(
         saved_snapshot.original_price_minor,
         saved_snapshot.in_stock,
     ) == original_snapshot
+
+
+def test_missing_products_ignores_other_sources(session: Session) -> None:
+    fake1 = add_product(session, "Fake 1")
+    fake2 = add_product(session, "Fake 2")
+    fake3 = add_product(session, "Fake 3")
+    fake1.source = "fake"
+    fake2.source = "fake"
+    fake3.source = "fake"
+
+    real1 = add_product(session, "Real 1")
+    real2 = add_product(session, "Real 2")
+    real1.source = "shop"
+    real2.source = "shop"
+    session.commit()
+
+    run = start_scrape_run(session)
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="Real 1", name="Real 1"),
+        run,
+    )
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="Real 2", name="Real 2"),
+        run,
+    )
+
+    assert list_products_not_seen_in_run(session, run.id) == []
+
+
+def test_missing_products_reports_unseen_product_from_same_source(
+    session: Session,
+) -> None:
+    fake1 = add_product(session, "Fake 1")
+    fake2 = add_product(session, "Fake 2")
+    fake3 = add_product(session, "Fake 3")
+    fake1.source = "fake"
+    fake2.source = "fake"
+    fake3.source = "fake"
+
+    real1 = add_product(session, "Real 1")
+    real2 = add_product(session, "Real 2")
+    real1.source = "shop"
+    real2.source = "shop"
+    session.commit()
+
+    run = start_scrape_run(session)
+    upsert_product_and_snapshot(
+        session,
+        "shop",
+        make_item(external_id="Real 1", name="Real 1"),
+        run,
+    )
+
+    missing = list_products_not_seen_in_run(session, run.id)
+
+    assert [product.name for product in missing] == ["Real 2"]

@@ -971,3 +971,50 @@ def test_mark_stale_does_not_modify_snapshots(
         saved_snapshot.original_price_minor,
         saved_snapshot.in_stock,
     ) == original_snapshot
+
+
+def test_list_products_search_percent_matches_literal_character(
+    session: Session,
+) -> None:
+    add_product(session, "100% Python")
+    add_product(session, "Python Book")
+    add_product(session, "Java Book")
+
+    products = list_products(session, search="%")
+
+    assert [product.name for product in products] == ["100% Python"]
+
+
+def test_list_products_search_underscore_matches_literal_character(
+    session: Session,
+) -> None:
+    add_product(session, "Python_Book")
+    add_product(session, "Python Book")
+    add_product(session, "Java Book")
+
+    products = list_products(session, search="_")
+
+    assert [product.name for product in products] == ["Python_Book"]
+
+
+def test_list_products_search_100_percent_matches_literal_text(
+    session: Session,
+) -> None:
+    add_product(session, "100% Python")
+    add_product(session, "100 Python")
+    add_product(session, "Python 100")
+
+    products = list_products(session, search="100%")
+
+    assert [product.name for product in products] == ["100% Python"]
+
+
+def test_list_products_search_escape_character_matches_literally(
+    session: Session,
+) -> None:
+    add_product(session, "Python/Book")
+    add_product(session, "Python Book")
+
+    products = list_products(session, search="/")
+
+    assert [product.name for product in products] == ["Python/Book"]

@@ -100,6 +100,20 @@ marked `partial`. Check the target URL, network access, and database path, then
 correct the problem. A scrape failure is recorded and does not stop the
 scheduler from attempting its next interval.
 
+
+## Get the newest data
+
+To work with the latest collector data, obtain the newest database export
+from the person running the live collector. Confirm the export is complete
+before using it; an empty SQLite file is not a valid collector data export.
+
+Keep the original database unchanged. Save the received database under
+`data/exports/` with a descriptive filename, for example:
+
+```powershell
+Get-ChildItem data/exports -Filter "*.db" |
+    Select-Object Name, Length, LastWriteTime
+
 To verify failure handling against the test site, first set
 `SCRAPE_INTERVAL_HOURS=0.25` for this supervised drill. Stop the collector,
 change `SCRAPE_TARGET_URL` in `.env` to

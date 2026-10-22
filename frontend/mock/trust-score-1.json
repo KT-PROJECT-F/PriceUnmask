@@ -11,5 +11,7 @@
     "discount_consistency": 0.88,
     "anomaly_detected": false
   },
-  "anomaly_note": null
+  "anomaly_status": "normal",
+  "anomaly_result": false,
+  "anomaly_message": "Today's price looks normal based on the available history."
 }

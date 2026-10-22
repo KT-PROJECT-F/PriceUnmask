@@ -58,15 +58,16 @@ For another database, set `DATABASE_URL` for that terminal first, for example
 ### Stale and overlapping runs
 
 - **At startup and before every scheduled cycle**, the collector marks every
-   run that has been 'running' for longer than 'STALE_RUN_MINUTES' (default 30)
-   as 'failed', and logs 'Closed N stale scrape run(s)' (only when N>0). If that 
-   clean-up fails, the error is logged and the collector still starts.
+  run that has been `running` for longer than `STALE_RUN_MINUTES` (default 30)
+  as `failed`, and logs `Closed N stale scrape run(s)` (only when N > 0). If
+  that clean-up fails, the error is logged and the collector carries on.
 - **Before each cycle**, if another run is still `running` (for example a
   "Run now" from the dashboard), the cycle is skipped and the log shows
   `Scheduled scrape skipped; a run is already running`. One skip is normal.
-  If you see it cycle after cycle, a run is stuck: check it with
-  `python -m backend.devtools.check_db`, then restart the collector so the
-  startup clean-up closes it.
+  A stuck run is closed automatically at the next cycle once it is older than
+  `STALE_RUN_MINUTES`; there is no need to restart the collector. If you see
+  skips cycle after cycle, check the runs with
+  `python -m backend.devtools.check_db`.
 ## Logs and snapshots
 
 By default, logs go only to the terminal. For a long or unattended run, write

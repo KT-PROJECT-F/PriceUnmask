@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.db.crud import list_products, list_scrape_runs
 from backend.db.database import Base, make_engine
-from backend.db.models import PriceSnapshot
+from backend.db.models import PriceSnapshot, ScrapeRun
 from backend.scheduler import jobs
 from backend.scraper.product_scraper import ScrapedProduct
 
@@ -58,6 +58,7 @@ def calls(monkeypatch, session):
         lambda session: (log.append(("start", run)), run)[1],
     )
     monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: False)
+    monkeypatch.setattr(jobs.crud, "mark_stale_runs_failed", lambda session, older_than: 0)
 
     def fake_upsert(session, source, item, run):
         log.append(("upsert", source, item, run))
@@ -473,3 +474,71 @@ def test_run_for_existing_run_never_raises(monkeypatch, session, caplog):
 
     assert jobs.run_scrape_cycle_for_run(3) == 0
     assert "Scrape run 3 could not be processed" in caplog.text
+
+
+def test_stale_running_run_is_closed_and_cycle_runs(monkeypatch, real_database, caplog):
+    caplog.set_level("INFO")
+    with real_database() as session:
+        stale = ScrapeRun(
+            status="running",
+            products_seen=0,
+            started_at=datetime.now(UTC) - timedelta(hours=2),
+        )
+        session.add(stale)
+        session.commit()
+        stale_id = stale.id
+
+    monkeypatch.setattr(jobs, "scrape", lambda url: [make_item("a")])
+
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        runs = {run.id: run for run in list_scrape_runs(session)}
+
+    assert runs[stale_id].status == "failed"
+    assert runs[stale_id].error_message.startswith("Stale run")
+    new_runs = [run for run_id, run in runs.items() if run_id != stale_id]
+    assert [run.status for run in new_runs] == ["success"]
+    assert "Closed 1 stale scrape run(s)" in caplog.text
+
+
+def test_fresh_running_run_still_skips_cycle(monkeypatch, real_database, caplog):
+    caplog.set_level("INFO")
+    with real_database() as session:
+        fresh = ScrapeRun(
+            status="running",
+            products_seen=0,
+            started_at=datetime.now(UTC) - timedelta(minutes=5),
+        )
+        session.add(fresh)
+        session.commit()
+        fresh_id = fresh.id
+
+    monkeypatch.setattr(
+        jobs,
+        "scrape",
+        lambda url: pytest.fail("scrape must not start while a fresh run is running"),
+    )
+
+    assert jobs.run_scrape_cycle() == 0
+
+    with real_database() as session:
+        runs = list_scrape_runs(session)
+
+    assert [(run.id, run.status) for run in runs] == [(fresh_id, "running")]
+    assert "a run is already running" in caplog.text
+    assert "Closed" not in caplog.text
+
+
+def test_cycle_still_runs_when_stale_cleanup_fails(monkeypatch, calls, session, caplog):
+    def fail_cleanup(session, older_than):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(jobs.crud, "mark_stale_runs_failed", fail_cleanup)
+    monkeypatch.setattr(jobs, "scrape", lambda url: [])
+
+    assert jobs.run_scrape_cycle() == 0
+    assert session.rollbacks == 1
+    assert calls[0][0] == "start"
+    assert calls[-1] == ("finish", "success", 0, None)
+    assert "Could not close stale runs before scheduled cycle" in caplog.text

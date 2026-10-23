@@ -113,7 +113,8 @@ def list_products(
     statement = select(Product).where(Product.is_active.is_(True))
 
     if search:
-        statement = statement.where(Product.name.ilike(f"%{search}%"))
+        escaped_search = search.replace("/", "//").replace("%", "/%").replace("_", "/_")
+        statement = statement.where(Product.name.ilike(f"%{escaped_search}%", escape="/"))
 
     statement = statement.order_by(Product.name)
 

@@ -69,7 +69,7 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 if not found; 422 for invalid ID or days |
 | GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 if not found; 422 for invalid ID |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
-| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | 409 if a run is already in progress; 500 if stale-run cleanup fails |
+| POST | `/api/scrape/run` | `ScrapeRunOut` (202); closes stale runs first | 409 if a run is already in progress; 500 if stale-run cleanup fails |
 
 The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 
@@ -83,6 +83,7 @@ The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 | `normal` | Today's price looks normal based on the available history. |
 | `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
 
+**Product activity:** `GET /api/products` returns active products only. `GET /api/products/{id}` can return inactive products when requested by ID.
 
 ## 6. Trust Score signals (each must be explainable in one sentence)
 

@@ -69,16 +69,18 @@ Leave this terminal open. Open http://127.0.0.1:8000/api/health
 
 ### 5. Dashboard
 
-Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/).
 
-| **Check** | **Expected** |
+| Check | Expected |
 |---|---|
 | Product grid | 3 products: Demo Bluetooth Speaker (stable), Demo Running Shoes (real drop), Demo Air Fryer (fake discount) |
 | Search `air` | Only Demo Air Fryer (fake discount) |
 | Search `zzzz` | "No products match your search." |
 | Click a product | Detail view with its name, price and a price chart |
-| Trust Score | Speaker: genuine. Shoes: genuine. Air Fryer: likely inflated |
-| Collector status | A clear message that nothing has been collected yet |
+| Trust Score | Speaker: `100 — Genuine`. Shoes: `100 — Genuine`. Air Fryer: `20 — Likely inflated` |
+| Anomaly badge | All three: "No anomaly detected", with "Today's price looks normal based on the available history." |
+| Collector status | "No price collection has been recorded yet." |
+| Run now button | Visible and enabled. Do **not** click it here: it starts a real collection. |
 
 ### 6. API, valid requests
 
@@ -165,8 +167,8 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 2. Python setup | PASS | `(.venv)` prompt, `pip install` finished without errors. Python 3.14.7. |
 | 3. Seed fake data | PASS | `Seeded 3 fake products.` `check_db`: Total products: 3, CHECK REQUIRED (no finished scrape run found). |
 | 4. Start the app | PASS | `/api/health` returned HTTP 200 with `{"status":"ok"}`. |
-| 5. Dashboard | PASS | Grid showed 3 demo products; search `air` returned only Demo Air Fryer; search `zzzz` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
-| 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/1` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
+| 5. Dashboard | PASS | Grid showed 3 demo products. Search `air` returned only Demo Air Fryer (fake discount); search `zzzz` showed "No products match your search." Product detail view and price chart were checked. Demo Bluetooth Speaker: latest ₹1,799.00, lowest ₹1,799.00, Trust Score `100 — Genuine`. Demo Running Shoes: latest ₹2,714.43, lowest ₹2,694.87, Trust Score `100 — Genuine`. Demo Air Fryer: latest ₹1,049.00, lowest ₹969.57, Trust Score `20 — Likely inflated`. Collector status showed "nothing collected yet". |
+| 6. API, valid requests | PASS | `GET /api/products`: HTTP 200, 3 products. `GET /api/products?search=air`: HTTP 200, only Demo Air Fryer. `GET /api/products/1`: HTTP 200. `GET /api/products/1/history?days=30`: HTTP 200. `GET /api/products/3/trust-score`: HTTP 200, label `likely_inflated`. `GET /api/scrape-runs`: HTTP 200, returned `[]`. |
 | 7. API, bad input | PASS | `/api/products/999999` 404; `/history?days=0` 422; 201-char search 422. |
 | 8. Collector cycle | PASS | Books to Scrape fetched HTTP 200, `robots.txt` 404 (warning logged, collector continued), 3-second delay observed, 20 products seen. Collector stopped `2026-10-16 17:21:43`. |
 | 9. Saved to the database | PASS | Run 1, success, `products_seen` 20, 20 snapshots. Total products: 23. `check_db` printed `Health status: CHECK REQUIRED` with the reason "3 products have no snapshot in run 1". Those 3 are the demo products from step 3 (source `fake`); the collector can never see them, so this is a false alarm in the health check, tracked in #143. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/16/2026, 5:19:22 PM`. No duplicate product names. |

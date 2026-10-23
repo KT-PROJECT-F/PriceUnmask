@@ -97,10 +97,24 @@ cycle to finish before exiting.
 ## When a run fails
 
 Check the terminal traceback and the run's `error_message` in `scrape_runs`.
+For a failed run, `status` is `failed`; an incomplete set of saved products is
+marked `partial`. Check the target URL, network access, and database path, then
+correct the problem. A scrape failure is recorded and does not stop the
+scheduler from attempting its next interval.
+
 If any listing page fails during a multi-page run, the entire run is marked
 `failed`, and no products from that run are saved. Raw HTML snapshots of pages
-fetched before the failure are retained for diagnosis. This is the honest
-result because a failed page means the collected catalogue may be incomplete;
-saving only some products could make an incomplete run appear successful.
-Correct the problem before retrying. A scrape failure is recorded and does
-not stop the scheduler from attempting its next interval.
+fetched before the failure are kept in `data/snapshots/` for diagnosis. This is
+the honest result because a failed page means the collected catalogue may be
+incomplete; saving only some products could make an incomplete run appear
+successful. `partial` is different: every page was fetched, but some products
+could not be saved to the database.
+
+To verify failure handling against the test site, first set
+`SCRAPE_INTERVAL_HOURS=0.25` for this supervised drill. Stop the collector,
+change `SCRAPE_TARGET_URL` in `.env` to
+`https://books.toscrape.com/nonexistent-page`, and restart it. The immediate
+attempt should be recorded as `failed`; leave the process running for at least
+15 minutes and confirm another run appears. Stop it with **Ctrl+C**, restore
+`SCRAPE_TARGET_URL=https://books.toscrape.com/` and
+`SCRAPE_INTERVAL_HOURS=4`, then restart for routine operation.

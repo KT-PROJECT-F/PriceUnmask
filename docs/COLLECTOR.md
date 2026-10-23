@@ -112,9 +112,24 @@ attempt should be recorded as `failed`; leave the process running for at least
 
 ## Live collector (until 31 Oct)
 
-- Owner: Saidivya
-- Machine: <actual machine running the collector> (Windows 11) - Sleep disabled, plugged in, terminal stays open
-- Database: data/collector.db (own DB, no demo seed, 20 products currently - will be 60 after pages=3)
-- Log file: data/collector.log (also data/collector-run2.log)
-- Health checks: Run check_db every working morning and post the results in issue #155.
-- Exports: Request an export from Saidivya, who will run the project's database export command and share the resulting file with the team.
+- **Owner:** Saidivya (@Saidivya-20)
+- **Machine:** `DESKTOP-MG4NO5P` (Windows 11), plugged in, sleep turned off,
+  collector terminal left open
+- **Database:** `data/collector.db`, real data only, no demo seed
+- **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run),
+  `SCRAPE_INTERVAL_HOURS=4`
+- **Log file:** `data/collector.log`
+- **Daily check:** every working morning Saidivya runs `check_db` on
+  `data/collector.db` and posts one line on #155: date, health status, number
+  of runs, last run time.
+
+To get the newest data, ask Saidivya in the team chat. She runs, on the
+collector machine:
+
+```powershell
+$env:DATABASE_URL = "sqlite:///data/collector.db"
+python -m backend.devtools.export_db
+```
+
+and shares the file it prints, `data/exports/priceunmask-<UTC timestamp>.db`.
+Do not copy `data/collector.db` directly while the collector is running.

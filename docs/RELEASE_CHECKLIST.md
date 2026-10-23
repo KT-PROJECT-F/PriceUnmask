@@ -187,11 +187,10 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 2. Python setup | PASS | Windows 11 Pro; Python 3.14.7; virtual environment `.venv` activated successfully. |
 | 3. Seed fake data | PASS | Default database contains 3 demo products: Demo Bluetooth Speaker, Demo Running Shoes, and Demo Air Fryer. |
 | 4. Start the app | PASS | FastAPI application started for the release-check workflow; dashboard and API checks were performed. |
-| 5. Dashboard | PASS | Dashboard loaded; product grid, search, product details, price-history chart, trust-score display, and collector status were checked. |
+| 5. Dashboard | PASS* | Dashboard loaded; product grid, search, product details, price-history chart, and collector status were checked. Demo Air Fryer (fake discount): latest price ₹1,049.00; lowest price ₹969.57; Trust Score 20 — Likely inflated. Demo Bluetooth Speaker (stable): latest price ₹1,799.00; lowest price ₹1,799.00; Trust Score 100 — Genuine. Demo Running Shoes (real drop): latest price ₹2,714.43; lowest price ₹2,694.87; Trust Score 100 — Genuine. |
 | 6. API, valid requests | PASS | Valid API requests were checked during the release workflow. FastAPI documentation is available at `/docs`. |
 | 7. API, bad input | PASS | Nonexistent product ID returned HTTP 404; `days=0` returned HTTP 422; 201-character search returned HTTP 422. |
-| 8. Collector cycle | PASS | Collector reached Books to Scrape successfully (HTTP 200); the scheduled scrape completed successfully. An earlier observed cycle collected 20 products. |
-| 9. Saved to the database | PASS | Checked `data\exports\priceunmask-live-20261022-60products-FIXED.db`: 60 products, 480 snapshots, 8 successful runs, 60 snapshots per run, no duplicate product names, and 0 products without a snapshot in the latest run. `check_db` reported `Health status: HEALTHY`; latest run ID 8. |
-| 10. Automated checks | PASS | `pytest -q` — 325 passed, 1 warning in 8.38s. |
-| 11. Failures | PASS | No failing tests were reported by the recorded automated test run. One warning was reported; record its exact text if the checklist requires the warning details. |
-
+| 8. Collector cycle | PASS | Collector fetched all 3 listing pages successfully (HTTP 200): page 1 collected 20 products, page 2 collected 20 products, and page 3 collected 20 products. Total: 60 products. Cycle started at 2026-10-23 12:08:04 and completed at 2026-10-23 12:08:22; job executed successfully at 12:08:22.866. Collector stopped at 12:10:13. robots.txt returned 404 warnings; fetching continued successfully. |
+| 9. Saved to the database | PASS | check_db: Run ID 2; status success; products_seen 60; snapshots 60; Total products: 63; Health status: HEALTHY. Products without a snapshot in this run: 0. Duplicate product names: None. |
+| 10. Automated checks | PASS | ruff check . — All checks passed!; ruff format --check . — 54 files already formatted; pytest -q — 325 passed, 1 warning in 8.38s. |
+| 11. Failures | PASS | No failures found. |

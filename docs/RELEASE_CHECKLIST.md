@@ -67,6 +67,19 @@ Leave this terminal open. Open http://127.0.0.1:8000/api/health
 
 **Expected:** `{"status":"ok"}`
 
+### 5. Dashboard
+
+Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+
+| **Check** | **Expected** |
+|---|---|
+| Product grid | 3 products: Demo Bluetooth Speaker (stable), Demo Running Shoes (real drop), Demo Air Fryer (fake discount) |
+| Search `air` | Only Demo Air Fryer (fake discount) |
+| Search `zzzz` | "No products match your search." |
+| Click a product | Detail view with its name, price and a price chart |
+| Trust Score | Speaker: genuine. Shoes: genuine. Air Fryer: likely inflated |
+| Collector status | A clear message that nothing has been collected yet |
+
 ### 6. API, valid requests
 
 Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) and use **Try it out**.
@@ -80,24 +93,17 @@ Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) and use **Try it o
 | `GET /api/products/3/trust-score` | 200, label `likely_inflated`; response includes `score`, `reasons`, `signals`, `anomaly_status`, `anomaly_result`, and `anomaly_message`; `anomaly_note` is not exposed |
 | `GET /api/scrape-runs` | 200; `[]` only when no scrape runs exist |
 
-**Verification results**
-
-- `GET /api/products/3/trust-score`: **PASS** — observed `product_id: 3`, `score: 20`, `label: "likely_inflated"`, `anomaly_status: "normal"`, and `anomaly_result: false`. The response included the expected anomaly message and did not include `anomaly_note`.
-- `pytest -q tests/test_api.py`: **PASS** — 48 passed, 1 Starlette deprecation warning, in 10.96 seconds.
-- The remaining requests must be marked PASS only after their actual responses have been checked against the expected results.
-
 ### 7. API, bad input
 
-| **Request**                                  | **Expected** |
-| -------------------------------------------- | ------------ |
-| `GET /api/products/999999`                   | 404          |
-| `GET /api/products/1/history?days=0`         | 422          |
-| `GET /api/products?search=` + 201 characters | 422          |
+| **Request** | **Expected** |
+|---|---|
+| `GET /api/products/999999` | 404 |
+| `GET /api/products/1/history?days=0` | 422 |
+| `GET /api/products?search=` + 201 characters | 422 |
 
 ### 8. One real collector cycle
 
-Check first that nobody else on the team is running the collector against the
-site right now. Open a **second** terminal in the same folder:
+Check first that nobody else on the team is running the collector against the site right now. Open a **second** terminal in the same folder:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -106,8 +112,7 @@ python -m backend.scheduler.jobs
 
 Wait until the log shows the first cycle has finished, then press Ctrl+C.
 
-**Expected:** the log shows the page being fetched and the number of products
-seen. Write down that number and the time.
+**Expected:** the log shows `Scraping listing page 1 of 3`, `2 of 3` and `3 of 3`, and about 60 products seen (20 per page). With `SCRAPE_DELAY_SECONDS=3` one cycle takes at least 9 seconds (a 3-second wait before each page). Write down the number of products and the start and finish time.
 
 ### 9. Was it saved?
 
@@ -123,13 +128,11 @@ Then refresh http://127.0.0.1:8000/api/scrape-runs and the dashboard.
 - Its `products_seen` matches the number from Step 8.
 - `check_db` shows the same number of snapshots for that run.
 - The dashboard's collector status reflects the latest run.
-- `check_db` shows `Total products: 23`: the 20 scraped books and the 3 demo
-  products from step 3.
+- `check_db` shows `Total products: 63`: the 60 scraped books and the 3 demo products from step 3.
 - The 3 demo products (source `fake`) are not counted as missing from the run.
 - `check_db` prints `Health status: HEALTHY`.
 
-Write down the run id, status, `products_seen`, snapshot count and the health
-status that `check_db` prints.
+Write down the run id, status, `products_seen`, snapshot count and the health status that `check_db` prints.
 
 
 ### 10. Automated checks
@@ -172,15 +175,15 @@ the commit hash. Link each issue in the table. If nothing failed, write
 
 ## v0.2 results
 
-- **Date:** 2026-10-22
+- **Date:** 2026-10-23
 - **Tested by:** Mathan
-- **Commit (`git rev-parse HEAD`):** `97ef928a8d47ab15e47139ab77764c2a1076e5cd`
+- **Commit (`git rev-parse HEAD`):** `cb8025316ed3368b6c36a50eac780b269b3651f5`
 - **Windows version:** Windows 11 Pro
 - **Python version:** Python 3.14.7
 
 | Step | Result | What I saw |
 |---|---|---|
-| 1. Fresh clone | PASS | Fresh clone created successfully on `dev`; commit `97ef928a8d47ab15e47139ab77764c2a1076e5cd`. |
+| 1. Fresh clone | PASS | Fresh clone created successfully on `dev`; commit `cb8025316ed3368b6c36a50eac780b269b3651f5`. |
 | 2. Python setup | PASS | Windows 11 Pro; Python 3.14.7; virtual environment `.venv` activated successfully. |
 | 3. Seed fake data | PASS | Default database contains 3 demo products: Demo Bluetooth Speaker, Demo Running Shoes, and Demo Air Fryer. |
 | 4. Start the app | PASS | FastAPI application started for the release-check workflow; dashboard and API checks were performed. |
@@ -191,3 +194,4 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 9. Saved to the database | PASS | Checked `data\exports\priceunmask-live-20261022-60products-FIXED.db`: 60 products, 480 snapshots, 8 successful runs, 60 snapshots per run, no duplicate product names, and 0 products without a snapshot in the latest run. `check_db` reported `Health status: HEALTHY`; latest run ID 8. |
 | 10. Automated checks | PASS | `pytest -q` — 325 passed, 1 warning in 8.38s. |
 | 11. Failures | PASS | No failing tests were reported by the recorded automated test run. One warning was reported; record its exact text if the checklist requires the warning details. |
+

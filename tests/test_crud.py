@@ -1029,3 +1029,47 @@ def test_missing_products_reports_unseen_product_from_same_source(
     missing = list_products_not_seen_in_run(session, run.id)
 
     assert [product.name for product in missing] == ["Real 2"]
+
+
+def test_list_products_search_percent_matches_literal_character(
+    session: Session,
+) -> None:
+    add_product(session, "Phone 10% off")
+    add_product(session, "Phone 10X off")
+
+    products = list_products(session, search="%")
+
+    assert [product.name for product in products] == ["Phone 10% off"]
+
+
+def test_list_products_search_underscore_matches_literal_character(
+    session: Session,
+) -> None:
+    add_product(session, "Phone_case")
+    add_product(session, "Phone-case")
+
+    products = list_products(session, search="_")
+
+    assert [product.name for product in products] == ["Phone_case"]
+
+
+def test_list_products_search_100_percent_matches_literal_text(
+    session: Session,
+) -> None:
+    add_product(session, "Discount 100%")
+    add_product(session, "Discount 100X")
+
+    products = list_products(session, search="100%")
+
+    assert [product.name for product in products] == ["Discount 100%"]
+
+
+def test_list_products_search_escape_character_matches_literally(
+    session: Session,
+) -> None:
+    add_product(session, "Folder/Phone")
+    add_product(session, "FolderPhone")
+
+    products = list_products(session, search="/")
+
+    assert [product.name for product in products] == ["Folder/Phone"]

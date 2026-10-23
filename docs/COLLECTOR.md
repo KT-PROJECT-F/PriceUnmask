@@ -109,3 +109,36 @@ attempt should be recorded as `failed`; leave the process running for at least
 15 minutes and confirm another run appears. Stop it with **Ctrl+C**, restore
 `SCRAPE_TARGET_URL=https://books.toscrape.com/` and
 `SCRAPE_INTERVAL_HOURS=4`, then restart for routine operation.
+
+## Get the newest data
+
+Saidivya runs the live collector (#155). Ask her in the team chat for a fresh
+export; do not copy her `data/priceunmask.db` while the collector is running.
+
+On the collector laptop, she runs:
+
+```powershell
+python -m backend.devtools.export_db
+```
+
+It prints `Database exported to: data/exports/priceunmask-<UTC timestamp>.db`,
+for example `priceunmask-20261023T043000Z.db`. Keep that name: it has no spaces
+and the date is in it. Put the file in `data/exports/` on your laptop. Exported
+`.db` files are ignored by Git and must never be committed.
+
+Check the export before you use it:
+
+```powershell
+$env:DATABASE_URL = "sqlite:///data/exports/priceunmask-20261023T043000Z.db"
+python -m backend.devtools.check_db
+```
+
+The file name says when the export was made, not which prices are inside. To
+see the dates it really covers:
+
+```powershell
+python -c "import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); print(c.execute('SELECT MIN(scraped_at), MAX(scraped_at), COUNT(*) FROM price_snapshots').fetchone())" data/exports/priceunmask-20261023T043000Z.db
+```
+
+It prints the first and last snapshot time and the number of snapshots. If the
+last time is older than expected, ask for a new export.

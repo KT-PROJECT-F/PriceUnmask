@@ -65,6 +65,11 @@ header {
   color: #374151;
 }
 
+.trust-badge-no_discount {
+  background: #e5e7eb;
+  color: #374151;
+}
+
 .price-chart-container {
   margin-top: 1.5rem;
   padding: 1rem;

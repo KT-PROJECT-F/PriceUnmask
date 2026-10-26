@@ -24,7 +24,8 @@ const trustLabels = {
   genuine: "Genuine",
   uncertain: "Uncertain",
   likely_inflated: "Likely inflated",
-  insufficient_data: "Insufficient data"
+  insufficient_data: "Insufficient data",
+  no_discount: "No discount to judge"
 };
 
 function formatPrice(price, currency) {
@@ -362,11 +363,11 @@ async function loadTrustScore(productId) {
     typeof trustScore.label !== "string" ||
     !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
     (
-      trustScore.label === "insufficient_data" &&
+      ["insufficient_data", "no_discount"].includes(trustScore.label) &&
       trustScore.score !== null
     ) ||
     (
-      trustScore.label !== "insufficient_data" &&
+      !["insufficient_data", "no_discount"].includes(trustScore.label) &&
       (
         typeof trustScore.score !== "number" ||
         !Number.isFinite(trustScore.score) ||

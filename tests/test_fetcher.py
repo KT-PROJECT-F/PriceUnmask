@@ -11,7 +11,7 @@ from backend.scraper.product_scraper import FETCH_TIMEOUT_SECONDS, fetch_html
 
 
 class FakeResponse:
-    """Behaves like requests: no charset -> ISO-8859-1."""
+    """Behaves like requests: no charset means ISO-8859-1 by default."""
 
     def __init__(
         self,
@@ -22,7 +22,11 @@ class FakeResponse:
         self.status_code = status_code
         self.content = body.encode("utf-8")
         self.headers = {"Content-Type": content_type}
-        self.encoding = "utf-8" if "charset=utf-8" in content_type else "ISO-8859-1"
+        self.encoding = (
+            "utf-8"
+            if "charset=utf-8" in content_type
+            else "ISO-8859-1"
+        )
         self.apparent_encoding = "utf-8"
 
     @property
@@ -48,6 +52,7 @@ def use_fake(
 
 @pytest.fixture(autouse=True)
 def sleeps(monkeypatch):
+    """Record sleep calls instead of actually waiting."""
     waits: list[float] = []
     monkeypatch.setattr(
         "backend.scraper.product_scraper.sleep",
@@ -77,9 +82,7 @@ def test_user_agent_and_timeout(monkeypatch) -> None:
 
 def test_pound_sign_survives_without_charset(monkeypatch) -> None:
     responses = [
-        FakeResponse(
-            body="User-agent: *\nAllow: /",
-        ),
+        FakeResponse(body="User-agent: *\nAllow: /"),
         FakeResponse(
             body="<p>£51.77</p>",
             content_type="text/html",
@@ -102,18 +105,16 @@ def test_pound_sign_survives_without_charset(monkeypatch) -> None:
 
 
 def test_fake_garbles_like_requests_without_fix() -> None:
-    assert (
-        "Â£"
-        in FakeResponse(
-            body="£",
-            content_type="text/html",
-        ).text
+    response = FakeResponse(
+        body="£",
+        content_type="text/html",
     )
+
+    assert "Â£" in response.text
 
 
 def script(monkeypatch, *steps):
     """Return or raise each step in order for requests.get."""
-
     calls: list[str] = []
     queue = list(steps)
 
@@ -165,6 +166,7 @@ def test_configured_delay_between_robots_and_page(
     )
 
     delay = settings.scrape_delay_seconds
+
     fetch_html("https://example.com/p")
 
     assert calls == [
@@ -281,7 +283,10 @@ def test_timeout_on_every_attempt_raises_after_three_tries(
     assert sleeps == [settings.scrape_delay_seconds, 1, 2]
 
 
-def test_disallowed_url_never_requests_the_page(monkeypatch, sleeps) -> None:
+def test_disallowed_url_never_requests_the_page(
+    monkeypatch,
+    sleeps,
+) -> None:
     calls = script(
         monkeypatch,
         FakeResponse(
@@ -307,7 +312,10 @@ def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
     assert sleeps == [settings.scrape_delay_seconds]
 
 
-def test_robots_txt_timeout_retries_then_succeeds(monkeypatch, sleeps):
+def test_robots_txt_timeout_retries_then_succeeds(
+    monkeypatch,
+    sleeps,
+) -> None:
     calls = script(
         monkeypatch,
         requests.Timeout(),
@@ -315,14 +323,43 @@ def test_robots_txt_timeout_retries_then_succeeds(monkeypatch, sleeps):
         FakeResponse(body="ok"),
     )
 
-    assert fetch_html("https://example.com/products") == "ok"
+    assert (
+        fetch_html("https://example.com/products") == "ok"
+    )
 
     assert calls == [
         "https://example.com/robots.txt",
         "https://example.com/robots.txt",
         "https://example.com/products",
     ]
+
     assert sleeps == [1, settings.scrape_delay_seconds]
+
+
+def test_robots_txt_timeout_on_every_attempt_fails_without_requesting_page(
+    monkeypatch,
+    sleeps,
+) -> None:
+    calls = script(
+        monkeypatch,
+        requests.Timeout(),
+        requests.Timeout(),
+        requests.Timeout(),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Could not fetch robots.txt",
+    ):
+        fetch_html("https://example.com/products")
+
+    assert calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/robots.txt",
+        "https://example.com/robots.txt",
+    ]
+
+    assert sleeps == [1, 2]
 
 
 @pytest.mark.parametrize("status", [403, 500])
@@ -399,7 +436,10 @@ def test_scrape_returns_parsed_products(monkeypatch, tmp_path) -> None:
     }
 
 
-def test_scrape_does_not_save_when_fetch_fails(monkeypatch, tmp_path) -> None:
+def test_scrape_does_not_save_when_fetch_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
 
     def fail_fetch(url):
@@ -458,7 +498,9 @@ def test_scrape_returns_products_when_the_snapshot_cannot_be_saved(
         lambda html, base_url: [FakeProduct("product")],
     )
 
-    assert product_scraper.scrape("https://example.com/list") == [FakeProduct("product")]
+    assert product_scraper.scrape(
+        "https://example.com/list"
+    ) == [FakeProduct("product")]
 
 
 def test_fetch_html_logs_robots_user_agent_and_delay(
@@ -473,9 +515,15 @@ def test_fetch_html_logs_robots_user_agent_and_delay(
     ):
         fetch_html("https://example.com/p")
 
-    assert "Checking robots.txt: https://example.com/robots.txt" in caplog.text
+    assert (
+        "Checking robots.txt: https://example.com/robots.txt"
+        in caplog.text
+    )
     assert f"Using User-Agent: {settings.scrape_user_agent}" in caplog.text
-    assert f"Waiting {settings.scrape_delay_seconds:.2f} seconds" in caplog.text
+    assert (
+        f"Waiting {settings.scrape_delay_seconds:.2f} seconds"
+        in caplog.text
+    )
     assert "Fetched https://example.com/p: HTTP 200" in caplog.text
 
 
@@ -526,7 +574,10 @@ def test_same_site_redirect_is_rejected(monkeypatch, sleeps) -> None:
     assert len(calls) == 2
 
 
-def test_redirect_without_location_is_rejected(monkeypatch, sleeps) -> None:
+def test_redirect_without_location_is_rejected(
+    monkeypatch,
+    sleeps,
+) -> None:
     calls = script(
         monkeypatch,
         ROBOTS_OK,
@@ -585,7 +636,10 @@ def test_non_html_response_is_rejected(monkeypatch, sleeps) -> None:
     assert len(calls) == 2
 
 
-def test_missing_content_type_is_rejected(monkeypatch, sleeps) -> None:
+def test_missing_content_type_is_rejected(
+    monkeypatch,
+    sleeps,
+) -> None:
     script(
         monkeypatch,
         ROBOTS_OK,
@@ -599,7 +653,10 @@ def test_missing_content_type_is_rejected(monkeypatch, sleeps) -> None:
         fetch_html("https://example.com/page")
 
 
-def test_disallowed_url_is_logged_once(monkeypatch, caplog) -> None:
+def test_disallowed_url_is_logged_once(
+    monkeypatch,
+    caplog,
+) -> None:
     script(
         monkeypatch,
         FakeResponse(
@@ -624,9 +681,14 @@ def test_disallowed_url_is_logged_once(monkeypatch, caplog) -> None:
 # ---------------------------------------------------------------------
 
 
-def use_pages(monkeypatch, tmp_path, pages, *, max_pages=3):
-    """Fake fetch_html with a dict of URL -> HTML, and return fetched URLs."""
-
+def use_pages(
+    monkeypatch,
+    tmp_path,
+    pages,
+    *,
+    max_pages=3,
+):
+    """Fake fetch_html with a dictionary of URL -> HTML."""
     calls = []
 
     def fake_fetch(url):
@@ -650,7 +712,10 @@ def use_pages(monkeypatch, tmp_path, pages, *, max_pages=3):
 
 
 def next_link(href):
-    return f'<ul class="pager"><li class="next"><a href="{href}">next</a></li></ul>'
+    return (
+        f'<ul class="pager"><li class="next">'
+        f'<a href="{href}">next</a></li></ul>'
+    )
 
 
 PAGE_1 = "https://example.com/catalogue/page-1.html"
@@ -671,7 +736,11 @@ def test_scrape_follows_next_page(monkeypatch, tmp_path):
     monkeypatch.setattr(
         product_scraper,
         "parse_listing",
-        lambda html, url: [FakeProduct("book1")] if url == PAGE_1 else [FakeProduct("book2")],
+        lambda html, url: (
+            [FakeProduct("book1")]
+            if url == PAGE_1
+            else [FakeProduct("book2")]
+        ),
     )
 
     products = product_scraper.scrape(PAGE_1)
@@ -727,7 +796,10 @@ def test_scrape_respects_max_pages(monkeypatch, tmp_path):
     assert len(list(tmp_path.glob("*.html"))) == 2
 
 
-def test_scrape_returns_a_book_on_two_pages_once(monkeypatch, tmp_path):
+def test_scrape_returns_a_book_on_two_pages_once(
+    monkeypatch,
+    tmp_path,
+):
     use_pages(
         monkeypatch,
         tmp_path,
@@ -760,7 +832,10 @@ def test_scrape_returns_a_book_on_two_pages_once(monkeypatch, tmp_path):
     assert products[1].name == "Book"
 
 
-def test_scrape_stops_when_pages_link_to_each_other(monkeypatch, tmp_path):
+def test_scrape_stops_when_pages_link_to_each_other(
+    monkeypatch,
+    tmp_path,
+):
     pages = {
         PAGE_1: next_link("page-2.html"),
         PAGE_2: next_link("page-1.html"),
@@ -779,7 +854,10 @@ def test_scrape_stops_when_pages_link_to_each_other(monkeypatch, tmp_path):
     assert calls == [PAGE_1, PAGE_2]
 
 
-def test_scrape_raises_when_a_middle_page_fails(monkeypatch, tmp_path):
+def test_scrape_raises_when_a_middle_page_fails(
+    monkeypatch,
+    tmp_path,
+):
     pages = {
         PAGE_1: next_link("page-2.html"),
         PAGE_2: RuntimeError("page 2 failed"),
@@ -798,12 +876,16 @@ def test_scrape_raises_when_a_middle_page_fails(monkeypatch, tmp_path):
 
     assert calls == [PAGE_1, PAGE_2]
 
-    # Page 1's raw HTML is kept even though the run fails.
+    # Page 1's raw HTML remains even though the run fails.
     [snapshot] = list(tmp_path.glob("*.html"))
+
     assert re.fullmatch(r"\d{8}T\d{6}Z\.html", snapshot.name)
 
 
-def test_scrape_names_later_pages_with_a_page_number(monkeypatch, tmp_path):
+def test_scrape_names_later_pages_with_a_page_number(
+    monkeypatch,
+    tmp_path,
+):
     use_pages(
         monkeypatch,
         tmp_path,

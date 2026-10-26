@@ -6,6 +6,30 @@ stored in the database configured by `DATABASE_URL` (default:
 `data/priceunmask.db`). Settings, including `.env`, are read at process startup;
 restart the collector after changing them.
 
+
+## Live collector (until 31 Oct)
+
+- **Owner:** Saidivya (@Saidivya-20)
+- **Machine:** `DESKTOP-MG4NO5P` (Windows 11), plugged in, sleep turned off, collector terminal left open
+- **Database:** `data/collector.db`, real data only, no demo seed
+- **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run), `SCRAPE_INTERVAL_HOURS=4`
+- **Log file:** `data/collector.log`
+- **Daily check:** Every working morning, Saidivya runs `check_db` on `data/collector.db` and posts one line on #155 with the date, health status, number of runs, and last run time.
+
+## Get the newest data
+
+Ask Saidivya in the team chat for a fresh export. On the collector machine, from the repository root, run:
+
+```powershell
+$env:DATABASE_URL = "sqlite:///data/collector.db"
+python -m backend.devtools.export_db
+```
+
+The command prints the path to the exported file, such as `data/exports/priceunmask-<UTC timestamp>.db`. Share that exported file. Do not copy `data/collector.db` directly while the collector is running.
+
+
+
+
 ## Start
 
 From the repository root in PowerShell:

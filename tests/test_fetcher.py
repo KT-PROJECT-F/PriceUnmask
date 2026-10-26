@@ -22,11 +22,7 @@ class FakeResponse:
         self.status_code = status_code
         self.content = body.encode("utf-8")
         self.headers = {"Content-Type": content_type}
-        self.encoding = (
-            "utf-8"
-            if "charset=utf-8" in content_type
-            else "ISO-8859-1"
-        )
+        self.encoding = "utf-8" if "charset=utf-8" in content_type else "ISO-8859-1"
         self.apparent_encoding = "utf-8"
 
     @property
@@ -323,9 +319,7 @@ def test_robots_txt_timeout_retries_then_succeeds(
         FakeResponse(body="ok"),
     )
 
-    assert (
-        fetch_html("https://example.com/products") == "ok"
-    )
+    assert fetch_html("https://example.com/products") == "ok"
 
     assert calls == [
         "https://example.com/robots.txt",
@@ -498,9 +492,7 @@ def test_scrape_returns_products_when_the_snapshot_cannot_be_saved(
         lambda html, base_url: [FakeProduct("product")],
     )
 
-    assert product_scraper.scrape(
-        "https://example.com/list"
-    ) == [FakeProduct("product")]
+    assert product_scraper.scrape("https://example.com/list") == [FakeProduct("product")]
 
 
 def test_fetch_html_logs_robots_user_agent_and_delay(
@@ -515,15 +507,9 @@ def test_fetch_html_logs_robots_user_agent_and_delay(
     ):
         fetch_html("https://example.com/p")
 
-    assert (
-        "Checking robots.txt: https://example.com/robots.txt"
-        in caplog.text
-    )
+    assert "Checking robots.txt: https://example.com/robots.txt" in caplog.text
     assert f"Using User-Agent: {settings.scrape_user_agent}" in caplog.text
-    assert (
-        f"Waiting {settings.scrape_delay_seconds:.2f} seconds"
-        in caplog.text
-    )
+    assert f"Waiting {settings.scrape_delay_seconds:.2f} seconds" in caplog.text
     assert "Fetched https://example.com/p: HTTP 200" in caplog.text
 
 
@@ -712,10 +698,7 @@ def use_pages(
 
 
 def next_link(href):
-    return (
-        f'<ul class="pager"><li class="next">'
-        f'<a href="{href}">next</a></li></ul>'
-    )
+    return f'<ul class="pager"><li class="next"><a href="{href}">next</a></li></ul>'
 
 
 PAGE_1 = "https://example.com/catalogue/page-1.html"
@@ -736,11 +719,7 @@ def test_scrape_follows_next_page(monkeypatch, tmp_path):
     monkeypatch.setattr(
         product_scraper,
         "parse_listing",
-        lambda html, url: (
-            [FakeProduct("book1")]
-            if url == PAGE_1
-            else [FakeProduct("book2")]
-        ),
+        lambda html, url: [FakeProduct("book1")] if url == PAGE_1 else [FakeProduct("book2")],
     )
 
     products = product_scraper.scrape(PAGE_1)

@@ -1,4 +1,3 @@
-
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
 Contract: scrape(url) returns a list of ScrapedProduct and NEVER touches
@@ -112,13 +111,8 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
         original_price_element = card.select_one("del, .old-price")
 
         if original_price_element:
-            original_price_minor = parse_price_to_minor(
-                original_price_element.get_text(strip=True)
-            )
-            if (
-                original_price_minor is not None
-                and original_price_minor <= price_minor
-            ):
+            original_price_minor = parse_price_to_minor(original_price_element.get_text(strip=True))
+            if original_price_minor is not None and original_price_minor <= price_minor:
                 logger.warning(
                     "Ignoring old price that is not above the price: %s",
                     name,
@@ -127,19 +121,11 @@ def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
 
         url_path = url.rstrip("/").split("/")
         filename = url_path[-1]
-        slug = (
-            url_path[-2]
-            if filename == "index.html" and len(url_path) >= 2
-            else filename
-        )
+        slug = url_path[-2] if filename == "index.html" and len(url_path) >= 2 else filename
         external_id = slug.rsplit("_", 1)[0]
 
         # This site sells in GBP; a rupee sign or "Rs" means INR.
-        currency = (
-            "INR"
-            if ("₹" in price_text or "Rs" in price_text)
-            else "GBP"
-        )
+        currency = "INR" if ("₹" in price_text or "Rs" in price_text) else "GBP"
 
         in_stock = None
         if availability_element:
@@ -227,10 +213,7 @@ def _request_with_retries(
             sleep(wait_seconds)
             continue
 
-        if (
-            should_retry_status
-            and response.status_code in RETRY_STATUSES
-        ):
+        if should_retry_status and response.status_code in RETRY_STATUSES:
             if attempt == MAX_RETRIES:
                 return response
 
@@ -248,9 +231,7 @@ def _request_with_retries(
         return response
 
     # Defensive fallback: the loop normally returns or raises before this.
-    raise RuntimeError(
-        f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts"
-    )
+    raise RuntimeError(f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts")
 
 
 def _robots_allows(url: str, headers: dict[str, str]) -> bool:
@@ -265,14 +246,10 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
             should_retry_status=False,
         )
     except requests.RequestException as exc:
-        raise RuntimeError(
-            f"Could not fetch robots.txt for {url}: {exc}"
-        ) from exc
+        raise RuntimeError(f"Could not fetch robots.txt for {url}: {exc}") from exc
 
     if 300 <= response.status_code < 400:
-        raise RuntimeError(
-            f"robots.txt redirected (HTTP {response.status_code}) for {url}"
-        )
+        raise RuntimeError(f"robots.txt redirected (HTTP {response.status_code}) for {url}")
 
     if response.status_code == 404:
         logger.warning(
@@ -282,9 +259,7 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
         return True
 
     if response.status_code >= 400:
-        raise RuntimeError(
-            f"robots.txt returned HTTP {response.status_code} for {url}"
-        )
+        raise RuntimeError(f"robots.txt returned HTTP {response.status_code} for {url}")
 
     parser = RobotFileParser()
     parser.parse(response.text.splitlines())
@@ -324,8 +299,7 @@ def fetch_html(url: str) -> str:
     if 300 <= response.status_code < 400:
         location = response.headers.get("Location", "no Location header")
         raise RuntimeError(
-            f"Redirect not followed: {url} -> {location} "
-            f"(HTTP {response.status_code})"
+            f"Redirect not followed: {url} -> {location} (HTTP {response.status_code})"
         )
 
     if response.status_code >= 400:
@@ -335,10 +309,7 @@ def fetch_html(url: str) -> str:
     media_type = content_type.split(";")[0].strip().lower()
 
     if media_type not in {"text/html", "application/xhtml+xml"}:
-        raise RuntimeError(
-            f"Expected HTML from {url}, got "
-            f"{content_type or 'no Content-Type'}"
-        )
+        raise RuntimeError(f"Expected HTML from {url}, got {content_type or 'no Content-Type'}")
 
     logger.info("Fetched %s: HTTP %s", url, response.status_code)
 
@@ -436,4 +407,3 @@ def scrape(url: str) -> list[ScrapedProduct]:
         len(visited_urls),
     )
     return all_products
-

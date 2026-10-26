@@ -28,6 +28,8 @@ const trustLabels = {
   no_discount: "No discount to judge"
 };
 
+const noScoreLabels = ["insufficient_data", "no_discount"];
+
 function formatPrice(price, currency) {
   if (price === null || price === undefined || !currency) {
     return "—";
@@ -363,11 +365,11 @@ async function loadTrustScore(productId) {
     typeof trustScore.label !== "string" ||
     !Object.prototype.hasOwnProperty.call(trustLabels, trustScore.label) ||
     (
-      ["insufficient_data", "no_discount"].includes(trustScore.label) &&
+      noScoreLabels.includes(trustScore.label) &&
       trustScore.score !== null
     ) ||
     (
-      !["insufficient_data", "no_discount"].includes(trustScore.label) &&
+      !noScoreLabels.includes(trustScore.label) &&
       (
         typeof trustScore.score !== "number" ||
         !Number.isFinite(trustScore.score) ||
@@ -720,7 +722,7 @@ function buildDetailContent(product, trustScore) {
 
   elements.push(scoreHeading, scoreBadge);
 
-  // Explain when there is not enough data to calculate a reliable score.
+  // Explain labels that need additional shopper-facing context.
   if (trustScore.label === "insufficient_data") {
     const insufficientMessage = document.createElement("p");
     insufficientMessage.className = "trust-score-message";
@@ -729,6 +731,14 @@ function buildDetailContent(product, trustScore) {
       "There isn't enough price history yet to calculate a reliable Trust Score. Check back when more price data is available.";
 
     elements.push(insufficientMessage);
+  } else if (trustScore.label === "no_discount") {
+    const noDiscountMessage = document.createElement("p");
+    noDiscountMessage.className = "trust-score-message";
+    noDiscountMessage.setAttribute("role", "status");
+    noDiscountMessage.textContent =
+      "No discount to judge. The latest price has no discount to evaluate.";
+
+    elements.push(noDiscountMessage);
   }
 
   // Display the reasons for the Trust Score.

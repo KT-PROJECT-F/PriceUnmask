@@ -32,7 +32,7 @@ stores every observation, and scores each "discount" for how real it is.
 | All DB access goes through `crud.py` | One place to change queries; no SQL scattered across modules. |
 | Frontend served by FastAPI at `/`, API at `/api` | One process, no CORS, one command to run. |
 | SQLite in WAL mode | Scheduler writes while API reads without locking errors. |
-| `insufficient_data` is a real Trust Score label | Honest about sparse early data (rubric: ML reasoning). |
+| `insufficient_data` and `no_discount` are Trust Score labels | Distinguish insufficient price history from products without a valid discount claim. |
 | One **collector** machine owns the real DB | Real history must accumulate in ONE place. See section 7. |
 
 ## 3. Data model (backend/db/models.py)
@@ -95,8 +95,8 @@ The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 | % above lowest ever | How far today is from the best price we saw | "Deal" is above what it cost last week |
 | Volatility | How much the price normally moves | High volatility makes any single "deal" less meaningful |
 
-Score 0 to 100. `>= 70` genuine, `40 to 69` uncertain, `< 40` likely_inflated,
-fewer than 6 snapshots `insufficient_data`. `reasons` lists the sentences shown to the user.
+Score 0 to 100. `>= 70` genuine, `40 to 69` uncertain, `< 40` likely_inflated.
+Fewer than 6 snapshots gives `insufficient_data`. With at least 6 snapshots, if the latest snapshot has no valid discount claim, the label is `no_discount` and `score` is `null`. A valid discount claim requires a positive original price greater than the current price. `reasons` lists the sentences shown to the user.
 
 ## 7. Where real data comes from
 

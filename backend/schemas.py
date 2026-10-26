@@ -22,7 +22,16 @@ class ProductOut(BaseModel):
     currency: str
     latest_price_minor: int | None
     lowest_price_minor: int | None
-    trust_label: Literal["genuine", "uncertain", "likely_inflated", "insufficient_data"] | None
+    trust_label: (
+        Literal[
+            "genuine",
+            "uncertain",
+            "likely_inflated",
+            "insufficient_data",
+            "no_discount",
+        ]
+        | None
+    )
 
 
 class PricePointOut(BaseModel):
@@ -41,7 +50,13 @@ class HistoryOut(BaseModel):
 class TrustScoreOut(BaseModel):
     product_id: int
     score: int | None
-    label: Literal["genuine", "uncertain", "likely_inflated", "insufficient_data"]
+    label: Literal[
+        "genuine",
+        "uncertain",
+        "likely_inflated",
+        "insufficient_data",
+        "no_discount",
+    ]
     reasons: list[str]
     signals: dict[str, float | int | bool | None] | None
     anomaly_status: AnomalyStatus

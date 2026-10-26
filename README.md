@@ -1,14 +1,14 @@
 # PriceUnmask
 
 PriceUnmask is a product-price monitoring and fake-discount detection application.
-It collects product prices and stores price history so users can examine price changes over time.
-It uses price-history analysis to help users assess discount credibility and identify unusual price changes.
+
+Tracks product prices over time and evaluates whether discounts look genuine using price history, Trust Scores, and anomaly detection.
 
 ## Features
 
 - Product dashboard with search and product details
 - Historical price charts
-- Trust Scores: genuine, uncertain, likely inflated, or insufficient data
+- Trust Scores for assessing discount credibility
 - Anomaly badges for unusual price changes
 - Automated product-price collection and scrape-run tracking
 
@@ -20,7 +20,11 @@ It uses price-history analysis to help users assess discount credibility and ide
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt -r requirements-dev.txt
-Copy-Item .env.example .env
+
+if (-not (Test-Path .env)) {
+    Copy-Item .env.example .env
+}
+
 python -m backend.devtools.seed_fake_data
 uvicorn backend.main:app --reload
 ```
@@ -33,18 +37,22 @@ If `.env` already exists, keep your existing configuration instead of overwritin
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env
+
+if [ ! -f .env ]; then
+    cp .env.example .env
+fi
+
 python -m backend.devtools.seed_fake_data
 uvicorn backend.main:app --reload
 ```
 
 Open the application:
 
-- Dashboard: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
-- API documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- Health check: [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+- Dashboard: http://127.0.0.1:8000/
+- API documentation: http://127.0.0.1:8000/docs
+- Health check: http://127.0.0.1:8000/api/health
 
-The seed command supplies three demo products for local development.
+The seed command creates three synthetic demo products for local development. It exits if fake data has already been seeded in the configured database.
 
 ## Running with real data
 
@@ -57,6 +65,12 @@ python -m backend.scheduler.jobs
 ```
 
 The dashboard also provides a **Run now** button for manually triggering a collection.
+
+### Database configuration
+
+The application uses `data/priceunmask.db` by default. The demo seeder writes its three synthetic products to the database configured by `DATABASE_URL`.
+
+The collector runbook documents Saidivya's live collector using `data/collector.db` for real collected data, without demo seed data. This separation depends on the database configuration; verify `DATABASE_URL` before running the seeder or collector.
 
 See the [Collector runbook](docs/COLLECTOR.md) for configuration, scheduling, database checks, and troubleshooting.
 
@@ -81,7 +95,7 @@ The application reports whether a price change appears normal, unusual, or canno
 
 ## Running tests
 
-Run from the repository root:
+Run from the repository root with the virtual environment activated:
 
 ```powershell
 ruff check .
@@ -95,7 +109,3 @@ pytest -q
 - [Collector runbook](docs/COLLECTOR.md) — collector setup, scheduling, and troubleshooting.
 - [Release checklist](docs/RELEASE_CHECKLIST.md) — fresh-clone release verification.
 - [Contributing guide](CONTRIBUTING.md) — branches, pull requests, and reviews.
-
-## Team
-
-Use the repository's GitHub issues and pull requests to discuss changes and request code review.

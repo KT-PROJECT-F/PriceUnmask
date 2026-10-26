@@ -194,17 +194,65 @@ def parse_next_page_url(html: str, base_url: str) -> str | None:
     return next_url
 
 
+def _request_with_retries(
+    url: str,
+    headers: dict[str, str],
+    *,
+    retry_statuses: bool,
+) -> requests.Response:
+    """Request a URL with retries for network errors and optional HTTP statuses."""
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=FETCH_TIMEOUT_SECONDS,
+                allow_redirects=False,
+            )
+        except (requests.Timeout, requests.ConnectionError):
+            if attempt == MAX_RETRIES:
+                raise
+
+            wait_seconds = BACKOFF_SECONDS * (2**attempt)
+            logger.warning(
+                "Request failed; retry %s of %s in %s seconds",
+                attempt + 1,
+                MAX_RETRIES,
+                wait_seconds,
+            )
+            sleep(wait_seconds)
+            continue
+
+        if retry_statuses and response.status_code in RETRY_STATUSES:
+            if attempt == MAX_RETRIES:
+                return response
+
+            wait_seconds = BACKOFF_SECONDS * (2**attempt)
+            logger.warning(
+                "HTTP %s; retry %s of %s in %s seconds",
+                response.status_code,
+                attempt + 1,
+                MAX_RETRIES,
+                wait_seconds,
+            )
+            sleep(wait_seconds)
+            continue
+
+        return response
+
+    raise RuntimeError(f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts")
+
+
 def _robots_allows(url: str, headers: dict[str, str]) -> bool:
     """Return whether robots.txt allows fetching the requested URL."""
     robots_url = urljoin(url, "/robots.txt")
     logger.info("Checking robots.txt: %s", robots_url)
 
     try:
-        response = requests.get(
+        response = _request_with_retries(
             robots_url,
-            headers=headers,
-            timeout=FETCH_TIMEOUT_SECONDS,
-            allow_redirects=False,
+            headers,
+            retry_statuses=False,
         )
     except requests.RequestException as exc:
         raise RuntimeError(f"Could not fetch robots.txt for {url}: {exc}") from exc
@@ -228,20 +276,18 @@ def _robots_allows(url: str, headers: dict[str, str]) -> bool:
 
 
 def fetch_html(url: str) -> str:
-    """GET with our User-Agent, a timeout, 2 retries with backoff, and respect
-    for robots.txt. Raise a clear exception on 4xx/5xx.
+    """GET with our User-Agent, a timeout, retries with backoff, and robots.txt.
 
     What happens when a fetch fails:
-    - Timeout or connection error: retried MAX_RETRIES times, then the
-      requests exception is raised.
-    - HTTP 500/502/503/504: retried MAX_RETRIES times, then RuntimeError.
-    - Any other 4xx (including 404): RuntimeError at once, no retry.
-    - robots.txt cannot be downloaded, redirects, or returns an error other
-      than 404: RuntimeError, and the page is never requested.
-      robots.txt 404 means "no rules": the page is fetched.
-    - The page redirects (same site or another site): RuntimeError.
-      We never follow redirects.
-    - The response is not HTML (or has no Content-Type): RuntimeError.
+    - Timeout or connection error: retried MAX_RETRIES times, then raises.
+    - HTTP 500/502/503/504 on a page: retried MAX_RETRIES times.
+    - Other page HTTP errors: RuntimeError without retry.
+    - robots.txt timeout or connection error: retried MAX_RETRIES times,
+      then raises a clear RuntimeError.
+    - robots.txt HTTP 404: treated as no rules; the page can be fetched.
+    - Other robots.txt HTTP errors or redirects: RuntimeError without retry.
+    - Page redirects: RuntimeError. Redirects are never followed.
+    - Non-HTML page responses: RuntimeError.
     """
     headers = {"User-Agent": settings.scrape_user_agent}
     logger.info("Using User-Agent: %s", headers["User-Agent"])
@@ -250,7 +296,6 @@ def fetch_html(url: str) -> str:
         logger.warning("robots.txt disallows fetching %s", url)
         raise RuntimeError(f"robots.txt disallows fetching {url}")
 
-    # robots.txt and the page are two requests to the same site.
     # Wait politely before requesting the page.
     if settings.scrape_delay_seconds > 0:
         logger.info(
@@ -260,67 +305,34 @@ def fetch_html(url: str) -> str:
         )
         sleep(settings.scrape_delay_seconds)
 
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=FETCH_TIMEOUT_SECONDS,
-                allow_redirects=False,
-            )
-        except (requests.Timeout, requests.ConnectionError):
-            if attempt == MAX_RETRIES:
-                raise
+    response = _request_with_retries(
+        url,
+        headers,
+        retry_statuses=True,
+    )
 
-            wait_seconds = BACKOFF_SECONDS * (2**attempt)
-            logger.warning(
-                "Request failed; retry %s of %s in %s seconds",
-                attempt + 1,
-                MAX_RETRIES,
-                wait_seconds,
-            )
-            sleep(wait_seconds)
-            continue
+    if 300 <= response.status_code < 400:
+        location = response.headers.get("Location", "no Location header")
+        raise RuntimeError(
+            f"Redirect not followed: {url} -> {location} (HTTP {response.status_code})"
+        )
 
-        if 300 <= response.status_code < 400:
-            location = response.headers.get("Location", "no Location header")
-            raise RuntimeError(
-                f"Redirect not followed: {url} -> {location} (HTTP {response.status_code})"
-            )
+    if response.status_code >= 400:
+        raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
 
-        if response.status_code >= 400:
-            if response.status_code not in RETRY_STATUSES:
-                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+    content_type = response.headers.get("Content-Type", "")
+    media_type = content_type.split(";")[0].strip().lower()
 
-            if attempt == MAX_RETRIES:
-                raise RuntimeError(f"Failed to fetch {url}: HTTP {response.status_code}")
+    if media_type not in {"text/html", "application/xhtml+xml"}:
+        raise RuntimeError(f"Expected HTML from {url}, got {content_type or 'no Content-Type'}")
 
-            wait_seconds = BACKOFF_SECONDS * (2**attempt)
-            logger.warning(
-                "HTTP %s; retry %s of %s in %s seconds",
-                response.status_code,
-                attempt + 1,
-                MAX_RETRIES,
-                wait_seconds,
-            )
-            sleep(wait_seconds)
-            continue
+    logger.info("Fetched %s: HTTP %s", url, response.status_code)
 
-        content_type = response.headers.get("Content-Type", "")
-        media_type = content_type.split(";")[0].strip().lower()
+    # No charset in the header: requests guesses ISO-8859-1.
+    if "charset" not in content_type.lower():
+        response.encoding = response.apparent_encoding
 
-        if media_type not in {"text/html", "application/xhtml+xml"}:
-            raise RuntimeError(f"Expected HTML from {url}, got {content_type or 'no Content-Type'}")
-
-        logger.info("Fetched %s: HTTP %s", url, response.status_code)
-
-        # No charset in the header: requests guesses ISO-8859-1.
-        if "charset" not in content_type.lower():
-            response.encoding = response.apparent_encoding
-
-        return response.text
-
-    raise RuntimeError(f"Failed to fetch {url} after {MAX_RETRIES + 1} attempts")
+    return response.text
 
 
 def scrape(url: str) -> list[ScrapedProduct]:

@@ -71,6 +71,8 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; 409 if a run is still in progress; 500 if stale-run cleanup fails |
 
+The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
+
 The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 
 - `anomaly_status`: `insufficient_history`, `normal`, or `unusual`.
@@ -82,8 +84,6 @@ The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 | `insufficient_history` | Not enough price history to detect unusual price changes. |
 | `normal` | Today's price looks normal based on the available history. |
 | `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
-
-The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
 
 **Product activity:** `GET /api/products` returns active products only. `GET /api/products/{id}` can return inactive products when requested by ID.
 

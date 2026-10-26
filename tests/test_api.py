@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -579,7 +580,7 @@ def test_get_product_trust_score_does_not_expose_anomaly_note(client):
 
 
 def test_trust_score_schema_rejects_unknown_label():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         TrustScoreOut(
             product_id=1,
             score=None,

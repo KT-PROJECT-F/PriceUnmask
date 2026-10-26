@@ -9,11 +9,10 @@ why a signal indicates a fake discount, it does not belong in the score.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 import pandas as pd
 
-Label = Literal["genuine", "uncertain", "likely_inflated", "insufficient_data"]
+from backend.trust_labels import TrustLabel
 
 MIN_SNAPSHOTS = 6  # below this we refuse to score; say "insufficient_data" honestly
 SPIKE_WINDOW_DAYS = 7
@@ -46,7 +45,7 @@ class TrustSignals:
 @dataclass
 class TrustScore:
     score: int | None  # 0..100, None when insufficient_data
-    label: Label
+    label: TrustLabel
     signals: TrustSignals | None
     reasons: list[str] = field(default_factory=list)  # human-readable, shown in the UI
 
@@ -208,7 +207,7 @@ def compute_trust_score(history: pd.DataFrame) -> TrustScore:
 
     score = max(0, 100 - deductions)
     if score >= 70:
-        label: Label = "genuine"
+        label: TrustLabel = "genuine"
     elif score >= 40:
         label = "uncertain"
     else:

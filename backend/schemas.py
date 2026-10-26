@@ -6,11 +6,11 @@ Prices go over the wire as minor units (int); the frontend formats them.
 """
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.analysis.anomaly_service import AnomalyStatus
+from backend.trust_labels import TrustLabel
 
 
 class ProductOut(BaseModel):
@@ -22,16 +22,7 @@ class ProductOut(BaseModel):
     currency: str
     latest_price_minor: int | None
     lowest_price_minor: int | None
-    trust_label: (
-        Literal[
-            "genuine",
-            "uncertain",
-            "likely_inflated",
-            "insufficient_data",
-            "no_discount",
-        ]
-        | None
-    )
+    trust_label: TrustLabel | None
 
 
 class PricePointOut(BaseModel):
@@ -50,13 +41,7 @@ class HistoryOut(BaseModel):
 class TrustScoreOut(BaseModel):
     product_id: int
     score: int | None
-    label: Literal[
-        "genuine",
-        "uncertain",
-        "likely_inflated",
-        "insufficient_data",
-        "no_discount",
-    ]
+    label: TrustLabel
     reasons: list[str]
     signals: dict[str, float | int | bool | None] | None
     anomaly_status: AnomalyStatus

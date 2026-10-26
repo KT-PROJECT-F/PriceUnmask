@@ -32,7 +32,7 @@ stores every observation, and scores each "discount" for how real it is.
 | All DB access goes through `crud.py` | One place to change queries; no SQL scattered across modules. |
 | Frontend served by FastAPI at `/`, API at `/api` | One process, no CORS, one command to run. |
 | SQLite in WAL mode | Scheduler writes while API reads without locking errors. |
-| `insufficient_data` and `no_discount` are Trust Score labels | Distinguish insufficient price history from products without a valid discount claim. |
+| `insufficient_data` and `no_discount` are Trust Score labels | Honest about sparse early data; distinguishes insufficient history from no valid discount claim (rubric: explainable, evidence-based scoring). |
 | One **collector** machine owns the real DB | Real history must accumulate in ONE place. See section 7. |
 
 ## 3. Data model (backend/db/models.py)
@@ -82,6 +82,8 @@ The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 | `insufficient_history` | Not enough price history to detect unusual price changes. |
 | `normal` | Today's price looks normal based on the available history. |
 | `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
+
+The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
 
 **Product activity:** `GET /api/products` returns active products only. `GET /api/products/{id}` can return inactive products when requested by ID.
 

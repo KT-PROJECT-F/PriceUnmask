@@ -32,7 +32,7 @@ stores every observation, and scores each "discount" for how real it is.
 | All DB access goes through `crud.py` | One place to change queries; no SQL scattered across modules. |
 | Frontend served by FastAPI at `/`, API at `/api` | One process, no CORS, one command to run. |
 | SQLite in WAL mode | Scheduler writes while API reads without locking errors. |
-| `insufficient_data` and `no_discount` are Trust Score labels | Honest about sparse early data; distinguishes insufficient history from no valid discount claim (rubric: explainable, evidence-based scoring). |
+| `insufficient_data` and `no_discount` are Trust Score labels | Honest about sparse early data; distinguishes insufficient history from no valid discount claim. |
 | One **collector** machine owns the real DB | Real history must accumulate in ONE place. See section 7. |
 
 ## 3. Data model (backend/db/models.py)

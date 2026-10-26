@@ -10,7 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from backend.analysis.anomaly_service import AnomalyStatus
-from backend.trust_labels import TrustLabel
+from backend.analysis.trust_score import TrustLabel
 
 
 class ProductOut(BaseModel):

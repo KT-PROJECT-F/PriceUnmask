@@ -1,34 +1,11 @@
 # Collector runbook
 
 The collector scrapes once immediately after startup, then repeats every
-`SCRAPE_INTERVAL_HOURS` (4 hours by default). Runs and price snapshots are
-stored in the database configured by `DATABASE_URL` (default:
-`data/priceunmask.db`). Settings, including `.env`, are read at process startup;
-restart the collector after changing them.
-
-
-## Live collector (until 31 Oct)
-
-- **Owner:** Saidivya (@Saidivya-20)
-- **Machine:** `DESKTOP-MG4NO5P` (Windows 11), plugged in, sleep turned off, collector terminal left open
-- **Database:** `data/collector.db`, real data only, no demo seed
-- **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run), `SCRAPE_INTERVAL_HOURS=4`
-- **Log file:** `data/collector.log`
-- **Daily check:** Every working morning, Saidivya runs `check_db` on `data/collector.db` and posts one line on #155 with the date, health status, number of runs, and last run time.
-
-## Get the newest data
-
-Ask Saidivya in the team chat for a fresh export. On the collector machine, from the repository root, run:
-
-```powershell
-$env:DATABASE_URL = "sqlite:///data/collector.db"
-python -m backend.devtools.export_db
-```
-
-The command prints the path to the exported file, such as `data/exports/priceunmask-<UTC timestamp>.db`. Share that exported file. Do not copy `data/collector.db` directly while the collector is running.
-
-
-
+`SCRAPE_INTERVAL_HOURS` (4 hours by default). Each run fetches up to
+`SCRAPE_MAX_PAGES` listing pages (3 by default), following the site's "next"
+links. Runs and price snapshots are stored in the database configured by
+`DATABASE_URL` (default: `data/priceunmask.db`). Settings, including `.env`,
+are read at process startup; restart the collector after changing them.
 
 ## Start
 
@@ -125,6 +102,14 @@ marked `partial`. Check the target URL, network access, and database path, then
 correct the problem. A scrape failure is recorded and does not stop the
 scheduler from attempting its next interval.
 
+If any listing page fails during a multi-page run, the entire run is marked
+`failed`, and no products from that run are saved. Raw HTML snapshots of pages
+fetched before the failure are kept in `data/snapshots/` for diagnosis. This is
+the honest result because a failed page means the collected catalogue may be
+incomplete; saving only some products could make an incomplete run appear
+successful. `partial` is different: every page was fetched, but some products
+could not be saved to the database.
+
 To verify failure handling against the test site, first set
 `SCRAPE_INTERVAL_HOURS=0.25` for this supervised drill. Stop the collector,
 change `SCRAPE_TARGET_URL` in `.env` to
@@ -133,3 +118,27 @@ attempt should be recorded as `failed`; leave the process running for at least
 15 minutes and confirm another run appears. Stop it with **Ctrl+C**, restore
 `SCRAPE_TARGET_URL=https://books.toscrape.com/` and
 `SCRAPE_INTERVAL_HOURS=4`, then restart for routine operation.
+
+## Live collector (until 31 Oct)
+
+- **Owner:** Saidivya (@Saidivya-20)
+- **Machine:** `DESKTOP-MG4NO5P` (Windows 11), plugged in, sleep turned off,
+  collector terminal left open
+- **Database:** `data/collector.db`, real data only, no demo seed
+- **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run),
+  `SCRAPE_INTERVAL_HOURS=4`
+- **Log file:** `data/collector.log`
+- **Daily check:** every working morning Saidivya runs `check_db` on
+  `data/collector.db` and posts one line on #155: date, health status, number
+  of runs, last run time.
+
+To get the newest data, ask Saidivya in the team chat. She runs, on the
+collector machine:
+
+```powershell
+$env:DATABASE_URL = "sqlite:///data/collector.db"
+python -m backend.devtools.export_db
+```
+
+and shares the file it prints, `data/exports/priceunmask-<UTC timestamp>.db`.
+Do not copy `data/collector.db` directly while the collector is running.

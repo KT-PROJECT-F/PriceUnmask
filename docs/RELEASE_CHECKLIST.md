@@ -69,42 +69,43 @@ Leave this terminal open. Open http://127.0.0.1:8000/api/health
 
 ### 5. Dashboard
 
-Open http://127.0.0.1:8000/
+Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/).
 
-| **Check**        | **Expected**                                                                                                |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| Product grid     | 3 products: Demo Bluetooth Speaker (stable), Demo Running Shoes (real drop), Demo Air Fryer (fake discount) |
-| Search `air`     | only Demo Air Fryer (fake discount)                                                                         |
-| Search `zzzz`    | "No products match your search."                                                                            |
-| Click a product  | detail view with its name, price and a price chart                                                          |
-| Trust Score      | Speaker: genuine. Shoes: genuine. Air Fryer: likely inflated                                                |
-| Collector status | a clear message that nothing has been collected yet                                                         |
+| Check | Expected |
+|---|---|
+| Product grid | 3 products: Demo Bluetooth Speaker (stable), Demo Running Shoes (real drop), Demo Air Fryer (fake discount) |
+| Search `air` | Only Demo Air Fryer (fake discount) |
+| Search `zzzz` | "No products match your search." |
+| Click a product | Detail view with its name, price and a price chart |
+| Trust Score | Speaker: `100 — Genuine`. Shoes: `100 — Genuine`. Air Fryer: `20 — Likely inflated` |
+| Anomaly badge | All three: "No anomaly detected", with "Today's price looks normal based on the available history." |
+| Collector status | "No price collection has been recorded yet." |
+| Run now button | Visible and enabled. Do **not** click it here: it starts a real collection. |
 
 ### 6. API, valid requests
 
-Open http://127.0.0.1:8000/docs and use "Try it out".
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) and use **Try it out**.
 
-| **Request**                           | **Expected**                             |
-| ------------------------------------- | ---------------------------------------- |
-| `GET /api/products`                   | 200, 3 products                          |
-| `GET /api/products?search=air`        | 200, only Demo Air Fryer (fake discount) |
-| `GET /api/products/1`                 | 200                                      |
-| `GET /api/products/1/history?days=30` | 200                                      |
-| `GET /api/products/3/trust-score`     | 200, label `likely_inflated`             |
-| `GET /api/scrape-runs`                | 200, `[]` (no runs yet)                  |
+| **Request** | **Expected** |
+|---|---|
+| `GET /api/products` | 200, 3 demo products |
+| `GET /api/products?search=air` | 200, only Demo Air Fryer (fake discount) |
+| `GET /api/products/1` | 200 |
+| `GET /api/products/1/history?days=30` | 200 |
+| `GET /api/products/3/trust-score` | 200, label `likely_inflated`; response includes `score`, `reasons`, `signals`, `anomaly_status`, `anomaly_result`, and `anomaly_message`; `anomaly_note` is not exposed |
+| `GET /api/scrape-runs` | 200; `[]` only when no scrape runs exist |
 
 ### 7. API, bad input
 
-| **Request**                                  | **Expected** |
-| -------------------------------------------- | ------------ |
-| `GET /api/products/999999`                   | 404          |
-| `GET /api/products/1/history?days=0`         | 422          |
-| `GET /api/products?search=` + 201 characters | 422          |
+| **Request** | **Expected** |
+|---|---|
+| `GET /api/products/999999` | 404 |
+| `GET /api/products/1/history?days=0` | 422 |
+| `GET /api/products?search=` + 201 characters | 422 |
 
 ### 8. One real collector cycle
 
-Check first that nobody else on the team is running the collector against the
-site right now. Open a **second** terminal in the same folder:
+Check first that nobody else on the team is running the collector against the site right now. Open a **second** terminal in the same folder:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -113,8 +114,7 @@ python -m backend.scheduler.jobs
 
 Wait until the log shows the first cycle has finished, then press Ctrl+C.
 
-**Expected:** the log shows the page being fetched and the number of products
-seen. Write down that number and the time.
+**Expected:** the log shows `Scraping listing page 1 of 3`, `2 of 3` and `3 of 3`, and about 60 products seen (20 per page). With `SCRAPE_DELAY_SECONDS=3` one cycle takes at least 9 seconds (a 3-second wait before each page). Write down the number of products and the start and finish time.
 
 ### 9. Was it saved?
 
@@ -130,13 +130,11 @@ Then refresh http://127.0.0.1:8000/api/scrape-runs and the dashboard.
 - Its `products_seen` matches the number from Step 8.
 - `check_db` shows the same number of snapshots for that run.
 - The dashboard's collector status reflects the latest run.
-- `check_db` shows `Total products: 23`: the 20 scraped books and the 3 demo
-  products from step 3.
+- `check_db` shows `Total products: 63`: the 60 scraped books and the 3 demo products from step 3.
 - The 3 demo products (source `fake`) are not counted as missing from the run.
 - `check_db` prints `Health status: HEALTHY`.
 
-Write down the run id, status, `products_seen`, snapshot count and the health
-status that `check_db` prints.
+Write down the run id, status, `products_seen`, snapshot count and the health status that `check_db` prints.
 
 
 ### 10. Automated checks
@@ -179,22 +177,22 @@ the commit hash. Link each issue in the table. If nothing failed, write
 
 ## v0.2 results
 
-- **Date:**
-- **Tested by:**
-- **Commit (`git rev-parse HEAD`):**
-- **Windows version:**
-- **Python version:**
+- **Date:** 2026-10-23
+- **Tested by:** Mathan
+- **Commit (`git rev-parse HEAD`):** `cb8025316ed3368b6c36a50eac780b269b3651f5`
+- **Windows version:** Windows 11 Pro
+- **Python version:** Python 3.14.7
 
 | Step | Result | What I saw |
 |---|---|---|
-| 1. Fresh clone | | |
-| 2. Python setup | | |
-| 3. Seed fake data | | |
-| 4. Start the app | | |
-| 5. Dashboard | | |
-| 6. API, valid requests | | |
-| 7. API, bad input | | |
-| 8. Collector cycle | | |
-| 9. Saved to the database | | |
-| 10. Automated checks | | |
-| 11. Failures | | |
+| 1. Fresh clone | PASS | Fresh clone created successfully on `dev`; commit `cb8025316ed3368b6c36a50eac780b269b3651f5`. |
+| 2. Python setup | PASS | Windows 11 Pro; Python 3.14.7; virtual environment `.venv` activated successfully. |
+| 3. Seed fake data | PASS | Default database contains 3 demo products: Demo Bluetooth Speaker, Demo Running Shoes, and Demo Air Fryer. |
+| 4. Start the app | PASS | `/api/health` returned `{"status":"ok"}` (HTTP 200). |
+| 5. Dashboard | PASS | Grid showed 3 demo products. Search `air`: only Demo Air Fryer. Search `zzzz`: "No products match your search." Detail view showed product name, price and price chart. Trust Score labels: Speaker `100 — Genuine`, Shoes `100 — Genuine`, Air Fryer `20 — Likely inflated`. Anomaly badge: Speaker "No anomaly detected", Shoes "No anomaly detected", Air Fryer "No anomaly detected". Collector status: "Last collected: 10/23/2026, 4:53:48 PM | Status: Completed successfully | Products seen: 60". Run now button: visible and enabled. Clicked **Run now** to trigger a collection manually. |
+| 6. API, valid requests | PASS | `GET /api/products`: 200 (3 products). `?search=air`: 200 (only Demo Air Fryer). `/api/products/1`: 200. `/api/products/1/history?days=30`: 200. `/api/products/3/trust-score`: 200, label `likely_inflated`. `/api/scrape-runs`: 200, two successful runs (IDs 2 and 1), each with `products_seen: 60` and `error_message: null` (checked after step 8). |
+| 7. API, bad input | PASS | Nonexistent product ID returned HTTP 404; `days=0` returned HTTP 422; 201-character search returned HTTP 422. |
+| 8. Collector cycle | PASS | Collector fetched all 3 listing pages successfully (HTTP 200): page 1 collected 20 products, page 2 collected 20 products, and page 3 collected 20 products. Total: 60 products. Cycle started at 2026-10-23 12:08:04 and completed at 2026-10-23 12:08:22; job executed successfully at 12:08:22.866. Collector stopped at 12:10:13. robots.txt returned 404 warnings; fetching continued successfully. Run 1 already existed before this cycle and contained 60 snapshots; this cycle was run 2. |
+| 9. Saved to the database | PASS | check_db: Run ID 2; status success; products_seen 60; snapshots 60; Total products: 63; Health status: HEALTHY. Products without a snapshot in this run: 0. Duplicate product names: None. |
+| 10. Automated checks | PASS | ruff check . — All checks passed!; ruff format --check . — 54 files already formatted; pytest -q — 325 passed, 1 warning in 8.38s. |
+| 11. Failures | PASS | No failures found. |

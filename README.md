@@ -96,7 +96,7 @@ pytest -q
 
 **Commit:** `08c3a00bb2cc788da0ed4a24721327b8e2bd0778`
 
-Fresh clone in a new folder (`readme-check`). Windows version: **[fill in observed version]**. Python version: **[fill in observed version]**.
+Fresh clone in a new folder (`readme-check`). Windows version: **Windows 11 Pro**. Python version: **Python 3.14.7**.
 
 | README section | Result | What I saw |
 |---|---|---|

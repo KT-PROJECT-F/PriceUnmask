@@ -1,18 +1,22 @@
 # Scheduler Design
 
-## 1. Overview
-Scheduler runs `run_scrape_cycle()` immediately at startup and then every `scrape_interval_hours` (default 4h). Uses APScheduler BlockingScheduler with `coalesce=True`.
+## What it does
+The scheduler runs a scrape cycle immediately at startup and then every `scrape_interval_hours`. Each cycle writes a row in `scrape_runs` and saves products/snapshots. It is started with `python -m backend.scheduler.jobs`.
 
-## 2. Stale Run Handling
-At start of each cycle and at main() startup:
-`crud.mark_stale_runs_failed(older_than=timedelta(minutes=settings.stale_run_minutes))`
-If DB locked during cleanup, exception is logged, rollback, cycle continues - never crashes.
+## Decisions
+1. **Job must never raise** - `run_scrape_cycle()` catches all exceptions and marks run as `failed`/`partial` instead of raising. Chose this because scheduler thread must stay alive. See `backend/scheduler/jobs.py:22` and `backend/scheduler/jobs.py:99`. Did not choose to let it crash.
+2. **Stale runs closed before every cycle** - At start of cycle we call `crud.mark_stale_runs_failed(older_than=STALE_RUN_MINUTES)` - `backend/scheduler/jobs.py:36`. Why: laptop sleep leaves `running` forever. If DB locked, log and continue, not crash.
+3. **Skip if already running** - `crud.has_running_scrape_run()` check - `backend/scheduler/jobs.py:45`. If true, log "Scheduled scrape skipped" and return. Chose single-run guarantee over overlapping runs. Did not choose lock file.
+4. **Every cycle writes a scrape_runs row** - `_run_cycle` starts a run via `start_scrape_run()` - `backend/scheduler/jobs.py:88`. Why: observability for #155 morning line and gap detection.
 
-## 3. Overlap Prevention
-`crud.has_running_scrape_run()` - if true, log warning "Scheduled scrape skipped; a run is already running" and return 0. Ensures only one run at a time.
+## How it fails, and what happens then
+- Scrape throws: run marked `failed` via `_finish_run`.
+- Upsert of one product fails: rollback that product, add to errors list, continue others. At end, if some saved + errors -> `partial`, if zero saved -> `failed`.
+- DB locked on stale cleanup: exception logged, session rollback, cycle continues.
+- Laptop sleeps mid-run: run stays `running`, next cycle marks it `failed` after `STALE_RUN_MINUTES`.
 
-## 4. Error Handling - Never Raise
-`run_scrape_cycle()` and `_run_cycle()` never raise. Scrape failure -> finish run as "failed". Upsert failure per item -> rollback that item, collect error, continue. No errors -> "success", some saved + errors -> "partial", zero saved -> "failed".
+## How it is tested
+Unit tests mock `scrape` and `SessionLocal`, check `mark_stale_runs_failed` called, `has_running_scrape_run` skip logic, and `run_scrape_cycle()` never raises. Manual test: run `python -m backend.scheduler.jobs` for one interval, check `data/priceunmask.db` has new `scrape_runs`. `pytest -q`, `ruff check .`, `ruff format --check .` pass.
 
-## 5. API Triggered Runs
-`run_scrape_cycle_for_run(run_id)` processes an existing run created by API. If run not found or not "running", log and skip.
+## Known limits and what we would do next
+Weekend gap on 24-26 Oct happened because live collector runs only on Saidivya's laptop, which was off. No cloud VM or watchdog. Next: run collector on always-on machine or add health check that alerts if no run in 6h.

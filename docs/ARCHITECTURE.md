@@ -102,11 +102,9 @@ Fewer than 6 snapshots gives `insufficient_data`. With at least 6 snapshots, if 
 
 ## 7. Where real data comes from
 
-- One **collector** (mentor's always-on machine or a free-tier VM) runs
-  `python -m backend.scheduler.jobs` against the real `data/priceunmask.db`.
-- Start it the day the scraper and crud land on `dev`. Every day it is not running is
-  history we will never get back.
-- Mentor exports a DB copy to the team every few days for analysis and frontend work.
+- One **collector** on Saidivya's machine until 31 Oct demo (see `docs/COLLECTOR.md` - Live collector section) runs `python -m backend.scheduler.jobs` against the real `data/priceunmask.db`.
+- Start it the day the scraper and crud land on `dev`. Every day it is not running is history we will never get back.
+- Saidivya exports a DB copy via `python -m backend.devtools.export_db` every few days for analysis and frontend work.
 - Everyone else develops against `python -m backend.devtools.seed_fake_data`.
 
 ## 8. Scraping rules (non-negotiable)

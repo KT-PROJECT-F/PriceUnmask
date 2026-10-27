@@ -43,9 +43,12 @@ Classification decision:
 - API label: `no_discount`
 - Display label: `No discount to judge`
 - Score behavior: `no_discount` always has a `null` score. Do not return `100` or another numeric score for this classification: no discount claim exists in the available history to assess. This is distinct from `insufficient_data`, which also has a `null` score because there are too few snapshots to evaluate.
-- Provisional message: "No discount is currently recorded for this product, so we can't assess an advertised discount."
+- Badge text: "No discount to judge"
+- Message under the badge: "The latest price has no discount to evaluate."
+- Reason in "Why?" (from the API): one factual sentence that does not repeat the badge or the message, for example "The latest snapshot has no original price above the current price."
+- Approval: The shopper-facing wording was approved by @lakshmiprasanna45 on 2026-10-26.
 
-The classification and `null` score behavior are the proposed contract for implementation. The provisional shopper-facing wording is not approved; request final copy from Lakshmi and align it with issue #160 before implementation.
+The classification and `null` score behavior are the proposed contract for implementation. The approved shopper-facing wording should be used consistently in the API response and dashboard.
 
 ## Demo product impact
 

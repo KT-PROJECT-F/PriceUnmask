@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -17,6 +18,7 @@ from backend.db.database import Base, get_session
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
 from backend.main import app
+from backend.schemas import TrustScoreOut
 
 engine = create_engine(
     "sqlite://",
@@ -575,3 +577,33 @@ def test_get_product_trust_score_does_not_expose_anomaly_note(client):
         assert "anomaly_result" in data
         assert "anomaly_message" in data
         assert "anomaly_note" not in data
+
+
+def test_trust_score_schema_rejects_unknown_label():
+    with pytest.raises(ValidationError):
+        TrustScoreOut(
+            product_id=1,
+            score=None,
+            label="unknown_label",
+            reasons=[],
+            signals=None,
+            anomaly_status="insufficient_history",
+            anomaly_result=None,
+            anomaly_message=INSUFFICIENT_HISTORY_MESSAGE,
+        )
+
+
+def test_trust_score_schema_accepts_no_discount_with_null_score():
+    result = TrustScoreOut(
+        product_id=1,
+        score=None,
+        label="no_discount",
+        reasons=["No discount is currently recorded."],
+        signals=None,
+        anomaly_status="insufficient_history",
+        anomaly_result=None,
+        anomaly_message=INSUFFICIENT_HISTORY_MESSAGE,
+    )
+
+    assert result.label == "no_discount"
+    assert result.score is None

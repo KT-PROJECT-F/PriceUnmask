@@ -98,4 +98,3 @@ pytest -q
 - [Collector runbook](docs/COLLECTOR.md) — collector setup, scheduling, and troubleshooting.
 - [Release checklist](docs/RELEASE_CHECKLIST.md) — fresh-clone release verification.
 - [Contributing guide](CONTRIBUTING.md) — branches, pull requests, and reviews.
-

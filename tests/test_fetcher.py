@@ -307,16 +307,48 @@ def test_missing_robots_txt_allows_fetching(monkeypatch, sleeps) -> None:
     assert sleeps == [settings.scrape_delay_seconds]
 
 
-def test_robots_txt_timeout_raises_clear_error(monkeypatch, sleeps) -> None:
-    script(
+def test_robots_txt_timeout_retries_then_succeeds(monkeypatch, sleeps):
+    calls = script(
         monkeypatch,
+        requests.Timeout(),
+        ROBOTS_OK,
+        FakeResponse(body="ok"),
+    )
+
+    assert fetch_html("https://example.com/products") == "ok"
+
+    assert calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/robots.txt",
+        "https://example.com/products",
+    ]
+    assert sleeps == [1, settings.scrape_delay_seconds]
+
+
+def test_robots_txt_timeout_on_every_attempt_fails_without_requesting_page(
+    monkeypatch,
+    sleeps,
+) -> None:
+    calls = script(
+        monkeypatch,
+        requests.Timeout(),
+        requests.Timeout(),
         requests.Timeout(),
     )
 
-    with pytest.raises(RuntimeError, match="robots.txt"):
-        fetch_html("https://example.com/p")
+    with pytest.raises(
+        RuntimeError,
+        match="Could not fetch robots.txt",
+    ):
+        fetch_html("https://example.com/products")
 
-    assert sleeps == []
+    assert calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/robots.txt",
+        "https://example.com/robots.txt",
+    ]
+
+    assert sleeps == [1, 2]
 
 
 @pytest.mark.parametrize("status", [403, 500])

@@ -736,7 +736,7 @@ function buildDetailContent(product, trustScore) {
     noDiscountMessage.className = "trust-score-message";
     noDiscountMessage.setAttribute("role", "status");
     noDiscountMessage.textContent =
-      "No discount to judge. The latest price has no discount to evaluate.";
+      "The latest price has no discount to evaluate.";
 
     elements.push(noDiscountMessage);
   }

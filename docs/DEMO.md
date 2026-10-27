@@ -46,9 +46,9 @@ Show the available scrape-run history and explain how it records collection acti
 
 **Presenter:** Project lead
 
-_ Improve product coverage and collect more price history.
-_ Test more edge cases and improve error messages.
-_ Improve the shopper experience using feedback.
+- Improve product coverage and collect more price history.
+- Test more edge cases and improve error messages.
+- Improve the shopper experience using feedback.
 
 ## Key Takeaway
 

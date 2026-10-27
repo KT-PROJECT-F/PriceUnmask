@@ -508,9 +508,7 @@ def test_get_product_trust_score_without_discount_claim(client):
     assert data["product_id"] == product_id
     assert data["label"] == "no_discount"
     assert data["score"] is None
-    assert data["reasons"] == [
-        "We haven't recorded a discount for this product, so we can't verify a discount claim."
-    ]
+    assert data["reasons"] == ["The latest snapshot has no original price above the current price."]
 
 
 def test_get_product_trust_score_normal_price(client):

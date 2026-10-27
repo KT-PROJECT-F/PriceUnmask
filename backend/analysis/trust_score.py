@@ -170,15 +170,14 @@ def compute_trust_score(history: pd.DataFrame) -> TrustScore:
         )
 
     signals = compute_signals(history)
+
+    # The latest snapshot has no valid discount claim, so there is nothing to judge.
     if signals.claimed_discount_pct is None:
         return TrustScore(
             score=None,
             label="no_discount",
             signals=signals,
-            reasons=[
-                "We haven't recorded a discount for this product, so we can't verify "
-                "a discount claim."
-            ],
+            reasons=["The latest snapshot has no original price above the current price."],
         )
 
     deductions = 0

@@ -531,9 +531,7 @@ def test_compute_trust_score_without_original_prices_uses_history_signals() -> N
     assert score.signals.claimed_discount_pct is None
     assert score.signals.real_discount_vs_median_pct == 10.0
     assert score.signals.volatility_pct > 0
-    assert score.reasons == [
-        "We haven't recorded a discount for this product, so we can't verify a discount claim."
-    ]
+    assert score.reasons == ["The latest snapshot has no original price above the current price."]
 
 
 @pytest.mark.parametrize("latest_original_price", [None, 0, 900, 1000])
@@ -588,9 +586,7 @@ def test_compute_trust_score_same_price_every_day_is_no_discount() -> None:
     assert score.label == "no_discount"
     assert score.signals is not None
     assert score.signals.volatility_pct == 0.0
-    assert score.reasons == [
-        "We haven't recorded a discount for this product, so we can't verify a discount claim."
-    ]
+    assert score.reasons == ["The latest snapshot has no original price above the current price."]
 
 
 def test_compute_trust_score_converter_sorts_out_of_order_snapshots() -> None:

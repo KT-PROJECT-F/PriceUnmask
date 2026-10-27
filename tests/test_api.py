@@ -127,6 +127,23 @@ def test_list_products_search(client, term):
     assert [item["name"] for item in data] == ["Demo Running Shoes (real drop)"]
 
 
+def test_list_products_returns_expected_trust_labels(client):
+    response = client.get("/api/products")
+
+    assert response.status_code == 200
+
+    products = {product["name"]: product for product in response.json()}
+
+    expected_labels = {
+        "Demo Bluetooth Speaker (stable)": "genuine",
+        "Demo Running Shoes (real drop)": "genuine",
+        "Demo Air Fryer (fake discount)": "likely_inflated",
+    }
+
+    for name, expected_label in expected_labels.items():
+        assert products[name]["trust_label"] == expected_label
+
+
 def test_list_products_search_no_match(client):
     response = client.get(
         "/api/products",
@@ -622,3 +639,49 @@ def test_trust_score_schema_accepts_no_discount_with_null_score():
 
     assert result.label == "no_discount"
     assert result.score is None
+
+
+def test_product_list_label_is_no_discount_without_original_price(client):
+    product_id = add_product_with_prices("no-discount-list", [10000] * 6)
+
+    response = client.get("/api/products")
+
+    assert response.status_code == 200
+
+    product = next(item for item in response.json() if item["id"] == product_id)
+    assert product["trust_label"] == "no_discount"
+
+
+def test_product_detail_label_is_insufficient_data(client):
+    product_id = add_product_with_prices("insufficient-list", [10000] * 5)
+
+    response = client.get(f"/api/products/{product_id}")
+
+    assert response.status_code == 200
+    assert response.json()["trust_label"] == "insufficient_data"
+
+
+def test_product_list_label_matches_trust_score_endpoint(client):
+    response = client.get("/api/products")
+
+    assert response.status_code == 200
+    products = response.json()
+    assert products
+
+    product = products[0]
+    trust_response = client.get(f"/api/products/{product['id']}/trust-score")
+
+    assert trust_response.status_code == 200
+    assert product["trust_label"] == trust_response.json()["label"]
+
+
+def test_list_products_search_percent_is_literal(client):
+    product_id = add_product_with_prices("literal%product", [10000] * 6)
+
+    response = client.get("/api/products", params={"search": "%"})
+
+    assert response.status_code == 200
+    products = response.json()
+
+    assert any(product["id"] == product_id for product in products)
+    assert all("%" in product["name"] for product in products)

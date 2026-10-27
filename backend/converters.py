@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 import pandas as pd
 
+from backend.analysis.trust_score import compute_trust_score
 from backend.db.models import PriceSnapshot, Product
 from backend.schemas import HistoryOut, PricePointOut, ProductOut
 
@@ -53,6 +54,9 @@ def product_to_out(
 
         lowest_price_minor = min(s.current_price_minor for s in snapshots)
 
+    history_df = snapshots_to_dataframe(snapshots)
+    trust_score = compute_trust_score(history_df)
+
     return ProductOut(
         id=product.id,
         name=product.name,
@@ -60,7 +64,7 @@ def product_to_out(
         currency=product.currency,
         latest_price_minor=latest_price_minor,
         lowest_price_minor=lowest_price_minor,
-        trust_label=None,
+        trust_label=trust_score.label,
     )
 
 

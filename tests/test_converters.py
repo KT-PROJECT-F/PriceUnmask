@@ -89,7 +89,7 @@ def test_product_out_latest_and_lowest() -> None:
 
     assert out.latest_price_minor == 1100
     assert out.lowest_price_minor == 800
-    assert out.trust_label is None
+    assert out.trust_label == "insufficient_data"
 
 
 def test_product_out_without_snapshots() -> None:

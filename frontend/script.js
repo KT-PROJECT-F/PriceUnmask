@@ -298,11 +298,18 @@ function createProductCard(product, onSelect) {
     "Lowest Price: " +
     formatPrice(product.lowest_price_minor, product.currency);
 
-  const trustLabel = document.createElement("p");
-  trustLabel.className = "trust-label";
-  trustLabel.textContent =
-    "Trust Label: " +
-    (trustLabels[product.trust_label] ?? "Not available");
+  const trustLabel = document.createElement("span");
+  const label = product.trust_label;
+
+  trustLabel.className = "trust-badge";
+
+  if (label && Object.prototype.hasOwnProperty.call(trustLabels, label)) {
+    trustLabel.classList.add(`trust-badge-${label}`);
+    trustLabel.textContent = trustLabels[label];
+  } else {
+    trustLabel.classList.add("trust-badge-insufficient_data");
+    trustLabel.textContent = trustLabels.insufficient_data;
+  }
 
   card.append(name, latestPrice, lowestPrice, trustLabel);
 

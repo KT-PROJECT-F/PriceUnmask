@@ -40,8 +40,8 @@ def test_summarize_counts_labels_scores_and_original_prices() -> None:
     assert summary["total_snapshots"] == 12
     assert summary["snapshot_counts"] == {6: 2}
     assert summary["products_with_original_price"] == 1
-    assert summary["labels"] == {"genuine": 2}
-    assert summary["scores"] == {90: 1, 100: 1}
+    assert summary["labels"] == {"genuine": 1, "no_discount": 1}
+    assert summary["scores"] == {90: 1}
 
 
 def test_summarize_excludes_insufficient_scores_from_score_counts() -> None:

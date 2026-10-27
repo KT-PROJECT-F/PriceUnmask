@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed design for review. No implementation changes are included in this proposal.
+Approved specification; implementation is tracked in #177.
 
 ## Context
 
@@ -43,9 +43,9 @@ Classification decision:
 - API label: `no_discount`
 - Display label: `No discount to judge`
 - Score behavior: `no_discount` always has a `null` score. Do not return `100` or another numeric score for this classification: no discount claim exists in the available history to assess. This is distinct from `insufficient_data`, which also has a `null` score because there are too few snapshots to evaluate.
-- Provisional message: "No discount is currently recorded for this product, so we can't assess an advertised discount."
+- Final shopper-facing message: "We haven't recorded a discount for this product, so we can't verify a discount claim."
 
-The classification and `null` score behavior are the proposed contract for implementation. The provisional shopper-facing wording is not approved; request final copy from Lakshmi and align it with issue #160 before implementation.
+The classification, `null` score behavior, and shopper-facing message define the contract for implementation.
 
 ## Demo product impact
 

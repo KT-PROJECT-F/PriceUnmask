@@ -92,22 +92,6 @@ ruff format --check .
 pytest -q
 ```
 
-## How I tested it
-
-**Commit:** `08c3a00bb2cc788da0ed4a24721327b8e2bd0778`
-
-Fresh clone in a new folder (`readme-check`). Windows version: **Windows 11 Pro**. Python version: **Python 3.14.7**.
-
-| README section | Result | What I saw |
-|---|---|---|
-| Quick start (Windows) | PASS | Dependencies installed successfully; `Seeded 3 fake products.`; application startup completed. |
-| Links: dashboard, API docs, health | PASS | Dashboard `/`, API docs `/docs`, and `/api/health` each returned HTTP 200. |
-| Running with real data | PASS | Collector run 1 completed successfully; 60 products collected across 3 listing pages. |
-| `check_db` on collector.db | PASS | Health status `HEALTHY`; 60 products; 60 snapshots; 0 products without a snapshot; no duplicate names. |
-| Running tests | PASS | `ruff check .`: all checks passed; `ruff format --check .`: 55 files already formatted; `pytest -q`: 325 passed, 1 warning in 22.98s. |
-
-The test run reported one Starlette deprecation warning concerning use of `httpx` with `starlette.testclient`.
-
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, API, data model, and analysis.

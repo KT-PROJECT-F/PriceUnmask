@@ -51,7 +51,7 @@ class TrustSignals:
 
 @dataclass
 class TrustScore:
-    score: int | None  # 0..100, None when insufficient_data
+    score: int | None  # 0..100, None when insufficient_data or no_discount
     label: TrustLabel
     signals: TrustSignals | None
     reasons: list[str] = field(default_factory=list)  # human-readable, shown in the UI
@@ -96,7 +96,7 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
     claimed_discount_pct = (
         float((latest_original_price - today_price) / latest_original_price * 100)
         if pd.notna(latest_original_price)
-        and latest_original_price >= today_price
+        and latest_original_price > today_price
         and latest_original_price > 0
         else None
     )
@@ -153,7 +153,8 @@ def compute_signals(history: pd.DataFrame) -> TrustSignals:
 
 def compute_trust_score(history: pd.DataFrame) -> TrustScore:
     """Combine signals into 0..100. Label thresholds: >=70 genuine, 40..69 uncertain,
-    <40 likely_inflated. Fewer than MIN_SNAPSHOTS rows -> insufficient_data."""
+    <40 likely_inflated. Fewer than MIN_SNAPSHOTS rows -> insufficient_data; no current
+    discount claim -> no_discount."""
     snapshot_count = len(history)
     if snapshot_count < MIN_SNAPSHOTS:
         available = (
@@ -169,6 +170,16 @@ def compute_trust_score(history: pd.DataFrame) -> TrustScore:
         )
 
     signals = compute_signals(history)
+
+    # The latest snapshot has no valid discount claim, so there is nothing to judge.
+    if signals.claimed_discount_pct is None:
+        return TrustScore(
+            score=None,
+            label="no_discount",
+            signals=signals,
+            reasons=["The latest snapshot has no original price above the current price."],
+        )
+
     deductions = 0
     reasons: list[str] = []
 

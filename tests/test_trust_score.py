@@ -282,6 +282,20 @@ def test_compute_signals_ignores_original_price_below_current_price() -> None:
     assert signals.claimed_discount_pct is None
 
 
+def test_compute_signals_equal_original_and_current_prices_is_not_a_discount() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=2, tz="UTC"),
+            "current_price_minor": [1000, 1000],
+            "original_price_minor": [1500, 1000],
+        }
+    )
+
+    signals = compute_signals(history)
+
+    assert signals.claimed_discount_pct is None
+
+
 def test_compute_signals_real_discount_uses_median_of_earlier_prices() -> None:
     history = pd.DataFrame(
         {
@@ -438,7 +452,7 @@ def test_compute_trust_score_requires_at_least_six_snapshots() -> None:
 
 @pytest.mark.parametrize(
     ("snapshot_count", "expected_label"),
-    [(5, "insufficient_data"), (6, "genuine")],
+    [(5, "insufficient_data"), (6, "no_discount")],
 )
 def test_compute_trust_score_snapshot_count_boundary(
     snapshot_count: int,
@@ -463,7 +477,7 @@ def test_compute_trust_score_snapshot_count_boundary(
         assert score.score is None
         assert score.signals is None
     else:
-        assert score.score == 100
+        assert score.score is None
         assert score.signals is not None
 
 
@@ -490,7 +504,7 @@ def test_compute_trust_score_labels_exact_boundaries(
         {
             "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
             "current_price_minor": [1000] * 5 + [1300],
-            "original_price_minor": [None] * 6,
+            "original_price_minor": [None] * 5 + [1301],
         }
     )
 
@@ -511,16 +525,53 @@ def test_compute_trust_score_without_original_prices_uses_history_signals() -> N
 
     score = compute_trust_score(history)
 
-    assert score.score == 100
-    assert score.label == "genuine"
+    assert score.score is None
+    assert score.label == "no_discount"
     assert score.signals is not None
     assert score.signals.claimed_discount_pct is None
     assert score.signals.real_discount_vs_median_pct == 10.0
     assert score.signals.volatility_pct > 0
-    assert score.reasons == ["The recorded prices show no strong signs of an inflated discount."]
+    assert score.reasons == ["The latest snapshot has no original price above the current price."]
 
 
-def test_compute_trust_score_same_price_every_day_is_genuine() -> None:
+@pytest.mark.parametrize("latest_original_price", [None, 0, 900, 1000])
+def test_compute_trust_score_without_valid_latest_claim_is_no_discount(
+    latest_original_price: int | None,
+) -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
+            "current_price_minor": [1000] * 6,
+            "original_price_minor": [None, None, None, None, None, latest_original_price],
+        }
+    )
+
+    score = compute_trust_score(history)
+
+    assert score.label == "no_discount"
+    assert score.score is None
+    assert score.signals is not None
+    assert score.signals.claimed_discount_pct is None
+
+
+def test_compute_trust_score_ignores_older_discount_when_latest_has_no_claim() -> None:
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
+            "current_price_minor": [1000] * 6,
+            "original_price_minor": [1500, None, None, None, None, None],
+        }
+    )
+
+    score = compute_trust_score(history)
+
+    assert score.label == "no_discount"
+    assert score.score is None
+    assert score.signals is not None
+    assert score.signals.claimed_discount_pct is None
+
+
+def test_compute_trust_score_same_price_every_day_is_no_discount() -> None:
     history = pd.DataFrame(
         {
             "scraped_at": pd.date_range("2026-10-01", periods=6, tz="UTC"),
@@ -531,11 +582,11 @@ def test_compute_trust_score_same_price_every_day_is_genuine() -> None:
 
     score = compute_trust_score(history)
 
-    assert score.score == 100
-    assert score.label == "genuine"
+    assert score.score is None
+    assert score.label == "no_discount"
     assert score.signals is not None
     assert score.signals.volatility_pct == 0.0
-    assert score.reasons == ["The recorded prices show no strong signs of an inflated discount."]
+    assert score.reasons == ["The latest snapshot has no original price above the current price."]
 
 
 def test_compute_trust_score_converter_sorts_out_of_order_snapshots() -> None:
@@ -553,7 +604,7 @@ def test_compute_trust_score_converter_sorts_out_of_order_snapshots() -> None:
         PriceSnapshot(
             scraped_at=timestamp.to_pydatetime(),
             current_price_minor=1000,
-            original_price_minor=None,
+            original_price_minor=1001,
         )
         for timestamp in timestamps
     ]
@@ -583,7 +634,7 @@ def test_compute_trust_score_accepts_duplicate_timestamps() -> None:
         PriceSnapshot(
             scraped_at=timestamp.to_pydatetime(),
             current_price_minor=1000,
-            original_price_minor=None,
+            original_price_minor=1001,
         )
         for timestamp in timestamps
     ]
@@ -645,7 +696,7 @@ def daily_history(
 
 
 def test_compute_trust_score_real_history_scores_70() -> None:
-    history = daily_history([800, 2000, 800, 2000, 800, 1000])
+    history = daily_history([800, 2000, 800, 2000, 800, 1000], [None] * 5 + [1100])
 
     score = compute_trust_score(history)
 
@@ -658,7 +709,7 @@ def test_compute_trust_score_real_history_scores_70() -> None:
 
 
 def test_compute_trust_score_sorts_unsorted_dataframe_rows() -> None:
-    history = daily_history([1000] * 6).iloc[::-1]
+    history = daily_history([1000] * 6, [None] * 5 + [1001]).iloc[::-1]
 
     score = compute_trust_score(history)
 
@@ -677,7 +728,7 @@ def test_compute_trust_score_seeded_fake_discount_is_exactly_20() -> None:
 
 
 def test_compute_trust_score_without_warnings_is_100_with_one_reason() -> None:
-    score = compute_trust_score(daily_history([1000] * 10))
+    score = compute_trust_score(daily_history([1000] * 10, [None] * 9 + [1001]))
 
     assert score.score == 100
     assert score.label == "genuine"
@@ -731,7 +782,10 @@ def test_compute_trust_score_price_above_lowest_threshold(
     expected_score: int,
 ) -> None:
     # Lowest price 800: 999 is below 25% above it, 1000 is exactly 25% above.
-    history = daily_history([800] + [1000] * 8 + [today])
+    history = daily_history(
+        [800] + [1000] * 8 + [today],
+        [None] * 9 + [today + 1],
+    )
     score = compute_trust_score(history)
 
     assert score.score == expected_score
@@ -742,7 +796,8 @@ def test_compute_trust_score_price_above_lowest_threshold(
 
 
 def test_compute_trust_score_high_volatility_costs_15_points() -> None:
-    score = compute_trust_score(daily_history([1500, 500] * 5))
+    prices = [1500, 500] * 5
+    score = compute_trust_score(daily_history(prices, [price + 1 for price in prices]))
 
     assert score.score == 85
     assert score.reasons == [
@@ -774,8 +829,10 @@ def test_compute_trust_score_insufficient_data_message_grammar(
 def test_compute_trust_score_does_not_crash_on_a_zero_price() -> None:
     score = compute_trust_score(daily_history([0, 1000, 1000, 1000, 1000, 1000]))
 
-    assert score.score is not None
-    assert 0 <= score.score <= 100
+    assert score.score is None
+    assert score.label == "no_discount"
+    assert score.signals is not None
+    assert score.signals.pct_above_lowest == 0.0
 
 
 def test_compute_trust_score_spike_alone_costs_40_points() -> None:

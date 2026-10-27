@@ -496,6 +496,21 @@ def test_get_product_trust_score_insufficient_data(client):
     assert data["anomaly_message"] == INSUFFICIENT_HISTORY_MESSAGE
 
 
+def test_get_product_trust_score_without_discount_claim(client):
+    product_id = add_product_with_prices("no-discount", [10000] * 6)
+
+    response = client.get(f"/api/products/{product_id}/trust-score")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["product_id"] == product_id
+    assert data["label"] == "no_discount"
+    assert data["score"] is None
+    assert data["reasons"] == ["The latest snapshot has no original price above the current price."]
+
+
 def test_get_product_trust_score_normal_price(client):
     product_id = add_product_with_prices("normal-price", [10000] * 6)
 

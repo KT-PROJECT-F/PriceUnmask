@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed design for review. No implementation changes are included in this proposal.
+Approved specification; implementation is tracked in #177.
 
 ## Context
 

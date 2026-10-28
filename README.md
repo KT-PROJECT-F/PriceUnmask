@@ -73,6 +73,12 @@ Trust Scores help users assess discount credibility using historical price signa
 - **Uncertain:** Score of 40–69.
 - **Likely inflated:** Score below 40.
 - **Insufficient data:** Fewer than six price snapshots.
+- **No discount to judge (`no_discount`):** At least six price snapshots are available, but the latest snapshot has no valid discount claim. The score is `null` because there is no discount to evaluate.
+
+A valid discount claim requires an original price that is present, positive, and strictly greater than the current price.
+
+For `no_discount`, the badge reads **No discount to judge**, the message is **The latest price has no discount to evaluate.**, and the reason explains the missing valid discount claim.
+
 
 ### Anomaly badges
 

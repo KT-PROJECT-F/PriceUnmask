@@ -131,7 +131,7 @@ Fewer than 6 snapshots gives `insufficient_data`. With at least 6 snapshots, if 
 
 Review buddies (review each other's PRs before the mentor): 1 and 2, 3 and 4, 5 and 6, 7 and 8.
 
-## 10. Milestones (today: Sun 27 Sept; submission: Sat 31 Oct)
+## 10. Milestones (today: Wed 28 Oct; submission: Sat 31 Oct)
 
 | Milestone | Dates | Definition of done | Release |
 |---|---|---|---|

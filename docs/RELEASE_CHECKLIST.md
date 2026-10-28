@@ -77,7 +77,9 @@ Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/).
 | Search `air` | Only Demo Air Fryer (fake discount) |
 | Search `zzzz` | "No products match your search." |
 | Click a product | Detail view with its name, price and a price chart |
-| Trust Score | Speaker: `100 — Genuine`. Shoes: `100 — Genuine`. Air Fryer: `20 — Likely inflated` |
+| Trust Score | Demo Bluetooth Speaker: `100 — Genuine`. Demo Running Shoes: `100 — Genuine`. Demo Air Fryer: `20 — Likely inflated`. |
+| Product-card Trust Score labels | Each product card displays its Trust Score label, populated by the product-list API. Verify the displayed label matches the API response. |
+| Real book detail view | After collection, a book with fewer than six snapshots shows `Insufficient data`. With at least six snapshots and no valid discount claim in the latest snapshot, it shows `No discount to judge`, a null score, the message "The latest price has no discount to evaluate.", and a factual reason explaining why the latest snapshot has no valid discount claim. |
 | Anomaly badge | All three: "No anomaly detected", with "Today's price looks normal based on the available history." |
 | Collector status | "No price collection has been recorded yet." |
 | Run now button | Visible and enabled. Do **not** click it here: it starts a real collection. |
@@ -130,11 +132,14 @@ Then refresh http://127.0.0.1:8000/api/scrape-runs and the dashboard.
 - Its `products_seen` matches the number from Step 8.
 - `check_db` shows the same number of snapshots for that run.
 - The dashboard's collector status reflects the latest run.
-- `check_db` shows `Total products: 63`: the 60 scraped books and the 3 demo products from step 3.
+- `check_db` shows `Total products: 63`: the 60 scraped books and the 3 demo products from Step 3.
 - The 3 demo products (source `fake`) are not counted as missing from the run.
 - `check_db` prints `Health status: HEALTHY`.
+- In a fresh database, each newly collected book has one snapshot after the first successful cycle. Its Trust Score label is `insufficient_data`, because fewer than six snapshots are available.
+- With at least six snapshots, a book whose latest snapshot has no valid discount claim receives `no_discount`, displayed as "No discount to judge", with a `null` score. This classification depends on the latest snapshot, not on whether an older snapshot had a discount claim.
 
-Write down the run id, status, `products_seen`, snapshot count and the health status that `check_db` prints.
+Write down the run ID, status, `products_seen`, snapshot count and the health status that `check_db` prints. Verify the Trust Score label against the actual history before recording it.
+
 
 
 ### 10. Automated checks
@@ -144,7 +149,7 @@ ruff check .
 ruff format --check .
 pytest -q
 ```
-**Expected:** all three pass. Write down the last line of each.
+**Expected:** All three commands pass. Record the actual output and final line of each command, including the exact pytest pass count and warning count.
 
 
 ### 11. Failures

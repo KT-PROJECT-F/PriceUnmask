@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.scraper.product_scraper import ScrapedProduct
@@ -108,9 +108,11 @@ def list_products(
     session: Session,
     search: str | None = None,
 ) -> Sequence[Product]:
-    """Return active products, optionally filtered by name."""
+    """Return active products with snapshots loaded, optionally filtered by name."""
 
-    statement = select(Product).where(Product.is_active.is_(True))
+    statement = (
+        select(Product).options(selectinload(Product.snapshots)).where(Product.is_active.is_(True))
+    )
 
     if search:
         escaped_search = search.replace("/", "//").replace("%", "/%").replace("_", "/_")

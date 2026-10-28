@@ -72,6 +72,7 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; 409 if a run is still in progress; 500 if stale-run cleanup fails |
 
 The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
+The `ProductOut` response for `GET /api/products` and `GET /api/products/{id}` includes `trust_label`, calculated from the product's already-loaded price snapshots using the existing trust-score calculation.
 
 The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 

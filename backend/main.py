@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 
 from backend import converters
 from backend.analysis.anomaly_service import summarize_anomalies
-from backend.analysis.trust_score import compute_trust_score
 from backend.config import settings
 from backend.db import crud
 from backend.db.database import get_session, init_db
@@ -124,10 +123,9 @@ def get_product_trust_score(
     history = crud.get_history(session, product_id)
     history_df = converters.snapshots_to_dataframe(history)
     anomaly = summarize_anomalies(history_df)
-    trust_score = compute_trust_score(history_df)
+    trust_score = converters.trust_score_for_snapshots(history)
 
     signals = asdict(trust_score.signals) if trust_score.signals is not None else None
-
     return TrustScoreOut(
         product_id=product.id,
         score=trust_score.score,

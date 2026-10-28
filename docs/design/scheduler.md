@@ -23,3 +23,4 @@ Weekend gap on 24-26 Oct happened because live collector runs only on Saidivya's
 
 ### Collector Stop Plan - Issue #198
 - Collector running till 31 Oct 6 PM, after final check DB archived for demo. Final export priceunmask-20261028T045012Z.db - OLDEST 2026-10-08, NEWEST 2026-10-28 04:44, 1160 snapshots, HEALTHY.
+

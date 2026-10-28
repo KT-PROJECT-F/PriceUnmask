@@ -72,6 +72,7 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; 409 if a run is still in progress; 500 if stale-run cleanup fails |
 
 The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
+The `ProductOut` response for `GET /api/products` and `GET /api/products/{id}` includes `trust_label`, calculated from the product's already-loaded price snapshots using the existing trust-score calculation.
 
 The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
 
@@ -102,11 +103,9 @@ Fewer than 6 snapshots gives `insufficient_data`. With at least 6 snapshots, if 
 
 ## 7. Where real data comes from
 
-- One **collector** (mentor's always-on machine or a free-tier VM) runs
-  `python -m backend.scheduler.jobs` against the real `data/priceunmask.db`.
-- Start it the day the scraper and crud land on `dev`. Every day it is not running is
-  history we will never get back.
-- Mentor exports a DB copy to the team every few days for analysis and frontend work.
+- One **collector** on Saidivya's machine until 31 Oct demo (see `docs/COLLECTOR.md` - Live collector section) runs `python -m backend.scheduler.jobs` against the real `data/priceunmask.db`.
+- Start it the day the scraper and crud land on `dev`. Every day it is not running is history we will never get back.
+- Saidivya exports a DB copy via `python -m backend.devtools.export_db` every few days for analysis and frontend work.
 - Everyone else develops against `python -m backend.devtools.seed_fake_data`.
 
 ## 8. Scraping rules (non-negotiable)

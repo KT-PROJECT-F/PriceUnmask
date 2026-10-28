@@ -124,29 +124,29 @@ attempt should be recorded as `failed`; leave the process running for at least
 - **Owner:** Saidivya (@Saidivya-20)
 - **Machine:** `DESKTOP-MG4NO5P` (Windows 11), plugged in, sleep turned off,
   collector terminal left open
-- **Database:** `data/collector.db`, real data only, no demo seed
+- **Database:** `data/priceunmask.db`, real data only, no demo seed. Contains real books since 8 oct (single-page runs at first, 3-page runs since 16 oct), with a gap on 24 to 26 oct (weekend laptop off). Gap is mentioned so demo builder knows data is not continuous.
 - **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run),
   `SCRAPE_INTERVAL_HOURS=4`
 - **Log file:** `data/collector.log`
 - **Daily check:** every working morning Saidivya runs `check_db` on
-  `data/collector.db` and posts one line on #155: date, health status, number
+  `data/priceunmask.db` and posts one line on #155: date, health status, number
   of runs, last run time.
 
 To get the newest data, ask Saidivya in the team chat. She runs, on the
 collector machine:
 
 ```powershell
-$env:DATABASE_URL = "sqlite:///data/collector.db"
+$env:DATABASE_URL = "sqlite:///data/priceunmask.db"
 python -m backend.devtools.export_db
 ```
 
 and shares the file it prints, `data/exports/priceunmask-<UTC timestamp>.db`.
-Do not copy `data/collector.db` directly while the collector is running.
+Do not copy `data/priceunmask.db` directly while the collector is running.
 
 ## Get the newest data
 
 1. Ask Saidivya for a fresh export (see "Live collector" above for the
-   command she runs). Never copy `data/collector.db` itself.
+   command she runs). Never copy `data/priceunmask.db` itself.
 2. Put the file in `data/exports/` in your own clone and keep its name:
    `priceunmask-<UTC timestamp>.db`, no spaces, the date is in the name.
    `.db` files are never committed.

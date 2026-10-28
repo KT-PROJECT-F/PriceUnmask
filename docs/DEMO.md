@@ -8,44 +8,53 @@ PriceUnmask helps shoppers understand whether a discount is genuine, likely infl
 
 ### 1. Product Grid — 0:00–0:40
 
-**Presenter:** Frontend teammate
+**Presenter: Pavan Kalyan — Frontend**
 
 Show the product grid and explain how PriceUnmask helps shoppers judge discounts using price history.
 
-### 2. Demo Air Fryer — 0:40–1:40
+### 2. Demo Air Fryer — 0:40–1:10
 
-**Presenter:** Analysis teammate
+**Presenter: Sujitha — Analysis**
 
-Show Trust Score 20 and "Likely inflated". Explain the reasons displayed by the application.
+Show Trust Score 20 and "Likely inflated". Explain the result displayed by the application.
 
-### 3. Demo Running Shoes — 1:40–2:20
+### 3. Analysis Reasons — 1:10–1:40
 
-**Presenter:** Price-history teammate
+**Presenter: Lakshmiprasanna — Analysis**
+
+Explain the reasons behind the Air Fryer's Trust Score using the information displayed by the application. Show how price history helps assess whether a discount may be inflated.
+
+### 4. Demo Running Shoes — 1:40–2:20
+
+**Presenter: Naveen Reddy — Backend / Price History**
 
 Show the genuine price drop and explain how historical prices help identify a real discount.
 
-### 4. Book with No Discount to Judge — 2:20–3:00
+### 5. Book with No Discount to Judge — 2:20–3:00
 
-**Presenter:** Lakshmi
+**Presenter: Hemalatha — Backend / Data Collection**
 
 Show a real book from Books to Scrape. Explain that when there is no discount to evaluate, the application should not invent a score or claim a fake discount.
 
-### 5. Collector Status and Run Now — 3:00–3:50
+### 6. Collector Status and Run Now — 3:00–3:50
 
-**Presenter:** Collector / frontend teammate
+**Presenter: Sai Divya — Backend / Data Collection**
 
 Show the collector status and Run now button. Explain the started, already-running, and error messages.
 
-### 6. Scrape Run History — 3:50–4:30
+### 7. Scrape Run History — 3:50–4:30
 
-**Presenter:** Backend / data-collection teammate
+**Presenter: Mathan — Backend**
 
 Show the available scrape-run history and explain how it records collection activity.
 
-### 7. What We Would Do Next — 4:30–5:00
+### 8. API and What We Would Do Next — 4:30–5:00
 
-**Presenter:** Project lead
+**Presenter: Rajesh — API**
 
+Briefly explain how the API supports communication between the frontend and backend.
+
+Conclude with the next steps:
 - Improve product coverage and collect more price history.
 - Test more edge cases and improve error messages.
 - Improve the shopper experience using feedback.
@@ -58,4 +67,4 @@ PriceUnmask helps shoppers judge discounts using price history instead of trusti
 
 If a live collection run fails or takes too long, show the latest available scrape-run history and previously collected product data. Never invent a result.
 
-**Note:** Confirm presenter names with the team before the final demo.
+**Note:** Presenter assignments must be confirmed by all teammates before the final demo.

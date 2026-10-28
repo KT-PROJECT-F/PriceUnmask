@@ -88,6 +88,13 @@ def add_product_with_prices(external_id: str, prices: list[int]) -> int:
     return product_id
 
 
+def test_health_returns_ok(client):
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_list_products(client):
     response = client.get("/api/products")
 

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -125,6 +125,37 @@ def test_list_products_search(client, term):
     data = response.json()
 
     assert [item["name"] for item in data] == ["Demo Running Shoes (real drop)"]
+
+
+def test_list_products_loads_snapshots_without_n_plus_one_queries(client):
+    snapshot_selects = []
+
+    def count_snapshot_queries(
+        connection,
+        cursor,
+        statement,
+        parameters,
+        context,
+        executemany,
+    ):
+        normalized_statement = statement.lower()
+
+        if (
+            normalized_statement.lstrip().startswith("select")
+            and PriceSnapshot.__tablename__.lower() in normalized_statement
+        ):
+            snapshot_selects.append(statement)
+
+    event.listen(engine, "before_cursor_execute", count_snapshot_queries)
+
+    try:
+        response = client.get("/api/products")
+    finally:
+        event.remove(engine, "before_cursor_execute", count_snapshot_queries)
+
+    assert response.status_code == 200
+    assert len(response.json()) == 3
+    assert len(snapshot_selects) == 1
 
 
 def test_list_products_returns_expected_trust_labels(client):

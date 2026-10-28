@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 import pandas as pd
 
-from backend.analysis.trust_score import compute_trust_score
+from backend.analysis.trust_score import TrustScore, compute_trust_score
 from backend.db.models import PriceSnapshot, Product
 from backend.schemas import HistoryOut, PricePointOut, ProductOut
 
@@ -39,6 +39,14 @@ def snapshots_to_dataframe(
     return df.sort_values("scraped_at", ignore_index=True)
 
 
+def trust_score_for_snapshots(
+    snapshots: Sequence[PriceSnapshot],
+) -> TrustScore:
+    """Calculate the trust score using a product's price snapshots."""
+    history_df = snapshots_to_dataframe(snapshots)
+    return compute_trust_score(history_df)
+
+
 def product_to_out(
     product: Product,
     snapshots: Sequence[PriceSnapshot],
@@ -54,8 +62,7 @@ def product_to_out(
 
         lowest_price_minor = min(s.current_price_minor for s in snapshots)
 
-    history_df = snapshots_to_dataframe(snapshots)
-    trust_score = compute_trust_score(history_df)
+    trust_score = trust_score_for_snapshots(snapshots)
 
     return ProductOut(
         id=product.id,

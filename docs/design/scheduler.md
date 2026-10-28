@@ -20,3 +20,7 @@ Unit tests mock `scrape` and `SessionLocal`, check `mark_stale_runs_failed` call
 
 ## Known limits and what we would do next
 Weekend gap on 24-26 Oct happened because live collector runs only on Saidivya's laptop, which was off. No cloud VM or watchdog. Next: run collector on always-on machine or add health check that alerts if no run in 6h.
+
+### Collector Stop Plan - Issue #198
+- Collector running till 31 Oct 6 PM, after final check DB archived for demo. Final export priceunmask-20261028T045012Z.db - OLDEST 2026-10-08, NEWEST 2026-10-28 04:44, 1160 snapshots, HEALTHY.
+

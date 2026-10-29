@@ -6,13 +6,19 @@ PriceUnmask provides a web interface for searching products, viewing product det
 
 ## Decisions
 
-- **Plain JavaScript instead of a frontend framework:** The existing application uses HTML, CSS, and JavaScript. Keeping this approach avoids adding a frontend framework and allows the current application structure to remain simple.
-- **Chart.js for price history:** Chart.js displays historical prices in the product detail view. A chart library provides a convenient way to visualize price changes over time instead of building a chart manually.
-- **Relative API URL:** The frontend uses `/api` as its API base URL. This allows requests to use the same origin as the application rather than depending on a hard-coded backend address.
-- **Price formatting:** The frontend uses a shared price-formatting function to display prices consistently, including currency formatting and handling missing values. This keeps formatting logic in one place.
-- **Trust Score validation:** The frontend validates the returned Trust Score information before displaying it. Unsupported or missing labels should not be presented as valid assessments because shoppers could misunderstand the result.
-- **Separate product, Trust Score, and history requests:** These requests are handled independently so that a Trust Score or price-history failure does not necessarily prevent the product details from appearing.
-- **Collector response handling:** The Run now action handles accepted requests and an already-running collector separately. HTTP `202 Accepted` indicates that a request has been accepted for processing; HTTP `409 Conflict` can indicate that a collection is already running. The interface also polls for completion and displays status messages.
+- **Plain JavaScript instead of a frontend framework:** The existing application uses HTML, CSS, and JavaScript. Keeping this approach avoids adding a frontend framework and allows the current application structure to remain simple. See [`frontend/script.js`](../../frontend/script.js).
+
+- **Chart.js for price history:** Chart.js displays historical prices in the product detail view. A chart library provides a convenient way to visualize price changes over time instead of building a chart manually. See [chart initialization and fallback handling](../../frontend/script.js#L539).
+
+- **Relative API URL:** The frontend uses `/api` as its API base URL. This allows requests to use the same origin as the application rather than depending on a hard-coded backend address. See [`API_BASE_URL`](../../frontend/script.js#L2).
+
+- **Price formatting:** The frontend uses a shared price-formatting function to display prices consistently, including currency formatting and handling missing values. This keeps formatting logic in one place. See [`formatPrice`](../../frontend/script.js#L33).
+
+- **Trust Score validation:** The frontend validates the returned Trust Score information before displaying it. Unsupported or missing labels should not be presented as valid assessments because shoppers could misunderstand the result. See [Trust Score rendering and validation](../../frontend/script.js).
+
+- **Separate product, Trust Score, and history requests:** These requests are handled independently so that a Trust Score or price-history failure does not necessarily prevent the product details from appearing. See [frontend request handling](../../frontend/script.js).
+
+- **Collector response handling:** The Run now action handles accepted requests and an already-running collector separately. HTTP `202 Accepted` indicates that a request has been accepted for processing; HTTP `409 Conflict` can indicate that a collection is already running. The interface also polls for completion and displays status messages. See [HTTP 409 handling](../../frontend/script.js#L219) and [HTTP 202 handling](../../frontend/script.js#L237).
 
 ## How it fails, and what happens then
 
@@ -51,7 +57,7 @@ ruff format --check .
 pytest -q
 ```
 
-**Testing status:** Record the actual results of the manual checks and repository commands before submitting the pull request. Do not report a scenario as passed until it has been tested. The frontend behavior described here is based on the current implementation; the manual checks still need to confirm it in the running application.
+**Testing status:** The repository quality checks completed successfully: `ruff check .` passed, `ruff format --check .` passed, and `pytest -q` reported 339 passed with 1 warning. Eight demo screenshots were captured for the product grid and three product detail views at desktop and phone widths. Individual manual failure scenarios have not yet been confirmed, so they should not be reported as passed.
 
 ## Known limits and what we would do next
 

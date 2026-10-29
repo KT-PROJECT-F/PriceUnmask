@@ -169,3 +169,77 @@ Do not copy `data/priceunmask.db` directly while the collector is running.
 
 5. When you are done, close the terminal or run
    `Remove-Item Env:DATABASE_URL`, so the app uses its normal database again.
+
+
+## Demo database
+
+The demo database is a local copy of a collector export with three synthetic
+products added for dashboard demonstrations. The synthetic products have
+made-up price histories and must not be presented as real market data.
+The original export remains unchanged. Do not commit `.db` files.
+
+### Build the demo database
+
+1. Obtain the required collector export from Saidivya. Never copy the live
+   collector database directly while it is running.
+
+2. From the project root, copy the confirmed export to a separate demo file.
+   Replace the source path only if the agreed export has a different name.
+
+   ```powershell
+   Copy-Item "$HOME\Downloads\priceunmask-20261028T045012Z.db" ".\data\priceunmask-demo-20261029.db"
+   ```
+
+3. Point `DATABASE_URL` at the demo copy for this PowerShell session:
+
+   ```powershell
+   $env:DATABASE_URL = "sqlite:///C:/Users/venky/OneDrive/Desktop/PriceUnmask-recovery/data/priceunmask-demo-20261029.db"
+   ```
+
+   Use your own absolute project path if it differs.
+
+4. Check the database before seeding:
+
+   ```powershell
+   python -m backend.devtools.check_db
+   ```
+
+   Confirm the expected real products are present and that no products with
+   `source="fake"` already exist.
+
+5. Seed the synthetic products:
+
+   ```powershell
+   python -m backend.devtools.seed_fake_data
+   ```
+
+   The seeder refuses to run if fake products already exist. Do not run it
+   twice against the same demo database.
+
+6. Verify the result:
+
+   ```powershell
+   python -m backend.devtools.check_db
+   python -c "import sqlite3; c = sqlite3.connect('data/priceunmask-demo-20261029.db'); print('Products by source:', c.execute('SELECT source, COUNT(*) FROM products GROUP BY source').fetchall()); print('Snapshots:', c.execute('SELECT COUNT(*) FROM price_snapshots').fetchone()[0]); print('Snapshot range:', c.execute('SELECT MIN(scraped_at), MAX(scraped_at) FROM price_snapshots').fetchone()); c.close()"
+   ```
+
+7. Start the app in the same terminal so it uses the demo database:
+
+   ```powershell
+   uvicorn backend.main:app --reload
+   ```
+
+   Open `http://127.0.0.1:8000/` and check a synthetic demo product,
+   a real book, and the collector status. Do not trigger a new collection
+   during the demo-data spot check.
+
+8. When finished, stop the server with `Ctrl+C`. To restore the default
+   database for subsequent commands in this terminal, run:
+
+   ```powershell
+   Remove-Item Env:DATABASE_URL
+   ```
+
+The database health check can report `CHECK REQUIRED` when the latest
+collector run is older than 24 hours. Report this status honestly; adding
+synthetic demo products does not make the collector data fresher.

@@ -243,3 +243,41 @@ The original export remains unchanged. Do not commit `.db` files.
 The database health check can report `CHECK REQUIRED` when the latest
 collector run is older than 24 hours. Report this status honestly; adding
 synthetic demo products does not make the collector data fresher.
+
+## Demo database
+
+The demo database is a local copy of a collector export with three synthetic products added for dashboard demonstrations. The synthetic products have made-up price histories and must not be presented as real market data. The original export remains unchanged. Do not commit `.db` files.
+
+1. **Get the export.** Download the collector export announced by Saidivya in the latest comment on issue #198. Use that exact export file.
+
+2. **Copy the export.** From the project root, copy the downloaded export to a separate demo database file. Replace the example date with the date you are building the demo database.
+
+   ```powershell
+   Copy-Item "$HOME\Downloads\<actual-export-filename>.db" ".\data\priceunmask-demo-<YYYYMMDD>.db"
+   ```
+
+3. **Select the demo copy.** From the project root, set `DATABASE_URL` for this PowerShell session. Use the same date as the copied file.
+
+   ```powershell
+   $env:DATABASE_URL = "sqlite:///data/priceunmask-demo-<YYYYMMDD>.db"
+   ```
+
+4. **Check the database before seeding.** Confirm the database contains the expected real products and no products with `source="fake"`. Do not seed the original export.
+
+5. **Seed the synthetic demo products.** Run:
+
+   ```powershell
+   python -m backend.devtools.seed_fake_data
+   ```
+
+   The seeder adds three synthetic products with made-up price histories. It refuses to seed a database that already contains fake-source products.
+
+6. **Verify the demo copy.** Check product and snapshot counts, then run the database health check against the demo file:
+
+   ```powershell
+   python -m backend.devtools.check_db --db data/priceunmask-demo-<YYYYMMDD>.db
+   ```
+
+   Record the actual health status and any warnings. A `CHECK REQUIRED` result must be reported with its reason; do not describe the database as healthy unless the check confirms it.
+
+7. **Keep the export safe.** Do not modify the original export or commit any `.db` files. Treat synthetic product prices and trust scores as demonstration data, not real market data.

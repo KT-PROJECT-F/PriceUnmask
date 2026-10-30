@@ -179,7 +179,7 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 8. Collector cycle | PASS | Books to Scrape returned HTTP 200 for all 3 listing pages. `robots.txt` returned 404; warning logged and collection continued. Three-second delays were logged. Collected 20 products per page, 60 total. Collector stopped by user at `2026-10-30 15:26:29`. |
 | 9. Saved to the database | PASS | Run 1, success, `products_seen` 20, 20 snapshots. Total products: 23. `check_db` printed `Health status: CHECK REQUIRED` with the reason "3 products have no snapshot in run 1". Those 3 are the demo products from step 3 (source `fake`); the collector can never see them, so this is a false alarm in the health check, tracked in #143. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/30/2026, 15:26:29 PM`. No duplicate product names. |
 | 10. ruff and pytest | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `61 files already formatted`; `pytest -q`: `346 passed, 1 warning in 41.71s` (StarletteDeprecationWarning about using `httpx` with `starlette.testclient`). |
-| 11. Failures | PASS | No failures found. The step 9 health warning is a `check_db` bug, not a release failure; tracked in #143. |                                                                                                        |
+| 11. Failures | PASS | No failures found. |                                                                                                                                                                                  
 
 ## v0.2 results
 

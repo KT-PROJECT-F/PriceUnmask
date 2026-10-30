@@ -104,3 +104,62 @@ pytest -q
 - [Collector runbook](docs/COLLECTOR.md) — collector setup, scheduling, and troubleshooting.
 - [Release checklist](docs/RELEASE_CHECKLIST.md) — fresh-clone release verification.
 - [Contributing guide](CONTRIBUTING.md) — branches, pull requests, and reviews.
+
+
+# PriceUnmask
+
+## About the Project
+
+PriceUnmask helps shoppers understand whether an advertised product discount is genuine, likely inflated, or uncertain by analyzing available product price history.
+
+## Features
+
+- Product price tracking
+- Price history analysis
+- Trust Score calculation
+- Discount verification
+- Anomaly detection
+- Scraping scheduler
+- Product dashboard
+
+## How It Works
+
+1. Collect product prices.
+2. Store price history in the database.
+3. Analyze price changes.
+4. Calculate the Trust Score.
+5. Display the discount result.
+
+## Discount Results
+
+- `genuine` – Discount meets the application's genuine classification rules.
+- `likely_inflated` – Price history shows suspicious patterns.
+- `uncertain` – Not enough evidence for a clear result.
+- `insufficient_data` – Not enough price snapshots.
+- `no_discount` – No valid discount to evaluate.
+
+## How I Tested
+
+1. Checked design-note links.
+2. Verified backup screenshots.
+3. Checked Trust Score ranges.
+4. Verified the six-snapshot rule.
+5. Checked demo documentation.
+
+## Technologies Used
+
+- Python
+- FastAPI
+- React
+- SQLite
+- SQLAlchemy
+- Pandas
+- Scikit-learn
+
+## Documentation
+
+See the `docs/` folder for project documentation and the demo script.
+
+## Note
+
+Trust Score is an indicator based on available price history and implemented rules. It is not proof of seller manipulation or a guarantee.

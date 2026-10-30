@@ -119,13 +119,6 @@ pytest -q
 
 The frontend uses plain JavaScript, not React. The current anomaly detector uses statistical rolling z-score rules, not a trained machine-learning model.
 
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Collector runbook](docs/COLLECTOR.md)
-- [Release checklist](docs/RELEASE_CHECKLIST.md)
-- [Demo script](docs/DEMO.md)
-- [Contributing guide](CONTRIBUTING.md)
 
 ### Design Notes
 

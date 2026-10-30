@@ -14,9 +14,9 @@ PriceUnmask provides a web interface for searching products, viewing product det
 
 - **Price formatting:** The frontend uses a shared price-formatting function to display prices consistently, including currency formatting and handling missing values. This keeps formatting logic in one place. See [`formatPrice`](../../frontend/script.js#L33).
 
-- **Trust Score validation:** The frontend validates the returned Trust Score information before displaying it. Unsupported or missing labels should not be presented as valid assessments because shoppers could misunderstand the result. See [Trust Score rendering and validation](../../frontend/script.js).
+- **Trust Score validation:** The frontend validates the returned Trust Score information before displaying it. Unsupported or missing labels should not be presented as valid assessments because shoppers could misunderstand the result. See [`loadTrustScore`](../../frontend/script.js#L358).
 
-- **Separate product, Trust Score, and history requests:** These requests are handled independently so that a Trust Score or price-history failure does not necessarily prevent the product details from appearing. See [frontend request handling](../../frontend/script.js).
+- **Separate product, Trust Score, and history requests:** These requests are handled independently so that a Trust Score or price-history failure does not necessarily prevent the product details from appearing. See [`showProductDetail`](../../frontend/script.js#L796).
 
 - **Collector response handling:** The Run now action handles accepted requests and an already-running collector separately. HTTP `202 Accepted` indicates that a request has been accepted for processing; HTTP `409 Conflict` can indicate that a collection is already running. The interface also polls for completion and displays status messages. See [HTTP 409 handling](../../frontend/script.js#L219) and [HTTP 202 handling](../../frontend/script.js#L237).
 
@@ -57,7 +57,14 @@ ruff format --check .
 pytest -q
 ```
 
-**Testing status:** The repository quality checks completed successfully: `ruff check .` passed, `ruff format --check .` passed, and `pytest -q` reported 339 passed with 1 warning. Eight demo screenshots were captured for the product grid and three product detail views at desktop and phone widths. Individual manual failure scenarios have not yet been confirmed, so they should not be reported as passed.
+**Testing status:** The repository quality checks completed successfully: `ruff check .` passed, `ruff format --check .` passed, and `pytest -q` reported 339 passed with 1 warning. Eight demo screenshots were captured for the product grid and three product detail views at desktop and phone widths.
+
+Three manual browser scenarios were verified:
+1. **Product detail:** Opened *A Light in the Attic*. The detail view displayed the latest and lowest prices (£51.77), the **No discount to judge** Trust Score state, and its explanatory reason.
+2. **No search results:** Searched for `YZNonExistentProduct123`. The frontend displayed **No products match your search.**
+3. **Trust Score:** Opened *Demo Air Fryer (fake discount)*. The detail view displayed the latest price (₹1,049.00), lowest price (₹969.57), **20 — Likely inflated**, and the reasons for the assessment.
+
+The remaining manual scenarios have not yet been verified and should not be reported as passed.
 
 ## Known limits and what we would do next
 

@@ -104,3 +104,31 @@ pytest -q
 - [Collector runbook](docs/COLLECTOR.md) — collector setup, scheduling, and troubleshooting.
 - [Release checklist](docs/RELEASE_CHECKLIST.md) — fresh-clone release verification.
 - [Contributing guide](CONTRIBUTING.md) — branches, pull requests, and reviews.
+
+
+## Technologies Used
+
+- **Backend:** Python, FastAPI, Pydantic
+- **Database:** SQLite, SQLAlchemy
+- **Data analysis:** Pandas
+- **Frontend:** HTML, CSS, JavaScript
+- **Charts:** Chart.js
+- **Web scraping:** Requests, Beautiful Soup
+- **Scheduling:** APScheduler
+- **Server:** Uvicorn
+
+The frontend uses plain JavaScript, not React. The current anomaly detector uses statistical rolling z-score rules, not a trained machine-learning model.
+
+
+### Design Notes
+
+- [Anomaly findings](docs/design/anomaly_findings.md)
+- [Anomaly messages](docs/design/anomaly_messages.md)
+- [API design](docs/design/api.md)
+- [Database design](docs/design/database.md)
+- [Frontend design](docs/design/frontend.md)
+- [No-discount label](docs/design/no_discount_label.md)
+- [Scheduler design](docs/design/scheduler.md)
+- [Scraper design](docs/design/scraper.md)
+- [Trust Score design](docs/design/trust_score.md)
+- [Trust Score findings](docs/design/trust_score_findings.md)

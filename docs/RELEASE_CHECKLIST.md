@@ -160,26 +160,26 @@ the commit hash. Link each issue in the table. If nothing failed, write
 
 ## v0.1 results
 
-- **Date:** 2026-10-30
+- **Date:** 2026-10-16
 - **Tested by:** @mathango
-- **Commit (`git rev-parse HEAD`):** `fb0bd1b4b7c6d281f16a5ba5c059fed5838f549c`
+- **Commit (`git rev-parse HEAD`):** `a420a5324f955807db59fb63e79a6e1977af59f8`
 - **Windows version:** Windows 11 Pro
 - **Python version:** Python 3.14.7
 
-
 | **Step** | **Result** | **What I saw** |
-| :--- | :--- | :--- |
-| 1. Fresh clone | PASS | Clone succeeded, on `dev`, working tree clean. Commit `fb0bd1b4b7c6d281f16a5ba5c059fed5838f549c`. |
+| --- | --- | --- |
+| 1. Fresh clone | PASS | Clone succeeded, on `dev`, working tree clean. Commit `a420a5324f955807db59fb63e79a6e1977af59f8`. |
 | 2. Python setup | PASS | `(.venv)` prompt, `pip install` finished without errors. Python 3.14.7. |
 | 3. Seed fake data | PASS | `Seeded 3 fake products.` `check_db`: Total products: 3, CHECK REQUIRED (no finished scrape run found). |
 | 4. Start the app | PASS | `/api/health` returned HTTP 200 with `{"status":"ok"}`. |
 | 5. Dashboard | PASS | Grid showed 3 demo products; search `air` returned only Demo Air Fryer; search `zzzz` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
-| 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/2` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
-| 7. API, bad input | PASS | `/api/products/55647474` 404; `/history?days=0` 422; 201-char search 422. |
-| 8. Collector cycle | PASS | Books to Scrape returned HTTP 200 for all 3 listing pages. `robots.txt` returned 404; warning logged and collection continued. Three-second delays were logged. Collected 20 products per page, 60 total. Collector stopped by user at `2026-10-30 15:26:29`. |
-| 9. Saved to the database | PASS | Run 1, success, `products_seen` 20, 20 snapshots. Total products: 23. `check_db` printed `Health status: CHECK REQUIRED` with the reason "3 products have no snapshot in run 1". Those 3 are the demo products from step 3 (source `fake`); the collector can never see them, so this is a false alarm in the health check, tracked in #143. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/30/2026, 15:26:29 PM`. No duplicate product names. |
-| 10. ruff and pytest | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `61 files already formatted`; `pytest -q`: `346 passed, 1 warning in 41.71s` (StarletteDeprecationWarning about using `httpx` with `starlette.testclient`). |
-| 11. Failures | PASS | No failures found. |                                                                                                                                                                                  
+| 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/1` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
+| 7. API, bad input | PASS | `/api/products/999999` 404; `/history?days=0` 422; 201-char search 422. |
+| 8. Collector cycle | PASS | Books to Scrape fetched HTTP 200, `robots.txt` 404 (warning logged, collector continued), 3-second delay observed, 20 products seen. Collector stopped `2026-10-16 17:21:43`. |
+| 9. Saved to the database | PASS | Run 1, success, `products_seen` 20, 20 snapshots. Total products: 23. `check_db` printed `Health status: CHECK REQUIRED` with the reason "3 products have no snapshot in run 1". Those 3 are the demo products from step 3 (source `fake`); the collector can never see them, so this is a false alarm in the health check, tracked in #143. Dashboard collector status: "Completed successfully", products seen 20, last collected `10/16/2026, 5:19:22 PM`. No duplicate product names. |
+| 10. ruff and pytest | PASS | `All checks passed!` / `45 files already formatted` / `270 passed, 1 warning` (StarletteDeprecationWarning, httpx with starlette.testclient). |
+| 11. Failures | PASS | No failures found. The step 9 health warning is a `check_db` bug, not a release failure; tracked in #143. |                                                                                         
+                                                                                                                                                                           
 
 ## v0.2 results
 
@@ -202,3 +202,28 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 9. Saved to the database | PASS | check_db: Run ID 2; status success; products_seen 60; snapshots 60; Total products: 63; Health status: HEALTHY. Products without a snapshot in this run: 0. Duplicate product names: None. |
 | 10. Automated checks | PASS | ruff check . — All checks passed!; ruff format --check . — 54 files already formatted; pytest -q — 325 passed, 1 warning in 8.38s. |
 | 11. Failures | PASS | No failures found. |
+
+
+
+## v0.1 results
+
+- **Date:** 2026-10-30
+- **Tested by:** @mathango
+- **Commit (`git rev-parse HEAD`):** `fb0bd1b4b7c6d281f16a5ba5c059fed5838f549c`
+- **Windows version:** Windows 11 Pro
+- **Python version:** Python 3.14.7
+
+
+| **Step** | **Result** | **What I saw** |
+| :--- | :--- | :--- |
+| 1. Fresh clone | PASS | Clone succeeded, on `dev`, working tree clean. Commit `fb0bd1b4b7c6d281f16a5ba5c059fed5838f549c`. |
+| 2. Python setup | PASS | `(.venv)` prompt, `pip install` finished without errors. Python 3.14.7. |
+| 3. Seed fake data | PASS | `Seeded 3 fake products.` `check_db`: Total products: 3, CHECK REQUIRED (no finished scrape run found). |
+| 4. Start the app | PASS | `/api/health` returned HTTP 200 with `{"status":"ok"}`. |
+| 5. Dashboard | PASS | Grid showed 3 demo products; search `air` returned only Demo Air Fryer; search `zzzz` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
+| 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/2` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
+| 7. API, bad input | PASS | `/api/products/55647474` 404; `/history?days=0` 422; 201-char search 422. |
+| 8. Collector cycle | PASS | Books to Scrape returned HTTP 200 for all 3 listing pages. `robots.txt` returned 404; warning logged and collection continued. Three-second delays were logged. Collected 20 products per page, 60 total. Collector stopped by user at `2026-10-30 15:26:29`. |
+| 9. Saved to the database | PASS | `check_db`: Run 2, status `success`, `products_seen` 60, 60 snapshots. Total products: 63. Products without a snapshot in this run: 0. Duplicate product names: None. Health status: `HEALTHY`. Latest finished run timestamp: `2026-10-29 12:52:27.129850+00:00`. |
+| 10. Automated checks | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `61 files already formatted`; `pytest -q`: `346 passed, 1 warning in 41.71s` (StarletteDeprecationWarning about using `httpx` with `starlette.testclient`). |
+| 11. Failures | PASS | No failures found. |                                                                                                                                                                                  

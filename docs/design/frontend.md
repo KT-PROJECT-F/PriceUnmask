@@ -22,16 +22,16 @@ PriceUnmask provides a web interface for searching products, viewing product det
 
 ## How it fails, and what happens then
 
-- **API unavailable:** If product loading fails, the frontend displays an error message rather than leaving the user with an unexplained empty result.
-- **No search results:** The frontend displays a message when no products match the search.
-- **No price history:** The product detail view displays an explanatory message when historical price data is unavailable.
-- **Trust Score unavailable:** The product details can still be displayed when the Trust Score request fails, with a fallback message for the unavailable assessment.
-- **Invalid response data:** The frontend validates important response fields and uses fallback behavior when data is missing or invalid.
-- **Chart.js unavailable:** The frontend displays a message when the chart library cannot be used.
-- **Collector request fails:** The interface displays an error message and restores the Run now button when appropriate.
-- **No discount to evaluate:** The frontend can display the No Discount state rather than presenting a discount assessment that the data does not support.
+- **API unavailable:** The frontend is designed to display an error message if product loading fails. This failure scenario has not yet been manually verified.
+- **No search results:** Verified manually. Searching for `YZNonExistentProduct123` displayed `No products match your search.`
+- **No price history:** The product detail view is designed to display an explanatory message when historical price data is unavailable. This scenario has not yet been manually verified.
+- **Trust Score unavailable:** The product details are designed to remain available if the Trust Score request fails, with a fallback message for the unavailable assessment. This scenario has not yet been manually verified.
+- **Invalid response data:** The frontend validates important response fields and uses fallback behavior when data is missing or invalid. Manual verification is still pending.
+- **Chart.js unavailable:** The frontend is designed to display a message when the chart library cannot be used. This scenario has not yet been manually verified.
+- **Collector request fails:** The interface is designed to display an error message and restore the Run now button when appropriate. Manual verification is still pending.
+- **No discount to evaluate:** Verified on the A Light in the Attic detail page. The Trust Score displayed `No discount to judge`, with an explanatory reason.
 
-These behaviors aim to make failures understandable and prevent a problem in one feature from unnecessarily blocking other product information.
+These observations distinguish behavior verified in the browser from failure scenarios that still require testing. They also help identify which cases need additional manual verification.
 
 ## How it is tested
 

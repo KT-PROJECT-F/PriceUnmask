@@ -205,7 +205,7 @@ the commit hash. Link each issue in the table. If nothing failed, write
 
 
 
-## v0.1 results
+## v1.0 results
 
 - **Date:** 2026-10-30
 - **Tested by:** @mathango
@@ -224,6 +224,6 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=air` 200 (only Air Fryer); `/api/products/2` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
 | 7. API, bad input | PASS | `/api/products/55647474` 404; `/history?days=0` 422; 201-char search 422. |
 | 8. Collector cycle | PASS | Books to Scrape returned HTTP 200 for all 3 listing pages. `robots.txt` returned 404; warning logged and collection continued. Three-second delays were logged. Collected 20 products per page, 60 total. Collector stopped by user at `2026-10-30 15:26:29`. |
-| 9. Saved to the database | PASS | `check_db`: Run 2, status `success`, `products_seen` 60, 60 snapshots. Total products: 63. Products without a snapshot in this run: 0. Duplicate product names: None. Health status: `HEALTHY`. Latest finished run timestamp: `2026-10-29 12:52:27.129850+00:00`. |
+| 9. Saved to the database | PASS | `check_db`: Run 3, status `success`, `products_seen` 60, 60 snapshots. Total products: 63. Products without a snapshot in this run: 0. Duplicate product names: None. Health status: `CHECK REQUIRED` because the latest finished run is older than 24 hours. Latest finished run timestamp: `2026-10-30 10:00:41.283171+00:00`. |
 | 10. Automated checks | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `61 files already formatted`; `pytest -q`: `346 passed, 1 warning in 41.71s` (StarletteDeprecationWarning about using `httpx` with `starlette.testclient`). |
 | 11. Failures | PASS | No failures found. |                                                                                                                                                                                  

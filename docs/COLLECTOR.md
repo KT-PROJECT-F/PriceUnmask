@@ -126,7 +126,7 @@ attempt should be recorded as `failed`; leave the process running for at least
   collector terminal left open
 - **Database:** `data/priceunmask.db`, real data only, no demo seed. Contains real books since 8 oct (single-page runs at first, 3-page runs since 16 oct), with a gap on 24 to 26 oct (weekend laptop off). Gap is mentioned so demo builder knows data is not continuous.
 -**Planned end:** 31 oct 2026 6 PM IST (as per 29 Oct comment)
--**Actual end:** 02 Nov 2026 06:02 UTC (Run 60) - Extended INTENTIONALLY to gather data beyond demo for final proof. No gap on 30 & 31 Oct, continuous HEALTHY runs (Run 57 on 30 Oct, Run 59 on 31 Oct demo day).
+-**Actual end:** 02 Nov 2026 06:02 UTC (Run 60) - Extended INTENTIONALLY to gather data beyond demo for final proof. 30 Oct PRESENT (Run 57,58), 31 Oct GAP (demo day stale data from 30 Oct),01 Nov GAP.02 Nov RESUMED (Run 59, 60).
 -**Final totals till 02 Nov:** 60 runs, 54 success, 6 failed, 60 products, 0 duplicates, 3240 snapshots, final export 'data/exports/priceunmask-20261102T064402Z.db'
 -**Collector stopped:** 02 Nov 2026 after final check-in for #155
 - **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run),

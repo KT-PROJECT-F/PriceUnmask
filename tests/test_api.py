@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine, event
@@ -18,7 +19,7 @@ from backend.db import crud
 from backend.db.database import Base, get_session
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
-from backend.main import app
+from backend.main import app, unexpected_exception_handler
 from backend.schemas import TrustScoreOut
 from backend.scraper.product_scraper import ScrapedProduct
 
@@ -254,6 +255,28 @@ def test_get_product_bad_id(client):
     assert body["error"]["message"] == "Request validation failed"
     assert isinstance(body["error"]["details"], list)
     assert body["error"]["details"]
+
+
+def test_unexpected_exception_returns_standard_error_response():
+    test_app = FastAPI()
+    test_app.add_exception_handler(Exception, unexpected_exception_handler)
+
+    @test_app.get("/test-unexpected-error")
+    def raise_unexpected_error():
+        raise RuntimeError("sensitive internal failure")
+
+    with TestClient(test_app, raise_server_exceptions=False) as test_client:
+        response = test_client.get("/test-unexpected-error")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "Internal server error",
+            "details": None,
+        }
+    }
+    assert "sensitive internal failure" not in response.text
 
 
 @pytest.mark.parametrize(

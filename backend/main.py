@@ -95,7 +95,7 @@ async def validation_exception_handler(
     )
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=body.model_dump(),
     )
 
@@ -105,6 +105,8 @@ async def unexpected_exception_handler(
     _request,
     _exc: Exception,
 ) -> JSONResponse:
+    logger.exception("Unexpected error while handling API request")
+
     body = ErrorOut(
         error={
             "code": "INTERNAL_SERVER_ERROR",

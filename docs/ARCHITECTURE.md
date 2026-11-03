@@ -97,10 +97,10 @@ Shopper-facing anomaly statuses:
 
 | Status | Meaning |
 |---|---|
+| `insufficient_history` | Not enough price history to detect unusual price changes. |
 | `normal` | Today's price looks normal based on the available history. |
-| `anomaly_detected` | The price movement is unusual compared with available history. |
-| `insufficient_data` | There is not enough price history to evaluate the movement. |
-| `error` | Anomaly analysis could not be completed. |
+| `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
+
 
 `POST /api/scrape/run` closes stale scrape runs before starting a new run. It returns 409 if another scrape run is already in progress. If stale-run cleanup fails, it returns 500 with the standard error envelope.
 

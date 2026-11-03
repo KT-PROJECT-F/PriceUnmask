@@ -14,11 +14,13 @@ from backend.analysis.anomaly_service import (
     UNUSUAL_MESSAGE,
 )
 from backend.config import settings
+from backend.db import crud
 from backend.db.database import Base, get_session
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
 from backend.main import app
 from backend.schemas import TrustScoreOut
+from backend.scraper.product_scraper import ScrapedProduct
 
 engine = create_engine(
     "sqlite://",
@@ -500,6 +502,41 @@ def test_list_scrape_runs_returns_at_most_20_newest_first(client):
     assert len(data) == 20
     assert data[0]["products_seen"] == 24
     assert data[-1]["products_seen"] == 5
+
+
+def test_upsert_product_increments_scrape_run_progress(seeded_database):
+    item = ScrapedProduct(
+        external_id="progress-test-item",
+        name="Progress Test Item",
+        url="https://example.com/progress-test-item",
+        current_price_minor=129900,
+        original_price_minor=None,
+        in_stock=True,
+        currency="INR",
+        scraped_at=datetime.now(UTC),
+    )
+
+    with TestingSessionLocal() as session:
+        run = ScrapeRun(status="running", products_seen=0)
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+
+        crud.upsert_product_and_snapshot(
+            session=session,
+            source="test",
+            item=item,
+            run=run,
+        )
+        assert run.products_seen == 1
+
+        crud.upsert_product_and_snapshot(
+            session=session,
+            source="test",
+            item=item,
+            run=run,
+        )
+        assert run.products_seen == 2
 
 
 def test_get_product_trust_score_air_fryer(client):

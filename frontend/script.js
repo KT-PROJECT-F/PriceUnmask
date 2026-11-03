@@ -281,6 +281,9 @@ if (runCollectorButton) {
 function createProductCard(product, onSelect) {
   const card = document.createElement("article");
   card.className = "product-card";
+  if (product.trust_label === "insufficient_data") {
+    card.classList.add("product-card-insufficient-data");
+  }
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   card.setAttribute("aria-label", `View details for ${product.name}`);
@@ -436,7 +439,7 @@ function formatChartDate(isoString) {
 
 
  // Render the selected product's price history.
-function renderPriceHistoryChart(canvas, history, currency) {
+function renderPriceHistoryChart(canvas, history, currency, trustScore) {
   if (priceHistoryChart) {
     priceHistoryChart.destroy();
     priceHistoryChart = null;
@@ -444,6 +447,23 @@ function renderPriceHistoryChart(canvas, history, currency) {
 
   const formatRupees = (minorUnits) =>
     formatPrice(minorUnits, currency);
+
+  const styles = getComputedStyle(document.documentElement);
+
+  const accentColor = styles.getPropertyValue("--accent").trim();
+  const warningColor = styles.getPropertyValue("--inflated-color").trim();
+  const mutedColor = styles.getPropertyValue("--ink-faint").trim();
+  const borderColor = styles.getPropertyValue("--border").trim();
+  const inkColor = styles.getPropertyValue("--ink").trim();
+  const surfaceColor = styles.getPropertyValue("--surface").trim();
+
+  const isWarning =
+    trustScore?.label === "likely_inflated" ||
+    trustScore?.anomaly_status === "unusual";
+
+  const currentPriceColor = isWarning
+    ? warningColor
+    : accentColor;
 
   priceHistoryChart = new Chart(canvas, {
     type: "line",
@@ -457,9 +477,10 @@ function renderPriceHistoryChart(canvas, history, currency) {
           data: history.map(
             (item) => item.current_price_minor / 100
           ),
-          borderColor: "#2563eb",
-          backgroundColor: "#2563eb",
+          borderColor: currentPriceColor,
+          backgroundColor: currentPriceColor,
           tension: 0.2,
+          fill: false,
         },
         {
           label: "Original Price",
@@ -468,39 +489,75 @@ function renderPriceHistoryChart(canvas, history, currency) {
               ? null
               : item.original_price_minor / 100
           ),
-          borderColor: "#dc2626",
+          borderColor: mutedColor,
           borderDash: [6, 4],
-          backgroundColor: "#dc2626",
+          backgroundColor: mutedColor,
           tension: 0.2,
           spanGaps: false,
+          fill: false,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: true,
+
       interaction: {
         mode: "index",
         intersect: false,
       },
+
       scales: {
-        y: {
+        x: {
+          grid: {
+            color: borderColor,
+          },
           ticks: {
+            color: mutedColor,
+            font: {
+              family: '"IBM Plex Mono", monospace',
+              size: 11,
+            },
+          },
+        },
+
+        y: {
+          grid: {
+            color: borderColor,
+          },
+          ticks: {
+            color: mutedColor,
+            font: {
+              family: '"IBM Plex Mono", monospace',
+              size: 11,
+            },
             callback(value) {
               return formatRupees(value * 100);
             },
           },
         },
       },
+
       plugins: {
+        legend: {
+          labels: {
+            color: inkColor,
+            font: {
+              family: '"IBM Plex Sans", sans-serif',
+              size: 12,
+            },
+          },
+        },
+
         tooltip: {
-          backgroundColor: "#1f2937",
-          titleColor: "#ffffff",
-          bodyColor: "#ffffff",
-          borderColor: "#9ca3af",
+          backgroundColor: surfaceColor,
+          titleColor: inkColor,
+          bodyColor: inkColor,
+          borderColor: borderColor,
           borderWidth: 1,
           padding: 12,
           displayColors: true,
+
           callbacks: {
             label(context) {
               const value = context.parsed.y;
@@ -522,7 +579,7 @@ function renderPriceHistoryChart(canvas, history, currency) {
 
 
 // Load and render price history without blocking the Trust Score.
-async function showPriceHistory(detail, product) {
+async function showPriceHistory(detail, product, trustScore) {
   const container = detail.querySelector(".price-chart-container");
   const canvas = detail.querySelector("#price-history-chart");
 
@@ -555,7 +612,7 @@ async function showPriceHistory(detail, product) {
       container.append(message);
       return;
     }
-    renderPriceHistoryChart(canvas, history, product.currency);
+    renderPriceHistoryChart(canvas, history, product.currency, trustScore);
     const summary = document.createElement("p");
     summary.className = "chart-summary";
     let lowestPrice = Infinity;
@@ -853,7 +910,7 @@ async function showProductDetail(product, showGrid) {
     loadingMessage.remove();
     detail.append(...buildDetailContent(product, trustScore));
     // Load the chart separately so it doesn't block the Trust Score.
-    showPriceHistory(detail, product);
+    showPriceHistory(detail, product, trustScore);
     detail.setAttribute("aria-busy", "false");
 
     const title = detail.querySelector("#product-detail-title");

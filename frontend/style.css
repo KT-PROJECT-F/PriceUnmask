@@ -1,158 +1,289 @@
-body {
-  font-family: system-ui, sans-serif;
-  margin: 0 auto;
-  max-width: 1100px;
-  padding: 16px;
-  background: #f5f7fa;
+
+/* ========================================
+   PriceUnmask - Dashboard Design System
+   ======================================== */
+
+:root {
+  /* Surface colors */
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --surface-tint: #F1F0EA;
+  --border: #E4E2DC;
+  --border-strong: #D8D4CB;
+
+  /* Text colors */
+  --ink: #1C1B19;
+  --ink-muted: #6B6860;
+  --ink-faint: #8A8678;
+
+  /* Brand colors */
+  --accent: #1D4D43;
+  --accent-hover: #163B33;
+
+  /* Trust badge colors */
+  --genuine-color: #1D4D43;
+  --genuine-border: #CFE0DB;
+  --genuine-bg: #F2F7F5;
+
+  --inflated-color: #8C2F26;
+  --inflated-border: #EAD3CF;
+  --inflated-bg: #FBF2F1;
+
+  --uncertain-color: #8A6418;
+  --uncertain-border: #E8DCC3;
+  --uncertain-bg: #FAF6EC;
+
+  --nodiscount-color: #45586B;
+  --nodiscount-border: #D7DEE5;
+  --nodiscount-bg: #F3F5F7;
+
+  --insufficient-color: #716C62;
+  --insufficient-border: #D8D4CB;
+  --insufficient-bg: #F9F8F5;
+
+  /* Typography */
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-serif: "Newsreader", serif;
 }
 
-header {
-  margin-bottom: 24px;
-}
+/* ========================================
+   Base layout and typography
+   ======================================== */
 
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-}
-
-.product-card {
-  padding: 20px;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  overflow-wrap: anywhere;
-}
-
-.product-card h2 {
-  font-size: 20px;
-  margin-top: 0;
-}
-
-.trust-label {
-  font-weight: bold;
-}
-
-#product-status {
-  padding: 16px;
-}
-
-.trust-badge {
-  display: inline-block;
-  padding: 0.4rem 0.7rem;
-  border-radius: 0.4rem;
-  font-weight: 700;
-}
-
-.trust-badge-genuine {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.trust-badge-uncertain {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.trust-badge-likely_inflated {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.trust-badge-insufficient_data {
-  background: #e5e7eb;
-  color: #374151;
-}
-
-.trust-badge-no_discount {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.price-chart-container {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 0.5rem;
-}
-
-.price-chart-container canvas {
-  width: 100%;
-  max-height: 400px;
-}
-
-.chart-summary {
-  margin-top: 0.75rem;
-  color: #4b5563;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.trust-score-message {
-  margin-top: 0.75rem;
-  padding: 12px 16px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-  color: #1e40af;
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-/* Anomaly status in the product detail view */
-.anomaly-panel {
-  margin-top: 0.75rem;
-  padding: 12px 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
-}
-
-.anomaly-badge {
-  display: inline-block;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-.anomaly-badge-normal {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.anomaly-badge-unusual {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.anomaly-badge-insufficient {
-  background: #e5e7eb;
-  color: #374151;
-}
-
-.anomaly-message {
-  margin: 0.5rem 0 0;
-  font-size: 0.95rem;
-}
-
-/* Collector status panel */
-.collector-status {
-  margin: 1rem 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.5rem;
-  overflow-wrap: anywhere;
-  min-width: 0;
+* {
   box-sizing: border-box;
 }
 
+body {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 56px 32px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+header {
+  margin-bottom: 40px;
+}
+
+header h1,
+.product-detail > h2 {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+header h1 {
+  margin: 0 0 8px;
+}
+
+header p {
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+h2,
+h3 {
+  color: var(--ink);
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ========================================
+   Search
+   ======================================== */
+
+#search-box {
+  margin-bottom: 32px;
+}
+
+#product-search {
+  display: block;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 15px var(--font-sans);
+}
+
+#product-search::placeholder {
+  color: var(--ink-faint);
+}
+
+#product-search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   Product grid and cards
+   ======================================== */
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(240px, 1fr)
+  );
+  gap: 24px;
+}
+
+.product-card {
+  padding: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: none;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.product-card:hover {
+  border-color: var(--border-strong);
+}
+
+.product-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.product-card h2 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.product-card p,
+.product-detail > p {
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.product-card p {
+  margin: 8px 0;
+}
+
+/* Dashed card for insufficient evidence */
+.product-card-insufficient-data {
+  border-style: dashed;
+  border-color: var(--insufficient-border);
+}
+
+/* ========================================
+   Trust Score badges
+   ======================================== */
+
+.trust-label {
+  font-weight: 600;
+}
+
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.trust-badge::before {
+  content: "";
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.trust-badge-genuine {
+  color: var(--genuine-color);
+  border-color: var(--genuine-border);
+  background: var(--genuine-bg);
+}
+
+.trust-badge-uncertain {
+  color: var(--uncertain-color);
+  border-color: var(--uncertain-border);
+  background: var(--uncertain-bg);
+}
+
+.trust-badge-likely_inflated {
+  color: var(--inflated-color);
+  border-color: var(--inflated-border);
+  background: var(--inflated-bg);
+}
+
+.trust-badge-insufficient_data {
+  color: var(--insufficient-color);
+  border-color: var(--insufficient-border);
+  border-style: dashed;
+  background: var(--insufficient-bg);
+}
+
+.trust-badge-no_discount {
+  color: var(--nodiscount-color);
+  border-color: var(--nodiscount-border);
+  background: var(--nodiscount-bg);
+}
+
+/* ========================================
+   Product status
+   ======================================== */
+
+#product-status {
+  padding: 16px 0;
+  color: var(--ink-muted);
+}
+
+/* ========================================
+   Collector status panel
+   ======================================== */
+
+.collector-status {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px 24px;
+  margin: 32px 0;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-tint);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
 .collector-status h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .collector-status p {
@@ -160,25 +291,42 @@ header {
   line-height: 1.5;
 }
 
-/* Run now button and collector action feedback */
+#collector-status-message {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+#collector-status-message::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
 #run-collector-button {
-  margin-top: 0.75rem;
-  padding: 0.65rem 1rem;
-  border: 0;
-  border-radius: 0.375rem;
-  background: #2563eb;
-  color: #ffffff;
-  font: inherit;
-  font-weight: 600;
+  grid-column: 2;
+  grid-row: 2;
+  padding: 9px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font: 500 13px var(--font-sans);
   cursor: pointer;
 }
 
 #run-collector-button:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--accent);
+  color: var(--surface);
 }
 
 #run-collector-button:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
@@ -188,13 +336,192 @@ header {
 }
 
 #collector-action-message {
-  margin-top: 0.5rem;
+  grid-column: 1 / -1;
+  color: var(--ink-muted);
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 480px) {
+/* ========================================
+   Price history chart
+   ======================================== */
+
+.price-chart-container {
+  margin-top: 32px;
+  padding: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.price-chart-container h3 {
+  margin: 0 0 20px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.price-chart-container canvas {
+  display: block;
+  width: 100%;
+  max-height: 400px;
+}
+
+.chart-summary {
+  margin-top: 16px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ========================================
+   Trust score messages
+   ======================================== */
+
+.trust-score-message {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--insufficient-bg);
+  border: 1px solid var(--insufficient-border);
+  border-radius: 8px;
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ========================================
+   Anomaly status panel
+   ======================================== */
+
+.anomaly-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.anomaly-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.anomaly-badge-normal {
+  background: var(--genuine-bg);
+  border-color: var(--genuine-border);
+  color: var(--genuine-color);
+}
+
+.anomaly-badge-unusual {
+  background: var(--inflated-bg);
+  border-color: var(--inflated-border);
+  color: var(--inflated-color);
+}
+
+.anomaly-badge-insufficient {
+  background: var(--insufficient-bg);
+  border-color: var(--insufficient-border);
+  color: var(--insufficient-color);
+}
+
+.anomaly-message {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+/* ========================================
+   Product detail and buttons
+   ======================================== */
+
+.product-detail {
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.product-detail > h2 {
+  margin-top: 0;
+}
+
+.product-detail a {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.product-detail button {
+  padding: 9px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 13px var(--font-sans);
+  cursor: pointer;
+}
+
+.product-detail button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.product-detail ul {
+  padding-left: 22px;
+  color: var(--ink-muted);
+  line-height: 1.7;
+}
+
+.error-message {
+  color: var(--inflated-color);
+  font-size: 14px;
+}
+
+/* ========================================
+   Responsive layout
+   ======================================== */
+
+@media (max-width: 600px) {
+  body {
+    padding: 32px 16px;
+  }
+
+  header {
+    margin-bottom: 32px;
+  }
+
+  header h1,
+  .product-detail > h2 {
+    font-size: 28px;
+  }
+
+  .product-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .product-card,
+  .product-detail,
+  .price-chart-container {
+    padding: 20px;
+  }
+
   .collector-status {
-    margin: 0.75rem 0;
-    padding: 0.75rem;
+    grid-template-columns: 1fr;
+    margin: 24px 0;
+    padding: 16px;
+  }
+
+  #run-collector-button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+
+  #collector-action-message {
+    grid-column: 1;
   }
 }

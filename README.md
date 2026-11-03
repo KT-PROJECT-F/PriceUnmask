@@ -120,6 +120,15 @@ pytest -q
 The frontend uses plain JavaScript, not React. The current anomaly detector uses statistical rolling z-score rules, not a trained machine-learning model.
 
 
+## Known Limitations
+
+The following limitations were identified during this development cycle:
+
+1. **Real-world price change validation:** The collector has not yet collected a real price change or discount claim in production. Therefore, Trust Score and Anomaly Detection have not yet been validated against real-world price-change signals. See [Trust Score Findings](docs/design/trust_score_findings.md) and [Anomaly Detection Findings](docs/design/anomaly_findings.md).
+
+2. **Stale data during the 31 October demo:** The demo ran using data that was approximately 24 hours old because the collector experienced an undetected outage during the demo day. See [Issue #155 – Scheduler: Run the collector unattended until the demo](https://github.com/KT-PROJECT-F/PriceUnmask/issues/155).
+
+
 ### Design Notes
 
 - [Anomaly findings](docs/design/anomaly_findings.md)

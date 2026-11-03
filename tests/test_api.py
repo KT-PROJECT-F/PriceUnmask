@@ -235,13 +235,25 @@ def test_get_missing_product(client):
     response = client.get("/api/products/999999")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 def test_get_product_bad_id(client):
     response = client.get("/api/products/abc")
 
     assert response.status_code == 422
+
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["message"] == "Request validation failed"
+    assert isinstance(body["error"]["details"], list)
+    assert body["error"]["details"]
 
 
 @pytest.mark.parametrize(
@@ -260,8 +272,15 @@ def test_product_endpoints_reject_huge_ids(client, endpoint):
 
 def test_get_product_largest_valid_id_is_404(client):
     response = client.get("/api/products/9223372036854775807")
+
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 @pytest.mark.parametrize(
@@ -320,7 +339,13 @@ def test_get_product_history_missing_product(client):
     response = client.get("/api/products/999999/history")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 def test_get_product_history_without_snapshots_is_empty_not_404(client):
@@ -435,7 +460,13 @@ def test_start_scrape_run_returns_409_when_run_is_running(client):
         response = client.post("/api/scrape/run")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "A scrape run is already in progress"}
+    assert response.json() == {
+        "error": {
+            "code": "SCRAPE_ALREADY_RUNNING",
+            "message": "A scrape run is already in progress",
+            "details": None,
+        }
+    }
     mock_scrape.assert_not_called()
 
 
@@ -480,7 +511,13 @@ def test_start_scrape_run_returns_500_when_cleanup_fails(client):
         response = client.post("/api/scrape/run")
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Could not close stale scrape runs"}
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "Could not close stale scrape runs",
+            "details": None,
+        }
+    }
     mock_running.assert_not_called()
     mock_scrape.assert_not_called()
 
@@ -638,7 +675,13 @@ def test_get_product_trust_score_missing_product(client):
     response = client.get("/api/products/999999/trust-score")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 def test_trust_score_anomaly_five_snapshots_is_insufficient(client):

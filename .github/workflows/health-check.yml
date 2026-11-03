@@ -1,5 +1,4 @@
 name: Health Check
-
 on:
   schedule:
     - cron: '0 1 * * *'
@@ -21,7 +20,9 @@ jobs:
       - name: Run automated health check
         id: check
         run: |
+          set +e
           python -m backend.devtools.check_db 2>&1 | tee health.log
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
           cat health.log
       - name: Summary
         if: always()
@@ -30,10 +31,16 @@ jobs:
           cat health.log >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if grep -q "CHECK REQUIRED" health.log; then
-            echo "**Status: CHECK REQUIRED - needs attention**" >> $GITHUB_STEP_SUMMARY
-            echo "::warning::Collector health is CHECK REQUIRED"
-          else
+            echo "**Status: CHECK REQUIRED**" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::CHECK REQUIRED"
+            exit 1
+          elif grep -q "HEALTHY" health.log && [ "${{ steps.check.outputs.exit_code }}" = "0" ]; then
             echo "**Status: HEALTHY**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status: FAILED - Cannot read database or crashed**" >> $GITHUB_STEP_SUMMARY
+            echo "**Note: dev is protected, plain git push won't work for persistence. Needs data branch or external storage.**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Health check crashed / DB missing"
+            exit 1
           fi
 
 env:

@@ -1,12 +1,11 @@
 name: Collector
-
 on:
   schedule:
     - cron: '0 */4 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   collect:
@@ -17,18 +16,17 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Run single scrape cycle
         run: |
           python -c "from backend.db.database import init_db; init_db(); from backend.scheduler.jobs import run_scrape_cycle; run_scrape_cycle()"
-      - name: Commit DB back to branch
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add -f data/priceunmask.db
-          git diff --staged --quiet || git commit -m "data: update price history [skip ci]"
-          git push
+      - name: Upload DB as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: priceunmask-db
+          path: data/priceunmask.db
+          retention-days: 7
 
 env:
   DATABASE_URL: "sqlite:///data/priceunmask.db"

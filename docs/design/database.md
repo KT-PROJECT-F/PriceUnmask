@@ -72,13 +72,55 @@ The cleanup function must be invoked for this recovery to occur; it is not a bac
 
 ## How it is tested
 
-`tests/test_crud.py` checks important database behaviour:
+The database tests cover product persistence, price history, timestamps, search behaviour, stale-run cleanup, and collector/API database access.
+
+Important tests include:
 
 - `test_upsert_same_product_twice_gives_one_product_two_snapshots` verifies product reuse and history preservation.
 - `test_read_functions_return_aware_utc_timestamps` verifies returned timestamps are timezone-aware UTC.
 - `test_mark_one_stale_run_failed` verifies stale-run cleanup.
 - `test_list_products_search_percent_matches_literal_character` verifies literal `%` search.
+- `test_api_can_read_while_collector_write_is_uncommitted` verifies that the API can read committed data while the collector has an uncommitted write, and can see the new product after the collector commits.
 
-## Known limits and what we would do next
+The concurrency integration test uses a temporary file-backed SQLite database with WAL enabled. It exercises the actual collector write path while the API product-list endpoint reads committed data. It verifies reader/writer concurrency, not simultaneous independent writers.
 
-The current design uses SQLite and SQLAlchemy. SQLite write concurrency and database growth may become limitations as collection volume increases. Next, we could add stronger integration tests for concurrent writes and evaluate a server database if workload demands it.
+## Database choice: SQLite or PostgreSQL
+
+**Decision: Keep SQLite with WAL for the current application. Do not migrate to PostgreSQL yet.**
+
+### Why we chose SQLite
+
+- The existing application already uses SQLite and SQLAlchemy.
+- WAL allows API readers to continue reading committed data while a collector write is in progress.
+- The new file-backed concurrency integration test verifies this reader/writer behaviour.
+- The existing schema supports multiple data sources through the unique `(source, external_id)` product constraint.
+- Adding another source does not by itself require a database migration.
+
+### Limitations
+
+SQLite allows only one active writer at a time. WAL improves reader/writer concurrency, but it does not provide unrestricted concurrent writes.
+
+Issue #223 identifies the need for another source with changing prices and discount claims because Books to Scrape did not provide useful price changes or original-price values during the observed collection period.
+
+However, the issue description does not establish the new source's actual product count, collection frequency, or resulting database growth. These values must be measured after the new source is integrated.
+
+The current demo database is not representative production workload evidence and should not be used to justify a database migration.
+
+### When we would consider PostgreSQL
+
+We should evaluate PostgreSQL if measurements show any of the following:
+
+- Frequent SQLite database-locked or busy errors during normal collection.
+- Sustained write contention as multiple sources are collected.
+- API read latency or collector completion time becomes unacceptable.
+- Deployment requires multiple application instances or independent collector workers writing to the same database.
+
+Before migrating, measure product counts by source, snapshots collected per day, database size, write failures, transaction duration, and API response latency during collection.
+
+### Future evaluation
+
+The decision to retain SQLite is provisional until the new source's
+actual collection volume and database growth have been measured.
+Once Issue #223 is integrated, collect workload metrics before
+reassessing whether PostgreSQL is necessary.
+Keep SQLite with WAL while it meets the application's measured workload. Revisit PostgreSQL when actual collection metrics demonstrate that SQLite's single-writer limitation or deployment requirements are becoming a problem.

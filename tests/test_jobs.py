@@ -87,6 +87,25 @@ def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
     assert calls[-1] == ("finish", "success", 2, None)
 
 
+def test_croma_items_are_saved_under_their_own_source(monkeypatch, calls):
+    item = make_item("322406")
+    item = ScrapedProduct(
+        external_id=item.external_id,
+        name=item.name,
+        url="https://www.croma.com/example-product/p/322406",
+        current_price_minor=item.current_price_minor,
+        original_price_minor=3_600_000,
+        in_stock=None,
+        currency="INR",
+        scraped_at=item.scraped_at,
+        source="croma",
+    )
+    monkeypatch.setattr(jobs, "scrape", lambda url: [item])
+
+    assert jobs.run_scrape_cycle() == 1
+    assert calls[1][1] == "croma"
+
+
 def test_running_scrape_run_skips_scheduled_cycle(monkeypatch, calls, caplog):
     caplog.set_level("INFO")
     monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: True)

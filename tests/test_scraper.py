@@ -6,9 +6,11 @@ from pathlib import Path
 import pytest
 
 from backend.scraper.product_scraper import (
+    parse_croma_product,
     parse_listing,
     parse_next_page_url,
     parse_price_to_minor,
+    scrape,
 )
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent.parent / "data" / "snapshots"
@@ -594,3 +596,84 @@ def test_next_link_fragment_is_dropped():
         )
         == "https://books.toscrape.com/catalogue/page-2.html"
     )
+
+
+def test_parse_croma_product_detail_page():
+    html = """
+    <html>
+      <head><title>Buy Croma Washing Machine Online</title></head>
+      <body>
+        <h1>Croma 10 kg washing machine</h1>
+        <script>
+          window.state = {
+            "pdpPriceReducer": {
+              "pdpPriceData": {
+                "sellingPrice": {"value": "19390.00"},
+                "mrp": {"value": "36000.00"}
+              }
+            }
+          };
+        </script>
+      </body>
+    </html>
+    """
+
+    product = parse_croma_product(
+        html,
+        "https://www.croma.com/example-product/p/322406",
+    )
+
+    assert product is not None
+    assert product.external_id == "322406"
+    assert product.name == "Croma 10 kg washing machine"
+    assert product.current_price_minor == 1_939_000
+    assert product.original_price_minor == 3_600_000
+    assert product.currency == "INR"
+    assert product.source == "croma"
+
+
+def test_scrape_croma_product_page(monkeypatch, tmp_path):
+    html = """
+    <html>
+      <head><title>Croma 10 kg washing machine</title></head>
+      <body><script>
+        "pdpPriceReducer":{"pdpPriceData":{
+          "sellingPrice":{"value":"19390.00"},
+          "mrp":{"value":"36000.00"}
+        }, "isFetching":false}
+      </script></body>
+    </html>
+    """
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.fetch_html",
+        lambda url: html,
+    )
+    monkeypatch.setattr("backend.scraper.product_scraper.SNAPSHOT_DIR", tmp_path)
+
+    products = scrape("https://www.croma.com/example-product/p/322406")
+
+    assert len(products) == 1
+    assert products[0].external_id == "322406"
+    assert products[0].source == "croma"
+    assert products[0].current_price_minor == 1_939_000
+    assert products[0].original_price_minor == 3_600_000
+    assert len(list(tmp_path.glob("*.html"))) == 1
+
+
+def test_scrape_books_listing_keeps_existing_parser(monkeypatch, tmp_path):
+    html = FIXTURE_PATH.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.fetch_html",
+        lambda url: html,
+    )
+    monkeypatch.setattr("backend.scraper.product_scraper.SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(
+        "backend.scraper.product_scraper.settings",
+        type("Settings", (), {"scrape_max_pages": 1})(),
+    )
+
+    products = scrape("https://books.toscrape.com/")
+
+    assert len(products) == 20
+    assert products[0].external_id == "a-light-in-the-attic"
+    assert products[0].source is None

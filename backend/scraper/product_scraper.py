@@ -39,6 +39,7 @@ class ScrapedProduct:
     in_stock: bool | None
     currency: str
     scraped_at: datetime  # timezone-aware UTC
+    source: str | None = None
 
 
 def parse_price_to_minor(text: str) -> int | None:
@@ -67,6 +68,58 @@ def parse_price_to_minor(text: str) -> int | None:
 
     decimal = decimal.ljust(2, "0")
     return int(whole) * 100 + int(decimal)
+
+
+def parse_croma_product(html: str, url: str) -> ScrapedProduct | None:
+    soup = BeautifulSoup(html, "html.parser")
+    title_element = soup.select_one("h1") or soup.title
+    title = title_element.get_text(" ", strip=True) if title_element else ""
+    product_id = re.search(r"/p/([^/?#]+)", urlsplit(url).path)
+    price_data_start = re.search(r'"pdpPriceData"\s*:\s*\{', html)
+
+    if not title or not product_id or not price_data_start:
+        return None
+
+    price_data = html[price_data_start.end() :].split('"isFetching"', 1)[0]
+    selling_match = re.search(
+        r'"sellingPrice"\s*:\s*\{\s*"value"\s*:\s*"([^"]+)"',
+        price_data,
+    )
+    mrp_match = re.search(
+        r'"mrp"\s*:\s*\{\s*"value"\s*:\s*"([^"]+)"',
+        price_data,
+    )
+    if not selling_match:
+        return None
+
+    current_price = parse_price_to_minor(selling_match.group(1))
+    original_price = parse_price_to_minor(mrp_match.group(1)) if mrp_match else None
+
+    if current_price is None:
+        return None
+
+    if original_price is not None and original_price <= current_price:
+        original_price = None
+
+    return ScrapedProduct(
+        external_id=product_id.group(1),
+        name=title,
+        url=url,
+        current_price_minor=current_price,
+        original_price_minor=original_price,
+        in_stock=None,
+        currency="INR",
+        scraped_at=datetime.now(UTC),
+        source="croma",
+    )
+
+
+def _is_croma_product_url(url: str) -> bool:
+    parsed_url = urlsplit(url)
+    return (
+        parsed_url.hostname in {"croma.com", "www.croma.com"}
+        and re.search(r"/p/[^/]+/?$", parsed_url.path) is not None
+    )
 
 
 def parse_listing(html: str, base_url: str) -> list[ScrapedProduct]:
@@ -391,7 +444,13 @@ def scrape(url: str) -> list[ScrapedProduct]:
                 snapshot_path,
             )
 
-        page_products = parse_listing(html, current_url)
+        if _is_croma_product_url(current_url):
+            product = parse_croma_product(html, current_url)
+            if product is None:
+                raise RuntimeError(f"Could not parse Croma product page: {current_url}")
+            page_products = [product]
+        else:
+            page_products = parse_listing(html, current_url)
 
         for product in page_products:
             if product.external_id in seen_product_ids:

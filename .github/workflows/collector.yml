@@ -1,0 +1,27 @@
+name: Collector
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run collector
+        run: python -m backend.scheduler.jobs
+        env:
+          DATABASE_URL: "sqlite:///data/priceunmask.db"
+          SCRAPE_MAX_PAGES: "3"
+          SCRAPE_INTERVAL_HOURS: "4"

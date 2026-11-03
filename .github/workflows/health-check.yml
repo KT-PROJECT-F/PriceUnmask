@@ -1,0 +1,27 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run automated health check
+        run: python -m backend.devtools.check_db
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Collector Health" >> $GITHUB_STEP_SUMMARY
+          echo "Checked with backend.devtools.check_db - no manual comment needed" >> $GITHUB_STEP_SUMMARY

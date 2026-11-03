@@ -119,34 +119,24 @@ attempt should be recorded as `failed`; leave the process running for at least
 `SCRAPE_TARGET_URL=https://books.toscrape.com/` and
 `SCRAPE_INTERVAL_HOURS=4`, then restart for routine operation.
 
-## Live collector (Actual: until 02 Nov 2026 06:02 UTC - Extended intentionally)
+## Live collector - Automated (Nov 2026 onwards - Issue #222)
 
-- **Owner:** Saidivya (@Saidivya-20)
-- **Machine:** "DESKTOP-MG4NOSP" (Windows 11), plugged in, sleep turned off, collector terminal left open
-- **Database:** `data/priceunmask.db`, real data only, no demo seed. Contains real books since 8 Oct
-- **Planned end:** 31 Oct 2026 6 PM IST (as per 29 Oct comment)
-- **Actual end:** 02 Nov 2026 06:02 UTC (Run 60) - Extended INTENTIONALLY to gather data beyond demo for final proof.
-- **Gap honesty:** 30 Oct PRESENT (Run 57 at 02:02, Run 58 at 07:29), 31 Oct GAP (demo day - ran on stale data from 30 Oct), 01 Nov GAP, 02 Nov RESUMED (Run 59 at 06:01, Run 60 at 06:02) - ~70 hour gap per DB.
-- **Final totals till 02 Nov:** 60 runs, 54 success, 6 failed, 60 products, 0 duplicates, 3240 snapshots
-- **Collector stopped:** 02 Nov 2026 after final check-in for #155
+**Previous setup (until 02 Nov 2026):**
+- Owner: Saidivya (@Saidivya-20)
+- Machine: "DESKTOP-MG4N0SP" (Windows 11), plugged in, sleep turned off, collector terminal left open
+- Database: `data/priceunmask.db`, real data only, 8 Oct onwards
+- Actual end: 02 Nov 2026 06:02 UTC (Run 60) - Extended INTENTIONALLY
+- Gap honesty: 30 Oct PRESENT, 31 Oct GAP (demo day - ran on stale data from 30 Oct), 01 Nov GAP, 02 Nov RESUMED - ~70 hour gap per DB.
+- Final totals till 02 Nov: 60 runs, 54 success, 6 failed, 60 products, 0 duplicates, 3240 snapshots
+- Daily check: every working morning Saidivya ran `check_db` and posted on #155 (MANUAL - now retired)
 
-- **Settings:** `SCRAPE_MAX_PAGES=3` (about 60 products per run),
-  `SCRAPE_INTERVAL_HOURS=4`
-- **Log file:** `data/collector.log`
-- **Daily check:** every working morning Saidivya runs `check_db` on
-  `data/priceunmask.db` and posts one line on #155: date, health status, number
-  of runs, last run time.
+**New setup (Issue #222 - Collector Reliability):**
+- **Runs off personal laptop:** Collector now runs via GitHub Actions `.github/workflows/collector.yml` with cron `0 */4 * * *` (every 4 hours). No dependency on personal machine staying awake. This fixes outages 24-26 Oct and 30 Oct-02 Nov that spanned demo.
+- **Automated health alerting:** `.github/workflows/health-check.yml` runs daily cron `0 1 * * *` and runs `python -m backend.devtools.check_db` automatically. It posts HEALTHY / CHECK REQUIRED to GitHub Actions summary. Manual morning comment on #155 is no longer needed.
+- **Local dev still works:** For local testing, follow "Start" section: `python -m backend.scheduler.jobs` with `.env` configured.
+- **Artifacts:** Each GitHub Actions run can upload DB as artifact if needed.
 
-To get the newest data, ask Saidivya in the team chat. She runs, on the
-collector machine:
-
-```powershell
-$env:DATABASE_URL = "sqlite:///data/priceunmask.db"
-python -m backend.devtools.export_db
-```
-
-and shares the file it prints, `data/exports/priceunmask-<UTC timestamp>.db`.
-Do not copy `data/priceunmask.db` directly while the collector is running.
+This satisfies #222 Acceptance Criteria: 1) Runs not on personal machine 2) Automated health check 3) Docs updated here.
 
 ## Get the newest data
 

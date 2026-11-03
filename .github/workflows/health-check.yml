@@ -19,9 +19,22 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Run automated health check
-        run: python -m backend.devtools.check_db
+        id: check
+        run: |
+          python -m backend.devtools.check_db 2>&1 | tee health.log
+          cat health.log
       - name: Summary
         if: always()
         run: |
-          echo "### Collector Health" >> $GITHUB_STEP_SUMMARY
-          echo "Checked with backend.devtools.check_db - no manual comment needed" >> $GITHUB_STEP_SUMMARY
+          echo "## Collector Health" >> $GITHUB_STEP_SUMMARY
+          cat health.log >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if grep -q "CHECK REQUIRED" health.log; then
+            echo "**Status: CHECK REQUIRED - needs attention**" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Collector health is CHECK REQUIRED"
+          else
+            echo "**Status: HEALTHY**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+env:
+  DATABASE_URL: "sqlite:///data/priceunmask.db"

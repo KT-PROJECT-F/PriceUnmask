@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   collect:
@@ -19,9 +19,18 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run collector
-        run: python -m backend.scheduler.jobs
-        env:
-          DATABASE_URL: "sqlite:///data/priceunmask.db"
-          SCRAPE_MAX_PAGES: "3"
-          SCRAPE_INTERVAL_HOURS: "4"
+      - name: Run single scrape cycle
+        run: |
+          python -c "from backend.db.database import init_db; init_db(); from backend.scheduler.jobs import run_scrape_cycle; run_scrape_cycle()"
+      - name: Commit DB back to branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -f data/priceunmask.db
+          git diff --staged --quiet || git commit -m "data: update price history [skip ci]"
+          git push
+
+env:
+  DATABASE_URL: "sqlite:///data/priceunmask.db"
+  SCRAPE_MAX_PAGES: "3"
+  SCRAPE_INTERVAL_HOURS: "4"

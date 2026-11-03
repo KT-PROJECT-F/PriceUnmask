@@ -3,4 +3,198 @@ body {
   margin: 0 auto;
   max-width: 1100px;
   padding: 16px;
+  background: #f5f7fa;
+}
+
+header {
+  margin-bottom: 24px;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.product-card {
+  padding: 20px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  overflow-wrap: anywhere;
+}
+
+.product-card h2 {
+  font-size: 20px;
+  margin-top: 0;
+}
+
+.trust-label {
+  font-weight: bold;
+}
+
+#product-status {
+  padding: 16px;
+}
+
+.trust-badge {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.4rem;
+  font-weight: 700;
+}
+
+.trust-badge-genuine {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.trust-badge-uncertain {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.trust-badge-likely_inflated {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.trust-badge-insufficient_data {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.trust-badge-no_discount {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.price-chart-container {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 0.5rem;
+}
+
+.price-chart-container canvas {
+  width: 100%;
+  max-height: 400px;
+}
+
+.chart-summary {
+  margin-top: 0.75rem;
+  color: #4b5563;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.trust-score-message {
+  margin-top: 0.75rem;
+  padding: 12px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1e40af;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* Anomaly status in the product detail view */
+.anomaly-panel {
+  margin-top: 0.75rem;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.anomaly-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.anomaly-badge-normal {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.anomaly-badge-unusual {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.anomaly-badge-insufficient {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.anomaly-message {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+
+/* Collector status panel */
+.collector-status {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.collector-status h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.collector-status p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Run now button and collector action feedback */
+#run-collector-button {
+  margin-top: 0.75rem;
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#run-collector-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+#run-collector-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+#run-collector-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+#collector-action-message {
+  margin-top: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .collector-status {
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+  }
 }

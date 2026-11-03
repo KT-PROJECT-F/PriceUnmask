@@ -1,0 +1,26 @@
+{
+  "product_id": 2,
+  "points": [
+    {"scraped_at":"2026-09-17T12:00:00Z","current_price_minor":349900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-18T12:00:00Z","current_price_minor":349900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-19T12:00:00Z","current_price_minor":344900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-20T12:00:00Z","current_price_minor":339900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-21T12:00:00Z","current_price_minor":339900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-22T12:00:00Z","current_price_minor":334900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-23T12:00:00Z","current_price_minor":329900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-24T12:00:00Z","current_price_minor":329900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-25T12:00:00Z","current_price_minor":324900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-26T12:00:00Z","current_price_minor":319900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-27T12:00:00Z","current_price_minor":314900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-28T12:00:00Z","current_price_minor":309900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-29T12:00:00Z","current_price_minor":309900,"original_price_minor":349900},
+    {"scraped_at":"2026-09-30T12:00:00Z","current_price_minor":304900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-01T12:00:00Z","current_price_minor":299900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-02T12:00:00Z","current_price_minor":294900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-03T12:00:00Z","current_price_minor":289900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-04T12:00:00Z","current_price_minor":284900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-05T12:00:00Z","current_price_minor":279900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-06T12:00:00Z","current_price_minor":269900,"original_price_minor":349900},
+    {"scraped_at":"2026-10-07T12:00:00Z","current_price_minor":279900,"original_price_minor":349900}
+  ]
+}

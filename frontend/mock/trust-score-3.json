@@ -1,0 +1,18 @@
+{
+  "product_id": 3,
+  "score": 31,
+  "label": "likely_inflated",
+  "reasons": [
+    "The current price is significantly higher than the historical low.",
+    "The advertised discount appears larger than the typical price movement.",
+    "A recent price increase was detected before the current deal."
+  ],
+  "signals": {
+    "price_stability": 0.32,
+    "discount_consistency": 0.27,
+    "anomaly_detected": true
+  },
+  "anomaly_status": "unusual",
+  "anomaly_result": true,
+  "anomaly_message": "An unusual price change was detected. Please review the price history before making a purchase."
+}

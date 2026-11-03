@@ -55,7 +55,8 @@ uvicorn backend.main:app --reload    # open http://127.0.0.1:8000/docs
 6. **Open a PR** on GitHub. Base: **`dev`**. Fill in the template. Write `Closes #12`.
 7. **Ask your review buddy** to review, then the mentor approves. Answer every comment and
    click "Resolve conversation"; unresolved threads block the merge.
-8. **After approval**, click **Squash and merge**, then delete your branch.
+8. **After approval, do not merge. The mentor merges.** Once GitHub shows the PR as merged,
+   switch back to `dev`, pull, and delete your local branch.
 9. Back to step 2 for the next task.
 
 ## When dev moved on while you were working

@@ -1,0 +1,544 @@
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
+from apscheduler.schedulers.blocking import BlockingScheduler
+from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
+
+from backend.db.crud import list_products, list_scrape_runs
+from backend.db.database import Base, make_engine
+from backend.db.models import PriceSnapshot, ScrapeRun
+from backend.scheduler import jobs
+from backend.scraper.product_scraper import ScrapedProduct
+
+
+class FakeSession:
+    def __init__(self):
+        self.rollbacks = 0
+
+    def __enter__(self):
+        return self
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def __exit__(self, *a):
+        return False
+
+
+def make_item(ext_id):
+    return ScrapedProduct(
+        external_id=ext_id,
+        name="x",
+        url="https://example.com",
+        current_price_minor=129900,
+        original_price_minor=None,
+        in_stock=True,
+        currency="INR",
+        scraped_at=datetime.now(UTC),
+    )
+
+
+@pytest.fixture
+def session(monkeypatch):
+    fake = FakeSession()
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: fake)
+    return fake
+
+
+@pytest.fixture
+def calls(monkeypatch, session):
+    log = []
+    run = SimpleNamespace(id=1)
+    monkeypatch.setattr(
+        jobs.crud,
+        "start_scrape_run",
+        lambda session: (log.append(("start", run)), run)[1],
+    )
+    monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: False)
+    monkeypatch.setattr(jobs.crud, "mark_stale_runs_failed", lambda session, older_than: 0)
+
+    def fake_upsert(session, source, item, run):
+        log.append(("upsert", source, item, run))
+
+    def fake_finish(session, run, status, products_seen, error=None):
+        log.append(("finish", status, products_seen, error))
+
+    monkeypatch.setattr(jobs.crud, "upsert_product_and_snapshot", fake_upsert)
+    monkeypatch.setattr(jobs.crud, "finish_scrape_run", fake_finish)
+    return log
+
+
+def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
+    items = [make_item("a"), make_item("b")]
+
+    def _happy_scrape(url):
+        return items
+
+    monkeypatch.setattr(jobs, "scrape", _happy_scrape)
+
+    assert jobs.run_scrape_cycle() == 2
+    assert [c[0] for c in calls] == ["start", "upsert", "upsert", "finish"]
+    assert calls[1][1] == "books-toscrape"
+    assert [call[2] for call in calls[1:3]] == items
+    assert all(call[3] is calls[0][1] for call in calls[1:3])
+    assert calls[-1] == ("finish", "success", 2, None)
+
+
+def test_running_scrape_run_skips_scheduled_cycle(monkeypatch, calls, caplog):
+    caplog.set_level("INFO")
+    monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: True)
+    monkeypatch.setattr(
+        jobs,
+        "scrape",
+        lambda url: pytest.fail("scrape must not start while another run is running"),
+    )
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls == []
+    assert "a run is already running" in caplog.text
+
+
+def test_no_running_scrape_run_starts_cycle(monkeypatch, calls):
+    monkeypatch.setattr(jobs.crud, "has_running_scrape_run", lambda session: False)
+    monkeypatch.setattr(jobs, "scrape", lambda url: [])
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls[0][0] == "start"
+    assert calls[-1] == ("finish", "success", 0, None)
+
+
+def test_empty_scrape_finishes_with_zero_and_warns(monkeypatch, calls, caplog):
+    def _empty_scrape(url):
+        return []
+
+    monkeypatch.setattr(jobs, "scrape", _empty_scrape)
+
+    count = jobs.run_scrape_cycle()
+    assert count == 0
+    assert calls[-1] == ("finish", "success", 0, None)
+    assert "Scrape returned no products" in caplog.text
+
+
+def test_scrape_url_comes_from_settings(monkeypatch, calls):
+    seen = {}
+
+    def fake_scrape(url):
+        seen["url"] = url
+        return []
+
+    monkeypatch.setattr(
+        jobs, "settings", SimpleNamespace(scrape_target_url="https://example.com/list")
+    )
+    monkeypatch.setattr(jobs, "scrape", fake_scrape)
+
+    jobs.run_scrape_cycle()
+    assert seen["url"] == "https://example.com/list"
+
+
+def test_build_scheduler_configures_immediate_interval_job(monkeypatch):
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_interval_hours=2.5))
+
+    scheduler = jobs.build_scheduler()
+
+    assert isinstance(scheduler, BlockingScheduler)
+    scheduled_jobs = scheduler.get_jobs()
+    assert len(scheduled_jobs) == 1
+    job = scheduled_jobs[0]
+    assert job.func is jobs.run_scrape_cycle
+    assert job.trigger.interval.total_seconds() == 2.5 * 60 * 60
+    assert job.max_instances == 1
+    assert job.coalesce is True
+    assert job.misfire_grace_time is None
+    assert job.next_run_time <= datetime.now(UTC)
+
+
+def test_main_initializes_database_and_shuts_down_on_interrupt(monkeypatch, caplog):
+    caplog.set_level("INFO")
+    calls = []
+
+    class FakeScheduler:
+        running = True
+
+        def start(self):
+            calls.append("start")
+            raise KeyboardInterrupt
+
+        def shutdown(self, wait):
+            calls.append(("shutdown", wait))
+            self.running = False
+
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(jobs, "init_db", lambda: calls.append("init_db"))
+    monkeypatch.setattr(
+        jobs.crud,
+        "mark_stale_runs_failed",
+        lambda session, older_than: calls.append(("cleanup", older_than)) or 2,
+    )
+    monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
+
+    jobs.main()
+
+    assert calls == [
+        "init_db",
+        ("cleanup", jobs.timedelta(minutes=jobs.settings.stale_run_minutes)),
+        "start",
+        ("shutdown", True),
+    ]
+    assert "Closed 2 stale scrape run(s)" in caplog.text
+
+
+def test_main_continues_when_stale_run_cleanup_fails(monkeypatch, caplog):
+    calls = []
+
+    class FakeScheduler:
+        running = True
+
+        def start(self):
+            calls.append("start")
+            raise KeyboardInterrupt
+
+        def shutdown(self, wait):
+            calls.append(("shutdown", wait))
+            self.running = False
+
+    def fail_cleanup(session, older_than):
+        raise RuntimeError("database unavailable")
+
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(jobs, "init_db", lambda: calls.append("init_db"))
+    monkeypatch.setattr(
+        jobs.crud,
+        "mark_stale_runs_failed",
+        fail_cleanup,
+    )
+    monkeypatch.setattr(jobs, "build_scheduler", lambda: scheduler)
+
+    jobs.main()
+
+    assert calls == ["init_db", "start", ("shutdown", True)]
+    assert "Could not close stale scrape runs at startup" in caplog.text
+
+
+def test_failure_after_first_item_is_recorded_as_partial(monkeypatch, calls, session, caplog):
+    items = [make_item("a"), make_item("b"), make_item("c")]
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
+
+    def flaky_upsert(session, source, item, run):
+        if item.external_id == "b":
+            raise RuntimeError("database error")
+        calls.append(("upsert", source, item, run))
+
+    monkeypatch.setattr(jobs.crud, "upsert_product_and_snapshot", flaky_upsert)
+
+    assert jobs.run_scrape_cycle() == 2
+    assert session.rollbacks == 1
+    assert [call[2].external_id for call in calls if call[0] == "upsert"] == ["a", "c"]
+    assert calls[-1] == ("finish", "partial", 2, "b: database error")
+    assert any(record.exc_info for record in caplog.records)
+
+
+def test_start_scrape_run_failure_does_not_raise(monkeypatch, calls, caplog):
+    def boom(session):
+        raise RuntimeError("database locked")
+
+    monkeypatch.setattr(jobs.crud, "start_scrape_run", boom)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls == []
+    assert "Scrape cycle could not run" in caplog.text
+    assert any(record.exc_info for record in caplog.records)
+
+
+def test_finish_scrape_run_failure_does_not_raise(monkeypatch, calls, caplog):
+    def scrape_boom(url):
+        raise RuntimeError("site down")
+
+    def finish_boom(session, run, status, products_seen, error=None):
+        raise RuntimeError("database locked")
+
+    monkeypatch.setattr(jobs, "scrape", scrape_boom)
+    monkeypatch.setattr(jobs.crud, "finish_scrape_run", finish_boom)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert "Could not finish scrape run" in caplog.text
+    assert "Could not record failure for scrape run" in caplog.text
+    assert any(record.exc_info for record in caplog.records)
+
+
+def test_scrape_failure_finishes_run_as_failed(monkeypatch, calls, caplog):
+    def scrape_boom(url):
+        raise RuntimeError("site down")
+
+    monkeypatch.setattr(jobs, "scrape", scrape_boom)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls[-1] == ("finish", "failed", 0, "site down")
+    assert any(record.exc_info for record in caplog.records)
+
+
+def test_failed_cycle_does_not_prevent_next_cycle(monkeypatch, real_database):
+    attempts = iter(
+        [
+            RuntimeError("site down"),
+            [make_item("a")],
+        ]
+    )
+
+    def scrape_once_per_cycle(url):
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(jobs, "scrape", scrape_once_per_cycle)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        runs = sorted(list_scrape_runs(session), key=lambda run: run.id)
+
+    assert [run.status for run in runs] == ["failed", "success"]
+    assert runs[0].error_message == "site down"
+    assert runs[1].products_seen == 1
+
+
+@pytest.fixture
+def real_database(monkeypatch):
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+    yield session_factory
+    engine.dispose()
+
+
+def test_scrape_cycle_persists_rows_with_real_crud(monkeypatch, real_database):
+    items = [make_item("a"), make_item("b")]
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
+
+    assert jobs.run_scrape_cycle() == 2
+
+    with real_database() as session:
+        runs = list_scrape_runs(session)
+        products = list_products(session)
+        snapshots = session.scalars(
+            select(PriceSnapshot).order_by(PriceSnapshot.current_price_minor)
+        ).all()
+
+    assert len(runs) == 1
+    assert runs[0].status == "success"
+    assert runs[0].products_seen == 2
+    assert runs[0].finished_at is not None
+    assert runs[0].error_message is None
+    assert {product.external_id for product in products} == {"a", "b"}
+    assert len(snapshots) == 2
+    assert {snapshot.scrape_run_id for snapshot in snapshots} == {runs[0].id}
+    assert {snapshot.current_price_minor for snapshot in snapshots} == {129900}
+
+
+def test_scrape_cycle_records_partial_run_when_one_real_save_fails(
+    monkeypatch, real_database, caplog
+):
+    items = [make_item("a"), make_item("b"), make_item("c")]
+    items[1] = replace(items[1], name=None)
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
+
+    assert jobs.run_scrape_cycle() == 2
+
+    with real_database() as session:
+        run = list_scrape_runs(session)[0]
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert run.status == "partial"
+    assert run.products_seen == 2
+    assert run.finished_at is not None
+    assert run.error_message.startswith("b:")
+    assert len(snapshots) == 2
+    assert "Could not save scraped item b for run" in caplog.text
+
+
+def test_empty_scrape_persists_successful_run_without_snapshots(monkeypatch, real_database, caplog):
+    monkeypatch.setattr(jobs, "scrape", lambda url: [])
+
+    assert jobs.run_scrape_cycle() == 0
+
+    with real_database() as session:
+        runs = list_scrape_runs(session)
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert len(runs) == 1
+    assert runs[0].status == "success"
+    assert runs[0].products_seen == 0
+    assert runs[0].finished_at is not None
+    assert runs[0].error_message is None
+    assert snapshots == []
+    assert "Scrape returned no products" in caplog.text
+
+
+def test_scrape_cycle_records_failed_run_when_all_real_saves_fail(monkeypatch, real_database):
+    items = [replace(make_item("a"), name=None), replace(make_item("b"), name=None)]
+    monkeypatch.setattr(jobs, "scrape", lambda url: items)
+
+    assert jobs.run_scrape_cycle() == 0
+
+    with real_database() as session:
+        run = list_scrape_runs(session)[0]
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert run.status == "failed"
+    assert run.products_seen == 0
+    assert run.finished_at is not None
+    assert run.error_message.startswith("a:")
+    assert len(snapshots) == 0
+
+
+def test_run_cycle_rollback_failure_recorded(monkeypatch, calls, session, caplog):
+    monkeypatch.setattr(jobs, "scrape", lambda url: [make_item("a")])
+
+    def upsert_boom(session, source, item, run):
+        raise RuntimeError("database error")
+
+    monkeypatch.setattr(jobs.crud, "upsert_product_and_snapshot", upsert_boom)
+    rollback_attempts = []
+
+    def rollback_boom():
+        rollback_attempts.append(True)
+        raise RuntimeError("rollback failed")
+
+    monkeypatch.setattr(session, "rollback", rollback_boom)
+
+    assert jobs.run_scrape_cycle() == 0
+    assert rollback_attempts == [True]
+    assert calls[-1] == (
+        "finish",
+        "failed",
+        0,
+        "a: database error; Rollback failed: rollback failed",
+    )
+    assert "Could not roll back after saving item" in caplog.text
+
+
+def test_run_for_missing_run_id_returns_zero_and_logs(monkeypatch, calls, caplog):
+
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", lambda session, run_id: None)
+
+    def _must_not_scrape(url):
+        raise AssertionError("scrape must not be called")
+
+    monkeypatch.setattr(jobs, "scrape", _must_not_scrape)
+
+    assert jobs.run_scrape_cycle_for_run(99) == 0
+    assert calls == []
+    assert "Scrape run 99 was not found" in caplog.text
+
+
+def test_run_that_is_not_running_is_skipped(monkeypatch, calls, caplog):
+    finished = SimpleNamespace(id=7, status="success")
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", lambda session, run_id: finished)
+
+    def _must_not_scrape(url):
+        raise AssertionError("scrape must not be called")
+
+    monkeypatch.setattr(jobs, "scrape", _must_not_scrape)
+
+    assert jobs.run_scrape_cycle_for_run(7) == 0
+    assert calls == []
+    assert "Scrape run 7 is not running" in caplog.text
+
+
+def test_run_for_existing_run_records_failure_when_scrape_raises(monkeypatch, calls, caplog):
+    existing = SimpleNamespace(id=5, status="running")
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", lambda session, run_id: existing)
+
+    def _broken_scrape(url):
+        raise RuntimeError("site down")
+
+    monkeypatch.setattr(jobs, "scrape", _broken_scrape)
+
+    assert jobs.run_scrape_cycle_for_run(5) == 0
+    assert calls == [("finish", "failed", 0, "site down")]
+    assert "Scraping failed for run 5" in caplog.text
+
+
+def test_run_for_existing_run_never_raises(monkeypatch, session, caplog):
+    def _broken_lookup(session, run_id):
+        raise RuntimeError("database locked")
+
+    monkeypatch.setattr(jobs.crud, "get_scrape_run", _broken_lookup)
+
+    assert jobs.run_scrape_cycle_for_run(3) == 0
+    assert "Scrape run 3 could not be processed" in caplog.text
+
+
+def test_stale_running_run_is_closed_and_cycle_runs(monkeypatch, real_database, caplog):
+    caplog.set_level("INFO")
+    with real_database() as session:
+        stale = ScrapeRun(
+            status="running",
+            products_seen=0,
+            started_at=datetime.now(UTC) - timedelta(hours=2),
+        )
+        session.add(stale)
+        session.commit()
+        stale_id = stale.id
+
+    monkeypatch.setattr(jobs, "scrape", lambda url: [make_item("a")])
+
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        runs = {run.id: run for run in list_scrape_runs(session)}
+
+    assert runs[stale_id].status == "failed"
+    assert runs[stale_id].error_message.startswith("Stale run")
+    new_runs = [run for run_id, run in runs.items() if run_id != stale_id]
+    assert [run.status for run in new_runs] == ["success"]
+    assert "Closed 1 stale scrape run(s)" in caplog.text
+
+
+def test_fresh_running_run_still_skips_cycle(monkeypatch, real_database, caplog):
+    caplog.set_level("INFO")
+    with real_database() as session:
+        fresh = ScrapeRun(
+            status="running",
+            products_seen=0,
+            started_at=datetime.now(UTC) - timedelta(minutes=5),
+        )
+        session.add(fresh)
+        session.commit()
+        fresh_id = fresh.id
+
+    monkeypatch.setattr(
+        jobs,
+        "scrape",
+        lambda url: pytest.fail("scrape must not start while a fresh run is running"),
+    )
+
+    assert jobs.run_scrape_cycle() == 0
+
+    with real_database() as session:
+        runs = list_scrape_runs(session)
+
+    assert [(run.id, run.status) for run in runs] == [(fresh_id, "running")]
+    assert "a run is already running" in caplog.text
+    assert "Closed" not in caplog.text
+
+
+def test_cycle_still_runs_when_stale_cleanup_fails(monkeypatch, calls, session, caplog):
+    def fail_cleanup(session, older_than):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(jobs.crud, "mark_stale_runs_failed", fail_cleanup)
+    monkeypatch.setattr(jobs, "scrape", lambda url: [])
+
+    assert jobs.run_scrape_cycle() == 0
+    assert session.rollbacks == 1
+    assert calls[0][0] == "start"
+    assert calls[-1] == ("finish", "success", 0, None)
+    assert "Could not close stale runs before scheduled cycle" in caplog.text

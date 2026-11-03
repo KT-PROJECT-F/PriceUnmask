@@ -32,7 +32,7 @@ stores every observation, and scores each "discount" for how real it is.
 | All DB access goes through `crud.py` | One place to change queries; no SQL scattered across modules. |
 | Frontend served by FastAPI at `/`, API at `/api` | One process, no CORS, one command to run. |
 | SQLite in WAL mode | Scheduler writes while API reads without locking errors. |
-| `insufficient_data` is a real Trust Score label | Honest about sparse early data (rubric: ML reasoning). |
+| `insufficient_data` and `no_discount` are Trust Score labels | Honest about sparse early data; distinguishes insufficient history from no valid discount claim. |
 | One **collector** machine owns the real DB | Real history must accumulate in ONE place. See section 7. |
 
 ## 3. Data model (backend/db/models.py)
@@ -64,12 +64,29 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | Method | Path | Returns | Errors |
 |---|---|---|---|
 | GET | `/api/health` | `{"status":"ok"}` | |
-| GET | `/api/products?search=` | `list[ProductOut]` | |
-| GET | `/api/products/{id}` | `ProductOut` | 404 |
-| GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 |
-| GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 |
+| GET | `/api/products?search=` | `list[ProductOut]` | 422 for invalid search length |
+| GET | `/api/products/{id}` | `ProductOut` | 404 if not found; 422 for invalid ID |
+| GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 if not found; 422 for invalid ID or days |
+| GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 if not found; 422 for invalid ID |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
-| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | 409 if a run is already in progress |
+| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; 409 if a run is still in progress; 500 if stale-run cleanup fails |
+
+The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
+The `ProductOut` response for `GET /api/products` and `GET /api/products/{id}` includes `trust_label`, calculated from the product's already-loaded price snapshots using the existing trust-score calculation.
+
+The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
+
+- `anomaly_status`: `insufficient_history`, `normal`, or `unusual`.
+- `anomaly_result`: `null` when history is insufficient, `false` when no unusual change is detected, or `true` when an unusual change is detected.
+- `anomaly_message`: A shopper-friendly explanation of the anomaly status. Internal detector notes are not exposed.
+
+| Anomaly status | Shopper-facing message |
+|---|---|
+| `insufficient_history` | Not enough price history to detect unusual price changes. |
+| `normal` | Today's price looks normal based on the available history. |
+| `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
+
+**Product activity:** `GET /api/products` returns active products only. `GET /api/products/{id}` can return inactive products when requested by ID.
 
 ## 6. Trust Score signals (each must be explainable in one sentence)
 
@@ -81,23 +98,20 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | % above lowest ever | How far today is from the best price we saw | "Deal" is above what it cost last week |
 | Volatility | How much the price normally moves | High volatility makes any single "deal" less meaningful |
 
-Score 0 to 100. `>= 70` genuine, `40 to 69` uncertain, `< 40` likely_inflated,
-fewer than 6 snapshots `insufficient_data`. `reasons` lists the sentences shown to the user.
+Score 0 to 100. `>= 70` genuine, `40 to 69` uncertain, `< 40` likely_inflated.
+Fewer than 6 snapshots gives `insufficient_data`. With at least 6 snapshots, if the latest snapshot has no valid discount claim, the label is `no_discount` and `score` is `null`. A valid discount claim requires a positive original price greater than the current price. `reasons` lists the sentences shown to the user.
 
 ## 7. Where real data comes from
 
-- One **collector** (mentor's always-on machine or a free-tier VM) runs
-  `python -m backend.scheduler.jobs` against the real `data/priceunmask.db`.
-- Start it the day the scraper and crud land on `dev`. Every day it is not running is
-  history we will never get back.
-- Mentor exports a DB copy to the team every few days for analysis and frontend work.
+- One **collector** on Saidivya's machine until 31 Oct demo (see `docs/COLLECTOR.md` - Live collector section) runs `python -m backend.scheduler.jobs` against the real `data/priceunmask.db`.
+- Start it the day the scraper and crud land on `dev`. Every day it is not running is history we will never get back.
+- Saidivya exports a DB copy via `python -m backend.devtools.export_db` every few days for analysis and frontend work.
 - Everyone else develops against `python -m backend.devtools.seed_fake_data`.
 
 ## 8. Scraping rules (non-negotiable)
 
 - One public site with no login wall. Check its `robots.txt` and Terms before choosing it.
-- Identify ourselves via User-Agent, wait `SCRAPE_DELAY_SECONDS` between requests,
-  no more than one listing page per run per category.
+- Identify ourselves via User-Agent, wait `SCRAPE_DELAY_SECONDS` before every page, and fetch at most `SCRAPE_MAX_PAGES` (default 3) listing pages per run, following the site's own "next" links. Every page goes through `fetch_html`.
 - If the site blocks us, we stop and pick another site; we do not rotate proxies or fake browsers.
 - Tests never hit the network. Save real HTML to `data/snapshots/sample_*.html` and parse that.
 
@@ -116,12 +130,15 @@ fewer than 6 snapshots `insufficient_data`. `reasons` lists the sentences shown 
 
 Review buddies (review each other's PRs before the mentor): 1 and 2, 3 and 4, 5 and 6, 7 and 8.
 
-## 10. Milestones (today: Sun 27 Sept; submission: Sat 31 Oct)
+## 10. Milestones (today: Wed 28 Oct; submission: Sat 31 Oct)
 
 | Milestone | Dates | Definition of done | Release |
 |---|---|---|---|
-| M0 Setup | 28 to 30 Sept | Everyone cloned, ran tests, merged one small PR into `dev` | |
-| M1 Collecting | by Sun 4 Oct | Scraper + crud + scheduler on `dev`; collector running | |
-| M2 Features | 5 to 14 Oct | Trust score, anomaly, all endpoints, grid + chart, each on fake data | `dev -> main` v0.1 |
+| M0 Setup | 28 Sept to Thu 1 Oct | Everyone cloned, ran tests, merged one small PR into `dev` | |
+| M1 Collecting | by Fri 9 Oct | Scraper + crud + scheduler on `dev`; collector running | |
+| M2 Features | 1 to 14 Oct | Trust score, anomaly, all endpoints, grid + chart, each on fake data | `dev -> main` v0.1 |
 | M3 Integration | 15 to 24 Oct | Everything on real collected data; error handling pass | `dev -> main` v0.2 |
-| M4 Hardening | 25 to 31 Oct | Tests, README, notes.md, demo | `dev -> main` v1.0 |
+| M4 Hardening | 25 to 31 Oct | Tests, README, design notes, demo | `dev -> main` v1.0 |
+
+Fri 2 Oct (Gandhi Jayanti) is a holiday. Week 1 practice site: https://books.toscrape.com
+(prices never change there, so the real shop for history is chosen at the end of Week 1).

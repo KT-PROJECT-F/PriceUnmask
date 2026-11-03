@@ -140,31 +140,11 @@ This satisfies #222 Acceptance Criteria: 1) Runs not on personal machine 2) Auto
 
 ## Get the newest data
 
-1. Ask Saidivya for a fresh export (see "Live collector" above for the
-   command she runs). Never copy `data/priceunmask.db` itself.
-2. Put the file in `data/exports/` in your own clone and keep its name:
-   `priceunmask-<UTC timestamp>.db`, no spaces, the date is in the name.
-   `.db` files are never committed.
-3. Check it with `check_db`. Point `DATABASE_URL` at the file for this
-   terminal only:
-
-   ```powershell
-   $env:DATABASE_URL = "sqlite:///data/exports/priceunmask-<UTC timestamp>.db"
-   python -m backend.devtools.check_db
-   ```
-
-4. Check which dates it really covers, and how many snapshots it has:
-
-   ```powershell
-   python -c "import sqlite3; c = sqlite3.connect('data/exports/priceunmask-<UTC timestamp>.db'); print(c.execute('SELECT MIN(scraped_at), MAX(scraped_at), COUNT(*) FROM price_snapshots').fetchone())"
-   ```
-
-   The newest `scraped_at` should be close to the "Finished at" of the
-   latest run in `check_db`. If it is much older, you have the wrong file.
-
-5. When you are done, close the terminal or run
-   `Remove-Item Env:DATABASE_URL`, so the app uses its normal database again.
-
+The live database is restored from the GitHub Actions cache (see
+collector.yml / health-check.yml), not exported from a laptop. To inspect it
+locally, download the "priceunmask-db-*" cache from the most recent
+successful run under Actions > Caches, or just run check_db as part of the
+workflow and read the job summary.
 
 ## Demo database
 

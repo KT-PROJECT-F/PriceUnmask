@@ -61,32 +61,48 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 
 ## 5. API (all under /api)
 
-| Method | Path | Returns | Errors |
+| Method | Endpoint | Success response | Errors |
 |---|---|---|---|
-| GET | `/api/health` | `{"status":"ok"}` | |
-| GET | `/api/products?search=` | `list[ProductOut]` | 422 for invalid search length |
-| GET | `/api/products/{id}` | `ProductOut` | 404 if not found; 422 for invalid ID |
-| GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 if not found; 422 for invalid ID or days |
-| GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 if not found; 422 for invalid ID |
-| GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | |
-| POST | `/api/scrape/run` | `ScrapeRunOut` (202) | Closes stale runs first; 409 if a run is still in progress; 500 if stale-run cleanup fails |
+| GET | `/api/health` | `{"status":"ok"}` | - |
+| GET | `/api/products?search=` | `list[ProductOut]` | 422 `VALIDATION_ERROR` |
+| GET | `/api/products/{id}` | `ProductOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | - |
+| POST | `/api/scrape/run` | `ScrapeRunOut` (202 Accepted) | 409 `SCRAPE_ALREADY_RUNNING`; 500 `INTERNAL_SERVER_ERROR` |
 
-The `TrustScoreOut` response may use the `no_discount` label when no valid discount claim is available; in that case, `score` is `null`.
-The `ProductOut` response for `GET /api/products` and `GET /api/products/{id}` includes `trust_label`, calculated from the product's already-loaded price snapshots using the existing trust-score calculation.
+All API errors use this response envelope:
 
-The `TrustScoreOut` response also includes these shopper-facing anomaly fields:
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": null
+  }
+}
+```
+Product list responses include active products only. Product detail requests can return inactive products when requested by ID.
 
-- `anomaly_status`: `insufficient_history`, `normal`, or `unusual`.
-- `anomaly_result`: `null` when history is insufficient, `false` when no unusual change is detected, or `true` when an unusual change is detected.
-- `anomaly_message`: A shopper-friendly explanation of the anomaly status. Internal detector notes are not exposed.
+`ProductOut` includes `trust_label`, calculated using the same trust-score logic as the trust-score endpoint and the product's loaded price snapshots.
 
-| Anomaly status | Shopper-facing message |
+`TrustScoreOut` includes the trust score and label. When the result is `no_discount`, the score is `null`.
+
+The trust-score response also includes anomaly information:
+- `anomaly_status`: the anomaly analysis status.
+- `anomaly_result`: the analysis result when available.
+- `anomaly_message`: a human-readable explanation.
+
+Shopper-facing anomaly statuses:
+
+| Status | Meaning |
 |---|---|
 | `insufficient_history` | Not enough price history to detect unusual price changes. |
 | `normal` | Today's price looks normal based on the available history. |
 | `unusual` | An unusual price change was detected. Please review the price history before making a purchase. |
 
-**Product activity:** `GET /api/products` returns active products only. `GET /api/products/{id}` can return inactive products when requested by ID.
+
+`POST /api/scrape/run` closes stale scrape runs before starting a new run. It returns 409 if another scrape run is already in progress. If stale-run cleanup fails, it returns 500 with the standard error envelope.
 
 ## 6. Trust Score signals (each must be explainable in one sentence)
 

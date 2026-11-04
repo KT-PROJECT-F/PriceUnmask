@@ -98,6 +98,7 @@ def upsert_product_and_snapshot(
     )
 
     session.add(snapshot)
+    run.products_seen += 1
     session.commit()
     session.refresh(snapshot)
 

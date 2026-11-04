@@ -13,8 +13,12 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, status
 from fastapi import Path as FastAPIPath
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import JSONResponse
 
 from backend import converters
 from backend.analysis.anomaly_service import summarize_anomalies
@@ -22,7 +26,13 @@ from backend.config import settings
 from backend.db import crud
 from backend.db.database import get_session, init_db
 from backend.scheduler.jobs import run_scrape_cycle_for_run
-from backend.schemas import HistoryOut, ProductOut, ScrapeRunOut, TrustScoreOut
+from backend.schemas import (
+    ErrorOut,
+    HistoryOut,
+    ProductOut,
+    ScrapeRunOut,
+    TrustScoreOut,
+)
 
 logger = logging.getLogger(__name__)
 MAX_HISTORY_DAYS = 3650  # ten years; larger values would overflow datetime
@@ -38,6 +48,77 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="PriceUnmask API", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(
+    _request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    if exc.status_code == status.HTTP_404_NOT_FOUND:
+        code = "PRODUCT_NOT_FOUND"
+    elif exc.status_code == status.HTTP_409_CONFLICT:
+        code = "SCRAPE_ALREADY_RUNNING"
+    elif exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+        code = "INTERNAL_SERVER_ERROR"
+    else:
+        code = "HTTP_ERROR"
+
+    message = exc.detail if isinstance(exc.detail, str) else "Request failed"
+
+    body = ErrorOut(
+        error={
+            "code": code,
+            "message": message,
+            "details": None,
+        }
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=body.model_dump(),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    _request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    body = ErrorOut(
+        error={
+            "code": "VALIDATION_ERROR",
+            "message": "Request validation failed",
+            "details": jsonable_encoder(exc.errors()),
+        }
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content=body.model_dump(),
+    )
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(
+    _request,
+    _exc: Exception,
+) -> JSONResponse:
+    logger.exception("Unexpected error while handling API request")
+
+    body = ErrorOut(
+        error={
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "Internal server error",
+            "details": None,
+        }
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=body.model_dump(),
+    )
 
 
 @app.get("/api/health")
@@ -72,7 +153,10 @@ def get_product(
     product = crud.get_product(session, product_id)
 
     if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
 
     return converters.product_to_out(product, product.snapshots)
 
@@ -89,11 +173,13 @@ def get_product_history(
     days: int | None = Query(default=None, ge=1, le=MAX_HISTORY_DAYS),
     session: Session = Depends(get_session),  # noqa: B008
 ) -> HistoryOut:
-
     product = crud.get_product(session, product_id)
 
     if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
 
     since = None
     if days is not None:
@@ -118,7 +204,10 @@ def get_product_trust_score(
     product = crud.get_product(session, product_id)
 
     if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
 
     history = crud.get_history(session, product_id)
     history_df = converters.snapshots_to_dataframe(history)
@@ -126,6 +215,7 @@ def get_product_trust_score(
     trust_score = converters.trust_score_for_snapshots(history)
 
     signals = asdict(trust_score.signals) if trust_score.signals is not None else None
+
     return TrustScoreOut(
         product_id=product.id,
         score=trust_score.score,

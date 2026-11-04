@@ -6,6 +6,7 @@ Prices go over the wire as minor units (int); the frontend formats them.
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -58,3 +59,13 @@ class ScrapeRunOut(BaseModel):
     status: str
     products_seen: int
     error_message: str | None
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+    details: list[dict[str, Any]] | None = None
+
+
+class ErrorOut(BaseModel):
+    error: ErrorDetail

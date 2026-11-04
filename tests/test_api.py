@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine, event
@@ -14,11 +15,13 @@ from backend.analysis.anomaly_service import (
     UNUSUAL_MESSAGE,
 )
 from backend.config import settings
+from backend.db import crud
 from backend.db.database import Base, get_session
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.devtools.seed_fake_data import seed
-from backend.main import app
+from backend.main import app, unexpected_exception_handler
 from backend.schemas import TrustScoreOut
+from backend.scraper.product_scraper import ScrapedProduct
 
 engine = create_engine(
     "sqlite://",
@@ -233,13 +236,47 @@ def test_get_missing_product(client):
     response = client.get("/api/products/999999")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 def test_get_product_bad_id(client):
     response = client.get("/api/products/abc")
 
     assert response.status_code == 422
+
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["message"] == "Request validation failed"
+    assert isinstance(body["error"]["details"], list)
+    assert body["error"]["details"]
+
+
+def test_unexpected_exception_returns_standard_error_response():
+    test_app = FastAPI()
+    test_app.add_exception_handler(Exception, unexpected_exception_handler)
+
+    @test_app.get("/test-unexpected-error")
+    def raise_unexpected_error():
+        raise RuntimeError("sensitive internal failure")
+
+    with TestClient(test_app, raise_server_exceptions=False) as test_client:
+        response = test_client.get("/test-unexpected-error")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "Internal server error",
+            "details": None,
+        }
+    }
+    assert "sensitive internal failure" not in response.text
 
 
 @pytest.mark.parametrize(
@@ -258,8 +295,15 @@ def test_product_endpoints_reject_huge_ids(client, endpoint):
 
 def test_get_product_largest_valid_id_is_404(client):
     response = client.get("/api/products/9223372036854775807")
+
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 @pytest.mark.parametrize(
@@ -318,7 +362,13 @@ def test_get_product_history_missing_product(client):
     response = client.get("/api/products/999999/history")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 def test_get_product_history_without_snapshots_is_empty_not_404(client):
@@ -433,7 +483,13 @@ def test_start_scrape_run_returns_409_when_run_is_running(client):
         response = client.post("/api/scrape/run")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "A scrape run is already in progress"}
+    assert response.json() == {
+        "error": {
+            "code": "SCRAPE_ALREADY_RUNNING",
+            "message": "A scrape run is already in progress",
+            "details": None,
+        }
+    }
     mock_scrape.assert_not_called()
 
 
@@ -478,7 +534,13 @@ def test_start_scrape_run_returns_500_when_cleanup_fails(client):
         response = client.post("/api/scrape/run")
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Could not close stale scrape runs"}
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "Could not close stale scrape runs",
+            "details": None,
+        }
+    }
     mock_running.assert_not_called()
     mock_scrape.assert_not_called()
 
@@ -500,6 +562,87 @@ def test_list_scrape_runs_returns_at_most_20_newest_first(client):
     assert len(data) == 20
     assert data[0]["products_seen"] == 24
     assert data[-1]["products_seen"] == 5
+
+
+def test_upsert_product_increments_scrape_run_progress(seeded_database):
+    item = ScrapedProduct(
+        external_id="progress-test-item",
+        name="Progress Test Item",
+        url="https://example.com/progress-test-item",
+        current_price_minor=129900,
+        original_price_minor=None,
+        in_stock=True,
+        currency="INR",
+        scraped_at=datetime.now(UTC),
+    )
+
+    with TestingSessionLocal() as session:
+        run = ScrapeRun(status="running", products_seen=0)
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+
+        crud.upsert_product_and_snapshot(
+            session=session,
+            source="test",
+            item=item,
+            run=run,
+        )
+        assert run.products_seen == 1
+
+        crud.upsert_product_and_snapshot(
+            session=session,
+            source="test",
+            item=item,
+            run=run,
+        )
+        assert run.products_seen == 2
+
+
+def test_upsert_product_snapshot_failure_rolls_back_progress(seeded_database):
+    item = ScrapedProduct(
+        external_id="progress-failure-item",
+        name="Progress Failure Item",
+        url="https://example.com/progress-failure-item",
+        current_price_minor=129900,
+        original_price_minor=None,
+        in_stock=True,
+        currency="INR",
+        scraped_at=datetime.now(UTC),
+    )
+
+    with TestingSessionLocal() as session:
+        run = ScrapeRun(status="running", products_seen=0)
+        session.add(run)
+        session.commit()
+        run_id = run.id
+
+        initial_snapshot_count = session.query(PriceSnapshot).count()
+
+        def fail_snapshot_flush(session, flush_context, instances):
+            if any(isinstance(obj, PriceSnapshot) for obj in session.new):
+                raise RuntimeError("Snapshot insert failed")
+
+        event.listen(session, "before_flush", fail_snapshot_flush)
+
+        try:
+            with pytest.raises(RuntimeError, match="Snapshot insert failed"):
+                crud.upsert_product_and_snapshot(
+                    session=session,
+                    source="test",
+                    item=item,
+                    run=run,
+                )
+        finally:
+            event.remove(session, "before_flush", fail_snapshot_flush)
+            session.rollback()
+
+    with TestingSessionLocal() as session:
+        saved_run = session.get(ScrapeRun, run_id)
+
+        assert saved_run is not None
+        assert saved_run.products_seen == 0
+        assert session.query(PriceSnapshot).count() == initial_snapshot_count
 
 
 def test_get_product_trust_score_air_fryer(client):
@@ -601,7 +744,13 @@ def test_get_product_trust_score_missing_product(client):
     response = client.get("/api/products/999999/trust-score")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Product not found"}
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }
 
 
 def test_trust_score_anomaly_five_snapshots_is_insufficient(client):

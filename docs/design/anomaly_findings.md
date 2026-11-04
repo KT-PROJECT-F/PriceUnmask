@@ -80,3 +80,41 @@ changed price. Books to Scrape is a practice site with fixed prices, so the
 model has nothing to flag here. We cannot judge the threshold on this data, and
 the "Unusual price" badge will never show for these products. To test the
 threshold, we need a source where prices really change.
+
+## Interim re-check - 4 November 2026
+
+A follow-up report was run using
+`data/exports/priceunmask-20261026T080206Z.db`.
+
+This is a preliminary check only. The database contains no Croma
+price snapshots and does not satisfy the real-price-change validation
+required by issue #226.
+
+| Measure | Result |
+| --- | ---: |
+| Products analyzed | 60 / 60 |
+| Snapshots per product | min 2, median 2, max 42 |
+| Products with too little history | 40 |
+| Products with observed price changes | 0 |
+| Products flagged at least once | 0 |
+| Products whose latest price is flagged | 0 |
+| Total flagged snapshots | 0 |
+| Scoreable rows | 740 |
+
+Observed snapshot span (UTC):
+2026-10-08T12:02:54.423369Z to 2026-10-26T07:51:38.115010Z.
+
+No flagged example exists in this export. Two real never-flagged examples
+were reported. Their prices remained constant throughout their histories.
+
+For one 42-snapshot example, the price was GBP 51.77 throughout.
+Its rolling-window standard deviation was zero, and the flat-window
+rule was not met because the price change was 0%.
+
+These results do not validate anomaly detection against genuine price
+changes. A permitted source with real price movements is still required.
+
+Re-run command:
+
+    $env:DATABASE_URL = 'sqlite:///data/exports/priceunmask-20261026T080206Z.db'
+    python -m backend.devtools.anomaly_report

@@ -599,6 +599,52 @@ def test_upsert_product_increments_scrape_run_progress(seeded_database):
         assert run.products_seen == 2
 
 
+def test_upsert_product_snapshot_failure_rolls_back_progress(seeded_database):
+    item = ScrapedProduct(
+        external_id="progress-failure-item",
+        name="Progress Failure Item",
+        url="https://example.com/progress-failure-item",
+        current_price_minor=129900,
+        original_price_minor=None,
+        in_stock=True,
+        currency="INR",
+        scraped_at=datetime.now(UTC),
+    )
+
+    with TestingSessionLocal() as session:
+        run = ScrapeRun(status="running", products_seen=0)
+        session.add(run)
+        session.commit()
+        run_id = run.id
+
+        initial_snapshot_count = session.query(PriceSnapshot).count()
+
+        def fail_snapshot_flush(session, flush_context, instances):
+            if any(isinstance(obj, PriceSnapshot) for obj in session.new):
+                raise RuntimeError("Snapshot insert failed")
+
+        event.listen(session, "before_flush", fail_snapshot_flush)
+
+        try:
+            with pytest.raises(RuntimeError, match="Snapshot insert failed"):
+                crud.upsert_product_and_snapshot(
+                    session=session,
+                    source="test",
+                    item=item,
+                    run=run,
+                )
+        finally:
+            event.remove(session, "before_flush", fail_snapshot_flush)
+            session.rollback()
+
+    with TestingSessionLocal() as session:
+        saved_run = session.get(ScrapeRun, run_id)
+
+        assert saved_run is not None
+        assert saved_run.products_seen == 0
+        assert session.query(PriceSnapshot).count() == initial_snapshot_count
+
+
 def test_get_product_trust_score_air_fryer(client):
     products = client.get("/api/products").json()
     fryer = next(item for item in products if item["name"] == "Demo Air Fryer (fake discount)")

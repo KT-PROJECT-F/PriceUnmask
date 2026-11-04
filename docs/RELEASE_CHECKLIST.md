@@ -227,3 +227,24 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 9. Saved to the database | PASS | `check_db`: Run 5, status `success`, `products_seen` 60, 60 snapshots. Total products: 63. Products without a snapshot in this run: 0. Duplicate product names: None. Health status: `HEALTHY`. Latest finished run timestamp: `2026-11-02 05:22:39.992205+00:00`. |
 | 10. Automated checks | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `61 files already formatted`; `pytest -q`: `346 passed, 1 warning in 41.71s` (StarletteDeprecationWarning about using `httpx` with `starlette.testclient`). |
 | 11. Failures | PASS | No failures found. |                                                                                                                                                                                  
+## v1.1 results
+
+- **Date:** 2026-11-04
+- **Tested by:** @mathango
+- **Commit (`git rev-parse HEAD`):** `6d43c5645eb3569f20a6c43f56a1288625c2fa50`
+- **Windows version:** Windows 11 Pro
+- **Python version:** Python 3.14.7
+
+| **Step** | **Result** | **What I saw** |
+|---|---|---|
+| 1. Fresh clone | PASS | Fresh clone created successfully in `priceunmask-v1.1-release-check`. Switched to `dev`; branch was up to date with `origin/dev`. Working tree clean. `git rev-parse HEAD`: `6d43c5645eb3569f20a6c43f56a1288625c2fa50`. |
+| 2. Python setup | PASS | Created and activated `.venv`. `pip install -r requirements.txt -r requirements-dev.txt` completed successfully with all packages installed. `.env` copied from `.env.example`. Python version: 3.14.7. README instructions review was not recorded. |
+| 3. Seed fake data | PASS | `Seeded 3 fake products.` `check_db`: Total products: 3; Health status: CHECK REQUIRED; reason: `no finished scrape run found`. Duplicate product names: None. |
+| 4. Start the app | PASS | `/api/health` returned HTTP 200 with `{"status":"ok"}`. |
+| 5. Dashboard | PASS | Grid showed 3 demo products; search `shoes` returned only Demo Running Shoes; search `ssss` showed "No products match your search."; product detail with price chart; Trust Score labels as expected; collector status showed "nothing collected yet". |
+| 6. API, valid requests | PASS | `/api/products` 200 (3 products); `?search=shoes` 200 (only Running Shoes); `/api/products/1` 200; `/history?days=30` 200; `/api/products/3/trust-score` 200 `likely_inflated`; `/api/scrape-runs` 200 `[]`. |
+| 7. API, bad input | PASS | `/api/products/123456` 404; `/history?days=0` 422; 201-char search 422. |
+| 8. One real collector cycle | PASS | Ran `python -m backend.scheduler.jobs`. All three Books to Scrape listing pages returned HTTP 200 and collected 20 products each (60 total). `robots.txt` returned 404 warnings, but fetching continued successfully. Configured 3-second delays were logged before each page. Collection started at `2026-11-04 11:51:51` and completed successfully at `11:52:10`. Collector stopped at `11:52:24`. |
+| 9. Saved to the database | PASS | `check_db`: Run 1, status `success`, `products_seen` 60, 60 snapshots. Total products: 63. Products without a snapshot in this run: 0. Duplicate product names: None. Health status: `HEALTHY`. Latest finished run timestamp: `2026-11-04 06:22:10.764941+00:00`. `/api/scrape-runs` confirmed Run ID `1`, status `success`, `products_seen: 60`, and `error_message: null`. |
+| 10. Automated checks | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `66 files already formatted`; `pytest -q`: `354 passed, 1 warning in 21.66s`. Warning: `StarletteDeprecationWarning` about using `httpx` with `starlette.testclient`. |
+| 11. Failures | PASS | No failures found. |

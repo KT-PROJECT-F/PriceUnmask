@@ -102,3 +102,32 @@ The runner enumerates products through `crud.list_products`, reads histories
 through `crud.get_history`, converts them with `snapshots_to_dataframe`,
 and calls `compute_trust_score`. It does not execute SQL directly. Summary
 logic is covered by `tests/test_trust_score_report.py`.
+
+## Interim re-check - 4 November 2026
+
+A follow-up report was run using
+`data/exports/priceunmask-20261026T080206Z.db`.
+
+This is a preliminary check only. The export does not contain Croma
+price snapshots, so it does not satisfy the real-price-change validation
+required by issue #226.
+
+| Measure | Result |
+| --- | ---: |
+| Products analyzed | 60 / 60 |
+| Total snapshots | 920 |
+| Products with original prices | 0 |
+| Products labeled `insufficient_data` | 40 |
+| Products labeled `no_discount` | 20 |
+| Products with a calculated score | 0 |
+
+Snapshot distribution: 40 products have 2 snapshots each, and 20 products
+have 42 snapshots each.
+
+No original-price evidence or calculated Trust Scores were available.
+The results are insufficient to validate real discount claims.
+
+Re-run command:
+
+    $env:DATABASE_URL = 'sqlite:///data/exports/priceunmask-20261026T080206Z.db'
+    python -m backend.devtools.trust_score_report

@@ -118,3 +118,77 @@ Re-run command:
 
     $env:DATABASE_URL = 'sqlite:///data/exports/priceunmask-20261026T080206Z.db'
     python -m backend.devtools.anomaly_report
+
+## Synthetic validation - 9 November 2026
+
+Two controlled synthetic price histories were tested to verify the anomaly
+detector's behaviour. These are constructed fixtures, not prices collected
+from a commercial website. This is synthetic behavioural validation only.
+
+The detector compares each price with the five immediately preceding prices.
+For a non-flat baseline, both conditions must hold:
+- Absolute percentage change is at least 10%.
+- Absolute z-score is at least 3.
+
+### Case 1: Synthetic price drop - flagged
+
+Input prices (minor currency units):
+
+`[1000, 1010, 990, 1000, 1000, 800]`
+
+The first five prices form the baseline.
+
+- Baseline mean: (1000 + 1010 + 990 + 1000 + 1000) / 5 = 1000
+- Sample standard deviation: sqrt(50) approximately 7.07
+- Current price: 800
+- Percentage change: |800 - 1000| / 1000 * 100 = 20%
+- Z-score: (800 - 1000) / 7.07 approximately -28.28
+- Both thresholds are satisfied: 20% >= 10% and |-28.28| >= 3.
+
+**Expected and observed result:** Flagged.
+
+The detector returned `2026-10-06T00:00:00Z` in
+`anomalous_timestamps`, and `latest_is_anomalous` was `True`.
+
+### Case 2: Synthetic small price increase - not flagged
+
+Input prices (minor currency units):
+
+`[1000, 1010, 990, 1000, 1000, 1030]`
+
+The first five prices form the baseline.
+
+- Baseline mean: 1000
+- Sample standard deviation: sqrt(50) approximately 7.07
+- Current price: 1030
+- Percentage change: |1030 - 1000| / 1000 * 100 = 3%
+- Z-score: (1030 - 1000) / 7.07 approximately 4.24
+- The z-score exceeds 3, but the percentage change is below 10%.
+
+**Expected and observed result:** Not flagged.
+
+The detector returned an empty `anomalous_timestamps` list, and
+`latest_is_anomalous` was `False`.
+
+### Test execution
+
+Command:
+
+    python -m pytest tests/test_anomaly_model.py tests/test_anomaly.py -v
+
+Result: **18 passed**.
+
+New tests:
+- `test_synthetic_validation_flags_large_price_drop`
+- `test_synthetic_validation_does_not_flag_change_below_minimum_percent`
+
+### Interpretation and limitation
+
+These tests confirm that the implementation follows its configured thresholds
+for the two controlled examples. A sufficiently large drop is flagged, while
+a 3% movement is not flagged even when its z-score exceeds 3.
+
+This does not establish precision, recall, false-positive rates, or reliability
+on real retail price histories. The real-world validation limitation above
+remains open until a permitted source with genuine price movements can be
+evaluated.

@@ -1,7 +1,7 @@
 # Production Deployment - #244
 
 ## Host
-Render (Free Tier) - https://priceunmask.onrender.com
+See Hemalatha's PR for host selection - Part of #244
 
 ## Process Supervisor
 systemd service 'deploy/priceunmask.service'

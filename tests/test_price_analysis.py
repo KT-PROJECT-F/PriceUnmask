@@ -75,6 +75,28 @@ def test_price_drop_ignores_missing_price():
     assert result.drop_percent == 10.0
 
 
+def test_price_drop_ignores_nan_price():
+    result = detect_price_drop(make_history([100000, float("nan"), 90000]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 90000
+
+
+def test_price_drop_ignores_negative_price():
+    result = detect_price_drop(make_history([100000, -500, 90000]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 90000
+
+
+def test_price_drop_with_zero_price_has_insufficient_history():
+    result = detect_price_drop(make_history([0, 80000]))
+
+    assert result.status == "insufficient_history"
+
+
 def test_increasing_price_trend():
     result = calculate_price_trend(make_history([80000, 90000, 100000]))
 
@@ -131,6 +153,31 @@ def test_price_trend_ignores_missing_price():
     assert result.snapshot_count == 2
 
 
+def test_price_trend_ignores_nan_price():
+    result = calculate_price_trend(make_history([100000, float("nan"), 90000]))
+
+    assert result.direction == "decreasing"
+    assert result.first_price_minor == 100000
+    assert result.latest_price_minor == 90000
+    assert result.snapshot_count == 2
+
+
+def test_price_trend_ignores_negative_price():
+    result = calculate_price_trend(make_history([100000, -500, 90000]))
+
+    assert result.direction == "decreasing"
+    assert result.first_price_minor == 100000
+    assert result.latest_price_minor == 90000
+    assert result.snapshot_count == 2
+
+
+def test_price_trend_with_zero_price_has_insufficient_history():
+    result = calculate_price_trend(make_history([0, 80000]))
+
+    assert result.direction == "insufficient_history"
+    assert result.snapshot_count == 1
+
+
 def test_missing_columns_raise_error():
     history = pd.DataFrame({"current_price_minor": [100000, 80000]})
 
@@ -141,15 +188,59 @@ def test_missing_columns_raise_error():
         calculate_price_trend(history)
 
 
-def test_zero_price_is_filtered():
-    history = make_history([0, 80000])
+def test_empty_history_with_required_columns():
+    history = pd.DataFrame(columns=["scraped_at", "current_price_minor"])
 
     drop_result = detect_price_drop(history)
     trend_result = calculate_price_trend(history)
 
     assert drop_result.status == "insufficient_history"
     assert trend_result.direction == "insufficient_history"
-    assert trend_result.snapshot_count == 1
+    assert trend_result.snapshot_count == 0
+
+
+def test_unsorted_history_is_sorted_before_price_drop():
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.to_datetime(
+                [
+                    "2026-01-03",
+                    "2026-01-01",
+                    "2026-01-02",
+                ],
+                utc=True,
+            ),
+            "current_price_minor": [70000, 100000, 90000],
+        }
+    )
+
+    result = detect_price_drop(history)
+
+    assert result.previous_price_minor == 90000
+    assert result.current_price_minor == 70000
+    assert result.status == "price_dropped"
+
+
+def test_unsorted_history_is_sorted_before_price_trend():
+    history = pd.DataFrame(
+        {
+            "scraped_at": pd.to_datetime(
+                [
+                    "2026-01-03",
+                    "2026-01-01",
+                    "2026-01-02",
+                ],
+                utc=True,
+            ),
+            "current_price_minor": [70000, 100000, 90000],
+        }
+    )
+
+    result = calculate_price_trend(history)
+
+    assert result.first_price_minor == 100000
+    assert result.latest_price_minor == 70000
+    assert result.direction == "decreasing"
 
 
 def test_same_timestamp_preserves_original_order():

@@ -2,8 +2,8 @@ import pandas as pd
 import pytest
 
 from backend.analysis.price_drop import detect_price_drop
-from backend.analysis.price_trend import calculate_price_trend
 from backend.analysis.price_history_utils import get_valid_price_history
+from backend.analysis.price_trend import calculate_price_trend
 
 
 def make_history(prices):

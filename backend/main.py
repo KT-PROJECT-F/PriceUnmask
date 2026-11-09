@@ -30,7 +30,9 @@ from backend.schemas import (
     ErrorOut,
     HistoryOut,
     ProductOut,
+    ProductTrendOut,
     ScrapeRunOut,
+    TrendOverviewOut,
     TrustScoreOut,
 )
 
@@ -270,6 +272,43 @@ def start_scrape_run(
     background_tasks.add_task(run_scrape_cycle_for_run, run.id)
 
     return run
+
+
+@app.get(
+    "/api/trends/overview",
+    response_model=TrendOverviewOut,
+)
+def get_trends_overview(
+    period_days: int = Query(
+        default=30,
+        ge=1,
+        le=MAX_HISTORY_DAYS,
+    ),
+    session: Session = Depends(get_session),  # noqa: B008
+) -> TrendOverviewOut:
+    since = datetime.now(UTC) - timedelta(days=period_days)
+
+    trends = crud.get_product_trends(session, since)
+
+    drops = sum(item["direction"] == "drop" for item in trends)
+    increases = sum(item["direction"] == "increase" for item in trends)
+    unchanged = sum(item["direction"] == "unchanged" for item in trends)
+
+    valid_changes = [
+        item["change_percent"] for item in trends if item["change_percent"] is not None
+    ]
+
+    average_change = round(sum(valid_changes) / len(valid_changes), 2) if valid_changes else None
+
+    return TrendOverviewOut(
+        period_days=period_days,
+        products_analyzed=len(trends),
+        products_with_price_drop=drops,
+        products_with_price_increase=increases,
+        products_unchanged=unchanged,
+        average_change_percent=average_change,
+        products=[ProductTrendOut(**item) for item in trends],
+    )
 
 
 # Mount the dashboard LAST so it does not shadow /api routes.

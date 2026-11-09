@@ -69,3 +69,24 @@ class ErrorDetail(BaseModel):
 
 class ErrorOut(BaseModel):
     error: ErrorDetail
+
+
+class ProductTrendOut(BaseModel):
+    product_id: int
+    product_name: str
+    currency: str
+    first_price_minor: int
+    latest_price_minor: int
+    change_minor: int
+    change_percent: float | None
+    direction: str
+
+
+class TrendOverviewOut(BaseModel):
+    period_days: int
+    products_analyzed: int
+    products_with_price_drop: int
+    products_with_price_increase: int
+    products_unchanged: int
+    average_change_percent: float | None
+    products: list[ProductTrendOut]

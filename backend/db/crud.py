@@ -279,3 +279,79 @@ def mark_stale_runs_failed(
 
     session.commit()
     return len(stale_runs)
+
+
+def get_product_trends(
+    session: Session,
+    since: datetime,
+) -> list[dict]:
+    """Return price trends for active products since the given UTC datetime."""
+
+    if since.tzinfo is None or since.utcoffset() is None:
+        raise ValueError("since must be a timezone-aware datetime")
+
+    since = since.astimezone(UTC)
+
+    statement = (
+        select(
+            Product.id,
+            Product.name,
+            Product.currency,
+            PriceSnapshot.id.label("snapshot_id"),
+            PriceSnapshot.scraped_at,
+            PriceSnapshot.current_price_minor,
+        )
+        .join(PriceSnapshot, PriceSnapshot.product_id == Product.id)
+        .where(
+            Product.is_active.is_(True),
+            PriceSnapshot.scraped_at >= since,
+        )
+        .order_by(
+            Product.id,
+            PriceSnapshot.scraped_at,
+            PriceSnapshot.id,
+        )
+    )
+
+    rows = session.execute(statement).all()
+
+    grouped = {}
+
+    for row in rows:
+        if row.id not in grouped:
+            grouped[row.id] = {
+                "product_id": row.id,
+                "product_name": row.name,
+                "currency": row.currency,
+                "first_price_minor": row.current_price_minor,
+                "latest_price_minor": row.current_price_minor,
+            }
+        else:
+            grouped[row.id]["latest_price_minor"] = row.current_price_minor
+
+    trends = []
+
+    for product in grouped.values():
+        first_price = product["first_price_minor"]
+        latest_price = product["latest_price_minor"]
+        change = latest_price - first_price
+
+        change_percent = round((change / first_price) * 100, 2) if first_price > 0 else None
+
+        if change < 0:
+            direction = "drop"
+        elif change > 0:
+            direction = "increase"
+        else:
+            direction = "unchanged"
+
+        trends.append(
+            {
+                **product,
+                "change_minor": change,
+                "change_percent": change_percent,
+                "direction": direction,
+            }
+        )
+
+    return trends

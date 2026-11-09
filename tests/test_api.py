@@ -872,3 +872,48 @@ def test_list_products_search_percent_is_literal(client):
 
     assert any(product["id"] == product_id for product in products)
     assert all("%" in product["name"] for product in products)
+
+
+@pytest.mark.parametrize(
+    ("prices", "expected_direction", "expected_change", "expected_percent"),
+    [
+        ([10000, 8000], "drop", -2000, -20.0),
+        ([10000, 12000], "increase", 2000, 20.0),
+        ([10000, 10000], "unchanged", 0, 0.0),
+        ([0, 100], "increase", 100, None),
+    ],
+)
+def test_trends_overview_price_directions(
+    client,
+    prices,
+    expected_direction,
+    expected_change,
+    expected_percent,
+):
+    product_id = add_product_with_prices(
+        f"trend-test-{expected_direction}",
+        prices,
+    )
+
+    response = client.get("/api/trends/overview?period_days=3650")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    product = next(item for item in data["products"] if item["product_id"] == product_id)
+
+    assert product["first_price_minor"] == prices[0]
+    assert product["latest_price_minor"] == prices[-1]
+    assert product["change_minor"] == expected_change
+    assert product["change_percent"] == expected_percent
+    assert product["direction"] == expected_direction
+
+
+@pytest.mark.parametrize("period_days", [0, 3651])
+def test_trends_overview_rejects_invalid_period_days(
+    client,
+    period_days,
+):
+    response = client.get(f"/api/trends/overview?period_days={period_days}")
+
+    assert response.status_code == 422

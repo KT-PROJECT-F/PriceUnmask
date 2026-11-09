@@ -4,6 +4,21 @@ The scraper fetches listing pages from the configured target, checking robots.tx
 It uses our configured User-Agent, a polite delay, a timeout, and bounded retries for temporary failures.
 It parses products and follows same-site next-page links up to `SCRAPE_MAX_PAGES`.
 It saves each page’s raw HTML snapshot and returns product records; the collector, not the scraper, writes to the database.
+`scrape()` selects a `SourceAdapter` by URL and keeps fetching, snapshots, deduplication, and page limits shared across adapters.
+
+## Source adapters
+
+- **Books to Scrape** remains a supported practice adapter. Its existing public parsing functions
+  and pagination behavior are retained.
+- **Web Scraper's static e-commerce test site** is the second adapter (`webscraper-demo`). Its
+  product cards use USD prices and stable product IDs from product URLs. The site describes the
+  catalog as a training site and says its items are not for sale; the adapter is intended for this
+  practice catalog, not the vendor's commercial pages.
+- Every page still passes through the common fetcher, including its robots.txt check, User-Agent,
+  delay, timeout, and retry policy.
+- `ScrapedProduct.source` is optional so existing construction remains compatible. Adapters set it
+  when the source differs from the scheduler's existing Books fallback; this field is a contract
+  change and requires the `contract-change` PR label.
 
 ## Decisions
 
@@ -31,4 +46,7 @@ Tests replace `requests.get` with fake responses, so they check scraper behavior
 
 ## Known limits and what we would do next
 
-Books to Scrape uses fixed sample prices, so repeated snapshots show the same prices rather than real market changes. Our price history is useful for testing the collection pipeline, but it cannot demonstrate real price trends or validate price-change alerts. Next, we would evaluate the scraper against a site whose terms permit collection and whose prices change, then review the parsing assumptions with Mathan.
+Books to Scrape uses fixed sample prices, and Web Scraper's catalog is a training site whose
+items are not for sale. These adapters exercise the collection pipeline but do not demonstrate
+real market trends or validate price-change alerts. Next, evaluate a production shop whose terms
+permit collection and whose prices change, then review the parsing assumptions with Mathan.

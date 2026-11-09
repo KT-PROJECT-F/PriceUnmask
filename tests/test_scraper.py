@@ -5,10 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from backend.scraper import product_scraper
 from backend.scraper.product_scraper import (
+    WebScraperDemoAdapter,
     parse_listing,
     parse_next_page_url,
     parse_price_to_minor,
+    source_adapter_for_url,
 )
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent.parent / "data" / "snapshots"
@@ -22,6 +25,9 @@ CATEGORY_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_category.html"
 
 BASE_URL = "https://books.toscrape.com/"
 CATEGORY_BASE_URL = "https://books.toscrape.com/catalogue/category/books/travel_2/index.html"
+DEMO_LISTING_URL = (
+    "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
+)
 
 
 def parse_fixture(fixture_path: Path, base_url: str) -> list:
@@ -250,6 +256,7 @@ def test_parse_listing_same_timestamp_for_page():
         ("£51.77", 5177),
         ("£52", 5200),
         ("£51.7", 5170),
+        ("$416.99", 41699),
         ("₹1,299.50", 129950),
         ("₹1,409", 140900),
         ("Rs. 999.99", 99999),
@@ -594,3 +601,98 @@ def test_next_link_fragment_is_dropped():
         )
         == "https://books.toscrape.com/catalogue/page-2.html"
     )
+
+
+def test_source_adapter_selection():
+    assert source_adapter_for_url(BASE_URL).source == "books-toscrape"
+    assert isinstance(
+        source_adapter_for_url(DEMO_LISTING_URL),
+        WebScraperDemoAdapter,
+    )
+
+
+def test_source_adapter_selection_rejects_unsupported_urls():
+    with pytest.raises(ValueError, match="No source adapter supports URL"):
+        source_adapter_for_url("https://example.com/products")
+
+
+def test_webscraper_demo_adapter_parses_product_card():
+    html = """
+    <div class="card thumbnail">
+      <h4 class="price"><span itemprop="price">$416.99</span>
+        <meta content="USD" itemprop="priceCurrency">
+      </h4>
+      <h4><a class="title" href="/test-sites/e-commerce/static/product/31"
+        title="Packard 255 G2">Packard 255 G2</a></h4>
+    </div>
+    """
+
+    [product] = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
+
+    assert product.external_id == "31"
+    assert product.name == "Packard 255 G2"
+    assert product.url == (
+        "https://webscraper.io/test-sites/e-commerce/static/product/31"
+    )
+    assert product.current_price_minor == 41699
+    assert product.original_price_minor is None
+    assert product.in_stock is None
+    assert product.currency == "USD"
+    assert product.source == "webscraper-demo"
+    assert product.scraped_at.tzinfo is UTC
+
+
+def test_webscraper_demo_adapter_uses_same_listing_for_next_page():
+    html = """
+    <ul class="pagination">
+      <li><a class="page-link next" rel="next" aria-label="Next"
+        href="/test-sites/e-commerce/static/computers/laptops?page=2">›</a></li>
+    </ul>
+    """
+
+    assert WebScraperDemoAdapter().parse_next_page_url(html, DEMO_LISTING_URL) == (
+        "https://webscraper.io/test-sites/e-commerce/static/computers/laptops?page=2"
+    )
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://example.com/next",
+        "/test-sites/e-commerce/static/computers/phones?page=2",
+        "javascript:alert(1)",
+    ],
+)
+def test_webscraper_demo_adapter_rejects_invalid_next_page(href):
+    html = (
+        '<ul class="pagination"><li><a class="page-link next" rel="next" '
+        f'href="{escape(href, quote=True)}">Next</a></li></ul>'
+    )
+
+    assert WebScraperDemoAdapter().parse_next_page_url(html, DEMO_LISTING_URL) is None
+
+
+def test_scrape_uses_webscraper_demo_adapter(monkeypatch, tmp_path):
+    html = """
+    <div class="card thumbnail">
+      <h4 class="price"><span itemprop="price">$416.99</span>
+        <meta content="USD" itemprop="priceCurrency">
+      </h4>
+      <h4><a class="title" href="/test-sites/e-commerce/static/product/31"
+        title="Packard 255 G2">Packard 255 G2</a></h4>
+    </div>
+    """
+    monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(
+        product_scraper,
+        "settings",
+        type("Settings", (), {"scrape_max_pages": 1})(),
+    )
+
+    products = product_scraper.scrape(DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].external_id == "31"
+    assert products[0].source == "webscraper-demo"
+    assert len(list(tmp_path.glob("*.html"))) == 1

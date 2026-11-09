@@ -99,7 +99,7 @@ def _run_cycle(
 
     for item in items:
         try:
-            crud.upsert_product_and_snapshot(session, SOURCE_KEY, item, run)
+            crud.upsert_product_and_snapshot(session, item.source or SOURCE_KEY, item, run)
         except Exception as exc:
             external_id = item.external_id
             logger.exception("Could not save scraped item %s for run %s", external_id, run_id)

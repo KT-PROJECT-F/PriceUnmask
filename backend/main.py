@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse
 
 from backend import converters
 from backend.analysis.anomaly_service import summarize_anomalies
+from backend.analysis.price_drop import detect_price_drop
 from backend.config import settings
 from backend.db import crud
 from backend.db.database import get_session, init_db
@@ -29,6 +30,7 @@ from backend.scheduler.jobs import run_scrape_cycle_for_run
 from backend.schemas import (
     ErrorOut,
     HistoryOut,
+    PriceDropOut,
     ProductOut,
     ProductTrendOut,
     ScrapeRunOut,
@@ -190,6 +192,39 @@ def get_product_history(
     history = crud.get_history(session, product_id, since=since)
 
     return converters.history_to_out(product, history)
+
+
+@app.get(
+    "/api/products/{product_id}/price-drop",
+    response_model=PriceDropOut,
+)
+def get_product_price_drop(
+    product_id: int = FastAPIPath(
+        ge=1,
+        le=MAX_PRODUCT_ID,
+    ),
+    session: Session = Depends(get_session),  # noqa: B008
+) -> PriceDropOut:
+    product = crud.get_product(session, product_id)
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
+
+    snapshots = crud.get_history(session, product_id)
+    history_df = converters.snapshots_to_dataframe(snapshots)
+    result = detect_price_drop(history_df)
+
+    return PriceDropOut(
+        product_id=product_id,
+        status=result.status,
+        previous_price_minor=result.previous_price_minor,
+        current_price_minor=result.current_price_minor,
+        drop_amount_minor=result.drop_amount_minor,
+        drop_percent=result.drop_percent,
+    )
 
 
 @app.get(

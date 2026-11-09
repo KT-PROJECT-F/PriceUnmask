@@ -917,3 +917,59 @@ def test_trends_overview_rejects_invalid_period_days(
     response = client.get(f"/api/trends/overview?period_days={period_days}")
 
     assert response.status_code == 422
+
+
+def test_price_drop_endpoint_detects_price_drop(client):
+    product_id = add_product_with_prices(
+        "price-drop-test",
+        [100000, 80000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/price-drop")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "price_dropped"
+    assert data["previous_price_minor"] == 100000
+    assert data["current_price_minor"] == 80000
+    assert data["drop_amount_minor"] == 20000
+    assert data["drop_percent"] == 20.0
+
+
+def test_price_drop_endpoint_returns_no_drop(client):
+    product_id = add_product_with_prices(
+        "no-drop-test",
+        [80000, 100000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/price-drop")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "no_drop"
+    assert data["drop_amount_minor"] == 0
+    assert data["drop_percent"] == 0.0
+
+
+def test_price_drop_endpoint_handles_insufficient_history(client):
+    product_id = add_product_with_prices(
+        "insufficient-history-test",
+        [100000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/price-drop")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "insufficient_history"
+    assert data["previous_price_minor"] is None
+    assert data["current_price_minor"] is None
+
+
+def test_price_drop_endpoint_returns_404_for_missing_product(client):
+    response = client.get("/api/products/999999/price-drop")
+
+    assert response.status_code == 404

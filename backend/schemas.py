@@ -90,3 +90,12 @@ class TrendOverviewOut(BaseModel):
     products_unchanged: int
     average_change_percent: float | None
     products: list[ProductTrendOut]
+
+
+class PriceDropOut(BaseModel):
+    product_id: int
+    status: str
+    previous_price_minor: int | None
+    current_price_minor: int | None
+    drop_amount_minor: int | None
+    drop_percent: float | None

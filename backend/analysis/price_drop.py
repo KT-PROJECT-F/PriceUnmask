@@ -46,7 +46,7 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
     previous_price = int(valid_history.iloc[-2]["current_price_minor"])
     current_price = int(valid_history.iloc[-1]["current_price_minor"])
 
-    if previous_price <= 0 or current_price < 0:
+    if previous_price <= 0 or current_price <= 0:
         raise ValueError(
             "Prices must be non-negative and previous price must be greater than zero."
         )

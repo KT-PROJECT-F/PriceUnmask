@@ -170,17 +170,41 @@ The first five prices form the baseline.
 The detector returned an empty `anomalous_timestamps` list, and
 `latest_is_anomalous` was `False`.
 
+### Case 3: Synthetic significant price increase - flagged
+
+Input prices (minor currency units):
+
+`[1000, 1010, 990, 1000, 1000, 1200]`
+
+The first five prices form the baseline.
+
+- Baseline mean: 1000
+- Sample standard deviation: sqrt(50) approximately 7.07
+- Current price: 1200
+- Percentage change: |1200 - 1000| / 1000 * 100 = 20%
+- Z-score: (1200 - 1000) / 7.07 approximately 28.28
+- Both thresholds are satisfied: 20% >= 10% and |28.28| >= 3.
+
+**Expected and observed result:** Flagged.
+
+The detector returned `2026-10-06T00:00:00Z` in `anomalous_timestamps`, and `latest_is_anomalous` was `True`.
+
+Covered by the existing test:
+`test_detect_anomalies_flags_an_obvious_high_spike`.
+
 ### Test execution
 
-Command:
+The existing anomaly model tests cover all three synthetic behaviours:
 
-    python -m pytest tests/test_anomaly_model.py tests/test_anomaly.py -v
+- `test_detect_anomalies_flags_a_sudden_big_drop`
+- `test_detect_anomalies_does_not_flag_a_3_percent_change`
+- `test_detect_anomalies_flags_an_obvious_high_spike`
 
-Result: **18 passed**.
+Full test suite:
 
-New tests:
-- `test_synthetic_validation_flags_large_price_drop`
-- `test_synthetic_validation_does_not_flag_change_below_minimum_percent`
+Command: `python -m pytest -v`
+
+Result: **354 passed, 1 warning**.
 
 ### Interpretation and limitation
 

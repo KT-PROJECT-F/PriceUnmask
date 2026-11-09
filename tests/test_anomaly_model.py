@@ -109,23 +109,3 @@ def test_detect_anomalies_sorts_rows_and_normalizes_timestamps_to_utc() -> None:
 
     assert result.anomalous_timestamps == ["2026-10-06T00:00:00Z"]
     assert result.latest_is_anomalous
-
-
-def test_synthetic_validation_flags_large_price_drop() -> None:
-    # Synthetic case: a 20% drop from a stable historical baseline.
-    history = make_history([1000, 1010, 990, 1000, 1000, 800])
-
-    result = detect_anomalies(history)
-
-    assert result.anomalous_timestamps == ["2026-10-06T00:00:00Z"]
-    assert result.latest_is_anomalous
-
-
-def test_synthetic_validation_does_not_flag_change_below_minimum_percent() -> None:
-    # Synthetic case: z-score exceeds 3, but the 3% change is below 10%.
-    history = make_history([1000, 1010, 990, 1000, 1000, 1030])
-
-    result = detect_anomalies(history)
-
-    assert result.anomalous_timestamps == []
-    assert not result.latest_is_anomalous

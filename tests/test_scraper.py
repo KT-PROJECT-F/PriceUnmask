@@ -30,7 +30,6 @@ CATEGORY_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_category.html"
 BASE_URL = "https://books.toscrape.com/"
 CATEGORY_BASE_URL = "https://books.toscrape.com/catalogue/category/books/travel_2/index.html"
 DEMO_LISTING_URL = "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
-DEMO_FIXTURE_PATH = SNAPSHOT_DIR / "webscraper_demo_laptops.html"
 
 
 def parse_fixture(fixture_path: Path, base_url: str) -> list:
@@ -719,14 +718,25 @@ def test_scrape_rejects_unsupported_urls_before_fetching(monkeypatch, url):
         scrape(url)
 
 
-def test_webscraper_demo_adapter_parses_saved_listing_page():
-    html = DEMO_FIXTURE_PATH.read_text(encoding="utf-8")
+def test_webscraper_demo_parses_valid_product_card():
+    html = """
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/789"
+         title="Valid Laptop">
+        Valid Laptop
+      </a>
+      <h4 itemprop="price">$899.00</h4>
+      <meta itemprop="priceCurrency" content="USD">
+    </div>
+    """
 
     products = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
 
-    assert len(products) == 6
-    assert products[0].name == "Packard 255 G2"
-    assert products[0].current_price_minor == 41699
+    assert len(products) == 1
+    assert products[0].name == "Valid Laptop"
+    assert products[0].external_id == "789"
+    assert products[0].current_price_minor == 89900
     assert products[0].currency == "USD"
     assert products[0].source == "webscraper-demo"
 

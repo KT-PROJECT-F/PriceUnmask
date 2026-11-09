@@ -28,17 +28,20 @@
 | Price in raw HTML | Yes                                           | Lloyd washing machine https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo — source `offers.price` = `13590`, matching displayed Deal Price ₹13,590; `selling.min` and `selling.max` = `15490`, matching displayed Offer Price ₹15,490. |
 | Price changes     | Not assessed                                  | Reliance Digital is ruled out for automated tracking by section 12 of its Terms of Use; no second product-price visit was made.                                                                                                                                                                                                                          |
 
-## 3. Web Scraper Test Site
+## 3. Web Scraper Demo Site
 
-**Site:** https://webscraper.io/test-sites/e-commerce/static
-**Listing URL used for the adapter:** https://webscraper.io/test-sites/e-commerce/static/computers/laptops
+**Shop:** https://webscraper.io/
+**Practice listing URL:** https://webscraper.io/test-sites/e-commerce/static/computers/laptops
+**Evaluation date:** 9 November 2026
 
 | Check | Result | Evidence |
 |---|---|---|
-| Purpose and item status | Practice catalog; items are not for sale | On 9 November 2026, the page at https://webscraper.io/test-sites/e-commerce/static stated: “Welcome to WebScraper e-commerce site. You can use this site for training to learn how to use the Web Scraper. Items listed here are not for sale.” This supports using the catalog as a parser-training fixture; it is not a general permission statement for other Web Scraper pages. |
-| robots.txt | Selected static listing path is not disallowed by the visible rules | https://webscraper.io/robots.txt — On 9 November 2026, the visible `User-agent: *` rules disallowed `/test-sites/product/`, `/test-sites/pagination/`, `/test-sites/pagination?*`, `/test-sites/scroll/`, and `/test-sites/load-more/`. No rule matching `/test-sites/e-commerce/static` was visible. robots.txt is not permission to scrape. |
-| Terms | Not assessed | On 9 November 2026, the footer of https://webscraper.io/test-sites/e-commerce/static showed a Website Privacy Policy link but no Terms link. The guessed URL https://webscraper.io/terms-of-service returned 404 that day; this does not establish that no terms exist. The training-site statement and robots.txt review above are the limited basis for this parser-training fixture, not permission for commercial-site collection. |
-| Price in page HTML | Found | On 9 November 2026, the static laptop listing contained product names, product URLs, and USD prices in its HTML. A copy is saved as `data/snapshots/webscraper_demo_laptops.html` for offline parser tests. |
+| robots.txt | Disallowed | https://webscraper.io/robots.txt — The reviewed `User-agent: *` rules include `Disallow: /test-sites/e-commerce/`, which covers the proposed listing URL. Do not fetch this listing for a fixture or enable live collection unless the site owner grants permission or the policy changes. |
+| Terms of Use | Permission not established | https://forum.webscraper.io/tos — general Web Scraper website terms. https://cloud.webscraper.io/auth/terms-and-conditions — Cloud terms include restrictions on reproducing, copying, or redistributing Web Scraper material. Applicability to the demo catalog needs confirmation; the reviewed pages do not establish permission to collect and retain the listing as PriceUnmask test data. |
+| Fixture | Not collected | No new real listing page was fetched because the proposed listing path is disallowed by robots.txt. A previously downloaded local copy was removed from the repository; tests use controlled HTML only. |
+| Adapter tests | Local parser tests | Controlled HTML tests cover valid product cards, cards without a price or link, and product links to an external host. These tests require no network access and do not establish permission for live collection. |
+
+**Decision:** Do not use the Web Scraper demo listing for live collection or claim that a real-page fixture requirement is complete. Obtain permission or select another practice site with a suitable robots.txt and terms review.
 
 ## 4. Price Observations
 
@@ -59,7 +62,7 @@ Manual browser observations; bank, exchange and EMI offers are recorded separate
 
 **What this tells us:** The manual observations show both a real displayed price change and a discount claim against MRP. This establishes that Croma can supply evidence relevant to the anomaly and trust-score features, but not that automated collection is permitted.
 
-## 4. Recommendation — 3 November 2026
+## 5. Recommendation — 3 November 2026
 
 **Pick:** Croma remains the only candidate of the two not expressly ruled out by the reviewed terms. This is not approval to begin automated collection.
 

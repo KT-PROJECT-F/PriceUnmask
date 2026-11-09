@@ -1,4 +1,3 @@
-
 """Detect price drops from a product's price history."""
 
 from dataclasses import dataclass

@@ -1,4 +1,3 @@
-
 """Calculate shopper-friendly price trends from price history."""
 
 from dataclasses import dataclass

@@ -9,9 +9,7 @@ from backend.analysis.price_trend import calculate_price_trend
 def make_history(prices):
     return pd.DataFrame(
         {
-            "scraped_at": pd.date_range(
-                "2026-01-01", periods=len(prices), freq="D", tz="UTC"
-            ),
+            "scraped_at": pd.date_range("2026-01-01", periods=len(prices), freq="D", tz="UTC"),
             "current_price_minor": prices,
         }
     )

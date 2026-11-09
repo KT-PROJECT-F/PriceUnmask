@@ -211,10 +211,10 @@ class BooksToScrapeAdapter:
 
     def supports(self, url: str) -> bool:
         parsed_url = urlsplit(url)
-        return (
-            parsed_url.scheme in {"http", "https"}
-            and parsed_url.hostname in {"books.toscrape.com", "www.books.toscrape.com"}
-        )
+        return parsed_url.scheme in {"http", "https"} and parsed_url.hostname in {
+            "books.toscrape.com",
+            "www.books.toscrape.com",
+        }
 
     def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]:
         return parse_listing(html, base_url)
@@ -234,10 +234,7 @@ class WebScraperDemoAdapter:
         return (
             parsed_url.scheme in {"http", "https"}
             and parsed_url.hostname in self._hostnames
-            and (
-                path == self._listing_path
-                or path.startswith(f"{self._listing_path}/")
-            )
+            and (path == self._listing_path or path.startswith(f"{self._listing_path}/"))
         )
 
     def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]:

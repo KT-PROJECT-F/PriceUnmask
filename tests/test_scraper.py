@@ -25,9 +25,7 @@ CATEGORY_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_category.html"
 
 BASE_URL = "https://books.toscrape.com/"
 CATEGORY_BASE_URL = "https://books.toscrape.com/catalogue/category/books/travel_2/index.html"
-DEMO_LISTING_URL = (
-    "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
-)
+DEMO_LISTING_URL = "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
 
 
 def parse_fixture(fixture_path: Path, base_url: str) -> list:
@@ -631,9 +629,7 @@ def test_webscraper_demo_adapter_parses_product_card():
 
     assert product.external_id == "31"
     assert product.name == "Packard 255 G2"
-    assert product.url == (
-        "https://webscraper.io/test-sites/e-commerce/static/product/31"
-    )
+    assert product.url == ("https://webscraper.io/test-sites/e-commerce/static/product/31")
     assert product.current_price_minor == 41699
     assert product.original_price_minor is None
     assert product.in_stock is None

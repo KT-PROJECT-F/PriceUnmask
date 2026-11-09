@@ -484,9 +484,7 @@ def test_scrape_returns_products_when_the_snapshot_cannot_be_saved(
         lambda html, base_url: [FakeProduct("product")],
     )
 
-    assert product_scraper.scrape("https://books.toscrape.com/list") == [
-        FakeProduct("product")
-    ]
+    assert product_scraper.scrape("https://books.toscrape.com/list") == [FakeProduct("product")]
 
 
 def test_fetch_html_logs_robots_user_agent_and_delay(

@@ -121,98 +121,82 @@ Re-run command:
 
 ## Synthetic validation - 9 November 2026
 
-Two controlled synthetic price histories were tested to verify the anomaly
-detector's behaviour. These are constructed fixtures, not prices collected
-from a commercial website. This is synthetic behavioural validation only.
+Four controlled synthetic price histories were tested against the existing anomaly detector. These examples validate detector behaviour only; they are not evidence of real-world price changes.
 
-The detector compares each price with the five immediately preceding prices.
-For a non-flat baseline, both conditions must hold:
+The detector compares each current price with the preceding five prices. For a non-flat baseline, an observation is flagged only when both conditions are met:
+
 - Absolute percentage change is at least 10%.
 - Absolute z-score is at least 3.
 
-### Case 1: Synthetic price drop - flagged
+### Case 1: Synthetic significant price drop - flagged
 
-Input prices (minor currency units):
+Input prices: `[1000, 1010, 990, 1000, 1000, 800]`
 
-`[1000, 1010, 990, 1000, 1000, 800]`
-
-The first five prices form the baseline.
-
-- Baseline mean: (1000 + 1010 + 990 + 1000 + 1000) / 5 = 1000
-- Sample standard deviation: sqrt(50) approximately 7.07
-- Current price: 800
-- Percentage change: |800 - 1000| / 1000 * 100 = 20%
-- Z-score: (800 - 1000) / 7.07 approximately -28.28
-- Both thresholds are satisfied: 20% >= 10% and |-28.28| >= 3.
+- Baseline mean: 1000
+- Sample standard deviation: approximately 7.07
+- Percentage change: 20%
+- Z-score: approximately -28.28
 
 **Expected and observed result:** Flagged.
 
-The detector returned `2026-10-06T00:00:00Z` in
-`anomalous_timestamps`, and `latest_is_anomalous` was `True`.
+Covered by `test_detect_anomalies_flags_a_sudden_big_drop`.
 
 ### Case 2: Synthetic small price increase - not flagged
 
-Input prices (minor currency units):
-
-`[1000, 1010, 990, 1000, 1000, 1030]`
-
-The first five prices form the baseline.
+Input prices: `[1000, 1010, 990, 1000, 1000, 1030]`
 
 - Baseline mean: 1000
-- Sample standard deviation: sqrt(50) approximately 7.07
-- Current price: 1030
-- Percentage change: |1030 - 1000| / 1000 * 100 = 3%
-- Z-score: (1030 - 1000) / 7.07 approximately 4.24
-- The z-score exceeds 3, but the percentage change is below 10%.
+- Sample standard deviation: approximately 7.07
+- Percentage change: 3%
+- Z-score: approximately 4.24
 
 **Expected and observed result:** Not flagged.
 
-The detector returned an empty `anomalous_timestamps` list, and
-`latest_is_anomalous` was `False`.
+The z-score threshold is met, but the percentage threshold is not.
+
+Covered by `test_detect_anomalies_does_not_flag_a_3_percent_change`.
 
 ### Case 3: Synthetic significant price increase - flagged
 
-Input prices (minor currency units):
-
-`[1000, 1010, 990, 1000, 1000, 1200]`
-
-The first five prices form the baseline.
+Input prices: `[1000, 1010, 990, 1000, 1000, 1200]`
 
 - Baseline mean: 1000
-- Sample standard deviation: sqrt(50) approximately 7.07
-- Current price: 1200
-- Percentage change: |1200 - 1000| / 1000 * 100 = 20%
-- Z-score: (1200 - 1000) / 7.07 approximately 28.28
-- Both thresholds are satisfied: 20% >= 10% and |28.28| >= 3.
+- Sample standard deviation: approximately 7.07
+- Percentage change: 20%
+- Z-score: approximately 28.28
 
 **Expected and observed result:** Flagged.
 
-The detector returned `2026-10-06T00:00:00Z` in `anomalous_timestamps`, and `latest_is_anomalous` was `True`.
+Covered by `test_detect_anomalies_flags_an_obvious_high_spike`.
 
-Covered by the existing test:
-`test_detect_anomalies_flags_an_obvious_high_spike`.
+### Case 4: Synthetic large price drop with volatile baseline - not flagged
+
+Input prices: `[700, 1300, 800, 1200, 1000, 700]`
+
+- Baseline mean: 1000
+- Sample standard deviation: approximately 254.95
+- Current price: 700
+- Percentage change: 30%
+- Z-score: approximately -1.18
+
+**Expected and observed result:** Not flagged.
+
+The 30% drop passes the percentage threshold, but the absolute z-score is below 3. This demonstrates that the z-score condition independently prevents an anomaly from being flagged.
+
+Covered by `test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline`.
 
 ### Test execution
 
-The existing anomaly model tests cover all three synthetic behaviours:
+Run focused tests:
 
-- `test_detect_anomalies_flags_a_sudden_big_drop`
-- `test_detect_anomalies_does_not_flag_a_3_percent_change`
-- `test_detect_anomalies_flags_an_obvious_high_spike`
+    python -m pytest tests/test_anomaly_model.py -v
 
-Full test suite:
+Run the full suite:
 
-Command: `python -m pytest -v`
-
-Result: **354 passed, 1 warning**.
+    python -m pytest -v
 
 ### Interpretation and limitation
 
-These tests confirm that the implementation follows its configured thresholds
-for the two controlled examples. A sufficiently large drop is flagged, while
-a 3% movement is not flagged even when its z-score exceeds 3.
+The synthetic cases demonstrate that the detector applies both thresholds as intended. Significant drops and increases are flagged when both thresholds pass. A 3% increase is not flagged because it does not meet the percentage threshold. A 30% drop against a volatile baseline is not flagged because its z-score remains below 3.
 
-This does not establish precision, recall, false-positive rates, or reliability
-on real retail price histories. The real-world validation limitation above
-remains open until a permitted source with genuine price movements can be
-evaluated.
+This is controlled synthetic behavioural validation only. The collected Books to Scrape exports contain no observed price movements, so validation against genuine real-world price changes remains outstanding.

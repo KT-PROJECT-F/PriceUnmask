@@ -66,22 +66,21 @@
           <option value="all">All Categories</option>
         </select>
       </div>
-
       <p id="category-trends-status" role="status">
         Loading category and trend information...
       </p>
-      <div class="category-filter">
-        <label for="trend-product-select">Select Product for Price Trend</label>
-        <select id="trend-product-select">
-          <option value="">Choose a product</option>
-        </select>
-      </div>
+        <div class="category-filter">
+          <label for="trend-product-select">Select Product to Compare</label>
+          <select id="trend-product-select">
+            <option value="">All Products</option>
+          </select>
+        </div>
       <div class="trend-chart-container">
         <h3>Price Trends</h3>
         <canvas
           id="category-trend-chart"
           role="img"
-          aria-label="Price history chart for the selected product">
+          aria-label="Price trend comparison chart for selected products">
         </canvas>
       </div>
     </section>

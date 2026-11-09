@@ -528,30 +528,31 @@ h3 {
 
 
 /* Shopper Watchlist */
+
 .watchlist-button {
   display: block;
   margin-top: 14px;
   padding: 10px 14px;
-  border: 1px solid #2563eb;
+  border: 1px solid var(--accent);
   border-radius: 8px;
-  background: #ffffff;
-  color: #2563eb;
+  background: var(--surface);
+  color: var(--accent);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .watchlist-button:hover {
-  background: #eff6ff;
+  background: var(--genuine-bg);
 }
 
 .watchlist-button[aria-pressed="true"] {
-  background: #2563eb;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--surface);
 }
 
 .watchlist-button:focus-visible {
-  outline: 3px solid #f59e0b;
+  outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -559,9 +560,9 @@ h3 {
 .price-drop-notifications {
   margin: 20px 0;
   padding: 20px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .price-drop-notifications h2 {
@@ -576,9 +577,9 @@ h3 {
 
 .price-drop-alert {
   padding: 14px;
-  border: 1px solid #bbf7d0;
+  border: 1px solid var(--genuine-border);
   border-radius: 8px;
-  background: #f0fdf4;
+  background: var(--genuine-bg);
 }
 
 .price-drop-alert strong {
@@ -591,7 +592,7 @@ h3 {
 }
 
 .price-drop-percentage {
-  color: #15803d;
+  color: var(--genuine-color);
   font-weight: 700;
 }
 
@@ -599,15 +600,16 @@ h3 {
 .category-trends {
   margin-top: 24px;
   padding: 24px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
+
 
 .category-trends h2 {
   margin: 0 0 20px;
   font-size: 1.5rem;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 .category-filter {
@@ -619,7 +621,7 @@ h3 {
 
 .category-filter label {
   font-weight: 600;
-  color: #374151;
+  color: var(--ink-muted);
 }
 
 #category-select,
@@ -627,22 +629,22 @@ h3 {
   width: 100%;
   max-width: 320px;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #ffffff;
-  color: #111827;
+  background: var(--surface);
+  color: var(--ink);
   font-size: 1rem;
 }
 
 #category-select:focus-visible,
 #trend-product-select:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 #category-trends-status {
   margin: 12px 0;
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 .trend-chart-container {
@@ -650,13 +652,13 @@ h3 {
   width: 100%;
   min-height: 280px;
   padding: 16px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
 .trend-chart-container h3 {
   margin: 0 0 16px;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 @media (max-width: 600px) {

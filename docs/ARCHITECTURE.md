@@ -59,10 +59,11 @@ signature without a PR tagged `contract-change` that the affected owners review.
 Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 `scraped_at, current_price_minor, original_price_minor`, oldest first. The API layer converts.
 
-`ScrapedProduct.source` is an optional source key used by the scheduler when storing products.
-The source adapter is selected from the listing URL inside `scrape()`, so adding a site does not
-require per-site changes to scheduler or database code. The optional `source` field is a contract
-change and must be reviewed with the `contract-change` PR label.
+`ScrapedProduct.source` is an optional field already present in the product contract. Adapters
+that need a non-default source set it on parsed products; Books to Scrape leaves it unset so the
+scheduler's existing `SOURCE_KEY` remains the single source of its `books-toscrape` key. The source
+adapter is selected from the URL inside `scrape()`, so adding a site does not require per-site
+changes to scheduler or database code.
 
 ## 5. API (all under /api)
 

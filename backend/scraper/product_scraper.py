@@ -8,7 +8,7 @@ against saved HTML files with zero network calls.
 
 import logging
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep
@@ -44,8 +44,6 @@ class ScrapedProduct:
 
 
 class SourceAdapter(Protocol):
-    source: str
-
     def supports(self, url: str) -> bool: ...
 
     def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]: ...
@@ -268,8 +266,6 @@ def _validated_next_page_url(
 
 
 class BooksToScrapeAdapter:
-    source = "books-toscrape"
-
     def supports(self, url: str) -> bool:
         parsed_url = urlsplit(url)
         return parsed_url.scheme in {"http", "https"} and parsed_url.hostname in {
@@ -278,12 +274,7 @@ class BooksToScrapeAdapter:
         }
 
     def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]:
-        return [
-            replace(product, source=self.source)
-            if isinstance(product, ScrapedProduct) and product.source is None
-            else product
-            for product in parse_listing(html, base_url)
-        ]
+        return parse_listing(html, base_url)
 
     def parse_next_page_url(self, html: str, base_url: str) -> str | None:
         return parse_next_page_url(html, base_url)

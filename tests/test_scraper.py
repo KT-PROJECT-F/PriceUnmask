@@ -7,6 +7,7 @@ import pytest
 
 from backend.scraper import product_scraper
 from backend.scraper.product_scraper import (
+    BooksToScrapeAdapter,
     CromaAdapter,
     WebScraperDemoAdapter,
     parse_croma_product,
@@ -683,7 +684,7 @@ def test_scrape_books_listing_keeps_existing_parser(monkeypatch, tmp_path):
 
     assert len(products) == 20
     assert products[0].external_id == "a-light-in-the-attic"
-    assert products[0].source == "books-toscrape"
+    assert products[0].source is None
 
 
 def test_source_adapter_selection_includes_croma():
@@ -694,7 +695,7 @@ def test_source_adapter_selection_includes_croma():
 
 
 def test_source_adapter_selection():
-    assert source_adapter_for_url(BASE_URL).source == "books-toscrape"
+    assert isinstance(source_adapter_for_url(BASE_URL), BooksToScrapeAdapter)
     assert isinstance(
         source_adapter_for_url(DEMO_LISTING_URL),
         WebScraperDemoAdapter,
@@ -716,30 +717,6 @@ def test_scrape_rejects_unsupported_urls_before_fetching(monkeypatch, url):
 
     with pytest.raises(ValueError, match="No source adapter supports URL"):
         scrape(url)
-
-
-def test_webscraper_demo_adapter_parses_product_card():
-    html = """
-    <div class="card thumbnail">
-      <h4 class="price"><span itemprop="price">$416.99</span>
-        <meta content="USD" itemprop="priceCurrency">
-      </h4>
-      <h4><a class="title" href="/test-sites/e-commerce/static/product/31"
-        title="Packard 255 G2">Packard 255 G2</a></h4>
-    </div>
-    """
-
-    [product] = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
-
-    assert product.external_id == "31"
-    assert product.name == "Packard 255 G2"
-    assert product.url == ("https://webscraper.io/test-sites/e-commerce/static/product/31")
-    assert product.current_price_minor == 41699
-    assert product.original_price_minor is None
-    assert product.in_stock is None
-    assert product.currency == "USD"
-    assert product.source == "webscraper-demo"
-    assert product.scraped_at.tzinfo is UTC
 
 
 def test_webscraper_demo_adapter_parses_saved_listing_page():
@@ -775,10 +752,8 @@ def test_webscraper_demo_adapter_parses_saved_listing_page():
     ],
 )
 def test_webscraper_demo_adapter_skips_malformed_cards(card, warning, caplog):
-    products = WebScraperDemoAdapter().parse_listing(
-        card,
-        DEMO_LISTING_URL,
-    )
+    with caplog.at_level(logging.WARNING):
+        products = WebScraperDemoAdapter().parse_listing(card, DEMO_LISTING_URL)
 
     assert products == []
     assert warning in caplog.text

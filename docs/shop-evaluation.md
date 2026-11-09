@@ -28,7 +28,19 @@
 | Price in raw HTML | Yes                                           | Lloyd washing machine https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo — source `offers.price` = `13590`, matching displayed Deal Price ₹13,590; `selling.min` and `selling.max` = `15490`, matching displayed Offer Price ₹15,490. |
 | Price changes     | Not assessed                                  | Reliance Digital is ruled out for automated tracking by section 12 of its Terms of Use; no second product-price visit was made.                                                                                                                                                                                                                          |
 
-## 3. Price Observations
+## 3. Web Scraper Test Site
+
+**Site:** https://webscraper.io/test-sites/e-commerce/static
+**Listing URL used for the adapter:** https://webscraper.io/test-sites/e-commerce/static/computers/laptops
+
+| Check | Result | Evidence |
+|---|---|---|
+| Purpose and item status | Practice catalog; items are not for sale | On 9 November 2026, the page at https://webscraper.io/test-sites/e-commerce/static stated: “Welcome to WebScraper e-commerce site. You can use this site for training to learn how to use the Web Scraper. Items listed here are not for sale.” This supports using the catalog as a parser-training fixture; it is not a general permission statement for other Web Scraper pages. |
+| robots.txt | Selected static listing path is not disallowed by the visible rules | https://webscraper.io/robots.txt — On 9 November 2026, the visible `User-agent: *` rules disallowed `/test-sites/product/`, `/test-sites/pagination/`, `/test-sites/pagination?*`, `/test-sites/scroll/`, and `/test-sites/load-more/`. No rule matching `/test-sites/e-commerce/static` was visible. robots.txt is not permission to scrape. |
+| Terms | Not assessed | On 9 November 2026, the footer of https://webscraper.io/test-sites/e-commerce/static showed a Website Privacy Policy link but no Terms link. The guessed URL https://webscraper.io/terms-of-service returned 404 that day; this does not establish that no terms exist. The training-site statement and robots.txt review above are the limited basis for this parser-training fixture, not permission for commercial-site collection. |
+| Price in page HTML | Found | On 9 November 2026, the static laptop listing contained product names, product URLs, and USD prices in its HTML. A copy is saved as `data/snapshots/webscraper_demo_laptops.html` for offline parser tests. |
+
+## 4. Price Observations
 
 Manual browser observations; bank, exchange and EMI offers are recorded separately from the displayed selling price.
 

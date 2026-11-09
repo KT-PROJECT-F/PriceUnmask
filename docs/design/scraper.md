@@ -9,16 +9,22 @@ It saves each page’s raw HTML snapshot and returns product records; the collec
 ## Source adapters
 
 - **Books to Scrape** remains a supported practice adapter. Its existing public parsing functions
-  and pagination behavior are retained.
+  and pagination behavior are retained. Products leave `source` unset, so the scheduler's
+  existing `SOURCE_KEY` remains the single place defining `books-toscrape`.
+- **Croma** retains the existing directly configured product-detail parser as an adapter. Its
+  terms were assessed as unclear in [shop-evaluation.md](../shop-evaluation.md); do not use it for
+  unattended collection unless permission is established.
 - **Web Scraper's static e-commerce test site** is the second adapter (`webscraper-demo`). Its
   product cards use USD prices and stable product IDs from product URLs. The site describes the
   catalog as a training site and says its items are not for sale; the adapter is intended for this
   practice catalog, not the vendor's commercial pages.
 - Every page still passes through the common fetcher, including its robots.txt check, User-Agent,
   delay, timeout, and retry policy.
-- `ScrapedProduct.source` is optional so existing construction remains compatible. Adapters set it
-  when the source differs from the scheduler's existing Books fallback; this field is a contract
-  change and requires the `contract-change` PR label.
+- `ScrapedProduct.source` is already an optional field in the current contract. Croma and
+  webscraper-demo set it; Books leaves it unset, using the scheduler's existing fallback.
+- Unsupported or empty target URLs are rejected before any request with `ValueError`; the
+  scheduler catches this and records the scrape run as failed. This is intentional: the scraper
+  now only fetches URLs explicitly supported by a registered adapter.
 
 ## Decisions
 

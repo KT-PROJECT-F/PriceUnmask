@@ -29,13 +29,9 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
     missing = required_columns - set(history.columns)
 
     if missing:
-        raise ValueError(
-            f"Missing required columns: {', '.join(sorted(missing))}"
-        )
+        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
-    valid_history = history.dropna(
-        subset=["scraped_at", "current_price_minor"]
-    ).copy()
+    valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
 
     if len(valid_history) < 2:
         return PriceDropResult(

@@ -5,7 +5,15 @@ from typing import Literal
 
 import pandas as pd
 
-TrendDirection = Literal["increasing", "decreasing", "stable", "insufficient_history"]
+from .price_history_utils import get_valid_price_history
+
+
+TrendDirection = Literal[
+    "increasing",
+    "decreasing",
+    "stable",
+    "insufficient_history",
+]
 
 
 @dataclass
@@ -19,15 +27,17 @@ class PriceTrendResult:
 
 
 def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
-    """Compare the earliest and latest observed prices."""
+    """Compare the earliest and latest valid prices."""
 
     required_columns = {"scraped_at", "current_price_minor"}
     missing = required_columns - set(history.columns)
 
     if missing:
-        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+        raise ValueError(
+            f"Missing required columns: {', '.join(sorted(missing))}"
+        )
 
-    valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
+    valid_history = get_valid_price_history(history)
 
     if len(valid_history) < 2:
         return PriceTrendResult(
@@ -39,13 +49,12 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
             snapshot_count=len(valid_history),
         )
 
-    valid_history = valid_history.sort_values("scraped_at")
-
-    first_price = int(valid_history.iloc[0]["current_price_minor"])
-    latest_price = int(valid_history.iloc[-1]["current_price_minor"])
-
-    if first_price <= 0 or latest_price < 0:
-        raise ValueError("Prices must be non-negative and first price must be greater than zero.")
+    first_price = int(
+        valid_history.iloc[0]["current_price_minor"]
+    )
+    latest_price = int(
+        valid_history.iloc[-1]["current_price_minor"]
+    )
 
     change_amount = latest_price - first_price
     change_percent = (change_amount / first_price) * 100

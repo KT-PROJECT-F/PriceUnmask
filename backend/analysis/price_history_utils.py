@@ -20,6 +20,15 @@ def get_valid_price_history(history: pd.DataFrame) -> pd.DataFrame:
 
     valid_history = valid_history[valid_history["current_price_minor"] > 0]
 
-    valid_history = valid_history.sort_values("scraped_at")
+    valid_history["scraped_at"] = pd.to_datetime(
+        valid_history["scraped_at"],
+        utc=True,
+    )
+
+    valid_history = valid_history.sort_values(
+        "scraped_at",
+        kind="stable",
+        ignore_index=True,
+    )
 
     return valid_history

@@ -3,6 +3,7 @@ import pytest
 
 from backend.analysis.price_drop import detect_price_drop
 from backend.analysis.price_trend import calculate_price_trend
+from backend.analysis.price_history_utils import get_valid_price_history
 
 
 def make_history(prices):
@@ -149,3 +150,58 @@ def test_zero_price_is_filtered():
     assert drop_result.status == "insufficient_history"
     assert trend_result.direction == "insufficient_history"
     assert trend_result.snapshot_count == 1
+
+
+def test_same_timestamp_preserves_original_order():
+    history = pd.DataFrame(
+        {
+            "scraped_at": [
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T10:00:00Z",
+                "2026-01-02T10:00:00Z",
+            ],
+            "current_price_minor": [100000, 90000, 80000],
+        }
+    )
+
+    result = get_valid_price_history(history)
+
+    assert result["current_price_minor"].tolist() == [
+        100000,
+        90000,
+        80000,
+    ]
+
+
+def test_naive_timestamps_are_converted_to_utc():
+    history = pd.DataFrame(
+        {
+            "scraped_at": [
+                "2026-01-02 10:00:00",
+                "2026-01-01 10:00:00",
+            ],
+            "current_price_minor": [80000, 100000],
+        }
+    )
+
+    result = get_valid_price_history(history)
+
+    assert str(result["scraped_at"].dt.tz) == "UTC"
+    assert result["current_price_minor"].tolist() == [100000, 80000]
+
+
+def test_timezone_aware_timestamps_are_converted_to_utc():
+    history = pd.DataFrame(
+        {
+            "scraped_at": [
+                "2026-01-02T10:00:00+05:30",
+                "2026-01-01T10:00:00+05:30",
+            ],
+            "current_price_minor": [80000, 100000],
+        }
+    )
+
+    result = get_valid_price_history(history)
+
+    assert str(result["scraped_at"].dt.tz) == "UTC"
+    assert result["current_price_minor"].tolist() == [100000, 80000]

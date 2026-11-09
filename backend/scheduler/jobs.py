@@ -13,7 +13,7 @@ from backend.config import settings
 from backend.db import crud
 from backend.db.database import SessionLocal, init_db
 from backend.db.models import ScrapeRun
-from backend.scraper.product_scraper import scrape
+from backend.scraper.registry import scrape
 
 SOURCE_KEY = "books-toscrape"
 logger = logging.getLogger(__name__)

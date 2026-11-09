@@ -156,7 +156,7 @@ The z-score threshold is met, but the percentage threshold is not.
 
 Covered by `test_detect_anomalies_does_not_flag_a_3_percent_change`.
 
-### Case 3: Synthetic significant price increase - flagged
+### Case 3: Synthetic significant price hike (increase) - flagged
 
 Input prices: `[1000, 1010, 990, 1000, 1000, 1200]`
 
@@ -200,3 +200,8 @@ Run the full suite:
 The synthetic cases demonstrate that the detector applies both thresholds as intended. Significant drops and increases are flagged when both thresholds pass. A 3% increase is not flagged because it does not meet the percentage threshold. A 30% drop against a volatile baseline is not flagged because its z-score remains below 3.
 
 This is controlled synthetic behavioural validation only. The collected Books to Scrape exports contain no observed price movements, so validation against genuine real-world price changes remains outstanding.
+
+### New tests
+
+- `test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline`
+  - Verifies that a 30% drop is not flagged when the volatile baseline keeps the absolute z-score below 3.

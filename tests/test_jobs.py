@@ -72,7 +72,10 @@ def calls(monkeypatch, session):
 
 
 def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
-    items = [make_item("a"), make_item("b")]
+    items = [
+        make_item("a"),
+        replace(make_item("b"), source="webscraper-demo"),
+    ]
 
     def _happy_scrape(url):
         return items
@@ -81,7 +84,10 @@ def test_happy_path_saves_all_and_returns_count(monkeypatch, calls):
 
     assert jobs.run_scrape_cycle() == 2
     assert [c[0] for c in calls] == ["start", "upsert", "upsert", "finish"]
-    assert calls[1][1] == "books-toscrape"
+    assert [call[1] for call in calls[1:3]] == [
+        "books-toscrape",
+        "webscraper-demo",
+    ]
     assert [call[2] for call in calls[1:3]] == items
     assert all(call[3] is calls[0][1] for call in calls[1:3])
     assert calls[-1] == ("finish", "success", 2, None)

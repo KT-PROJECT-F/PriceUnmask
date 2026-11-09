@@ -48,7 +48,7 @@ signature without a PR tagged `contract-change` that the affected owners review.
 
 | Module | Public contract | Depends on |
 |---|---|---|
-| `scraper/product_scraper.py` | `ScrapedProduct`, `parse_price_to_minor`, `parse_listing`, `fetch_html`, `scrape` | nothing |
+| `scraper/product_scraper.py` | `ScrapedProduct`, `SourceAdapter`, `parse_price_to_minor`, `parse_listing`, `fetch_html`, `scrape` | nothing |
 | `db/crud.py` | `start_scrape_run`, `finish_scrape_run`, `upsert_product_and_snapshot`, `list_products`, `get_product`, `get_history`, `list_scrape_runs` | models |
 | `scheduler/jobs.py` | `run_scrape_cycle() -> int`, `build_scheduler()` | scraper, crud |
 | `analysis/trust_score.py` | `compute_signals(df)`, `compute_trust_score(df) -> TrustScore` | pandas only |
@@ -58,6 +58,11 @@ signature without a PR tagged `contract-change` that the affected owners review.
 
 Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 `scraped_at, current_price_minor, original_price_minor`, oldest first. The API layer converts.
+
+`ScrapedProduct.source` is an optional source key used by the scheduler when storing products.
+The source adapter is selected from the listing URL inside `scrape()`, so adding a site does not
+require per-site changes to scheduler or database code. The optional `source` field is a contract
+change and must be reviewed with the `contract-change` PR label.
 
 ## 5. API (all under /api)
 

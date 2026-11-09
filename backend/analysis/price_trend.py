@@ -26,13 +26,9 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
     missing = required_columns - set(history.columns)
 
     if missing:
-        raise ValueError(
-            f"Missing required columns: {', '.join(sorted(missing))}"
-        )
+        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
-    valid_history = history.dropna(
-        subset=["scraped_at", "current_price_minor"]
-    ).copy()
+    valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
 
     if len(valid_history) < 2:
         return PriceTrendResult(
@@ -50,9 +46,7 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
     latest_price = int(valid_history.iloc[-1]["current_price_minor"])
 
     if first_price <= 0 or latest_price < 0:
-        raise ValueError(
-            "Prices must be non-negative and first price must be greater than zero."
-        )
+        raise ValueError("Prices must be non-negative and first price must be greater than zero.")
 
     change_amount = latest_price - first_price
     change_percent = (change_amount / first_price) * 100

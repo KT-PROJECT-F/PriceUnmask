@@ -131,9 +131,7 @@ def test_price_trend_ignores_missing_price():
 
 
 def test_missing_columns_raise_error():
-    history = pd.DataFrame(
-        {"current_price_minor": [100000, 80000]}
-    )
+    history = pd.DataFrame({"current_price_minor": [100000, 80000]})
 
     with pytest.raises(ValueError):
         detect_price_drop(history)

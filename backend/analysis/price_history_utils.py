@@ -16,13 +16,9 @@ def get_valid_price_history(history: pd.DataFrame) -> pd.DataFrame:
         errors="coerce",
     )
 
-    valid_history = valid_history.dropna(
-        subset=["scraped_at", "current_price_minor"]
-    )
+    valid_history = valid_history.dropna(subset=["scraped_at", "current_price_minor"])
 
-    valid_history = valid_history[
-        valid_history["current_price_minor"] > 0
-    ]
+    valid_history = valid_history[valid_history["current_price_minor"] > 0]
 
     valid_history = valid_history.sort_values("scraped_at")
 

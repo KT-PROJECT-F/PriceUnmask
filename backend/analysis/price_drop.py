@@ -7,7 +7,6 @@ import pandas as pd
 
 from .price_history_utils import get_valid_price_history
 
-
 PriceDropStatus = Literal[
     "insufficient_history",
     "price_dropped",
@@ -31,9 +30,7 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
     missing = required_columns - set(history.columns)
 
     if missing:
-        raise ValueError(
-            f"Missing required columns: {', '.join(sorted(missing))}"
-        )
+        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
     valid_history = get_valid_price_history(history)
 
@@ -46,12 +43,8 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
             drop_percent=None,
         )
 
-    previous_price = int(
-        valid_history.iloc[-2]["current_price_minor"]
-    )
-    current_price = int(
-        valid_history.iloc[-1]["current_price_minor"]
-    )
+    previous_price = int(valid_history.iloc[-2]["current_price_minor"])
+    current_price = int(valid_history.iloc[-1]["current_price_minor"])
 
     if current_price >= previous_price:
         return PriceDropResult(

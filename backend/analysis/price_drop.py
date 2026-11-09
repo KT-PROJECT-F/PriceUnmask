@@ -5,6 +5,9 @@ from typing import Literal
 
 import pandas as pd
 
+from .price_history_utils import get_valid_price_history
+
+
 PriceDropStatus = Literal[
     "insufficient_history",
     "price_dropped",
@@ -22,15 +25,17 @@ class PriceDropResult:
 
 
 def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
-    """Compare the latest price with the immediately previous observed price."""
+    """Compare the latest valid price with the previous valid price."""
 
     required_columns = {"scraped_at", "current_price_minor"}
     missing = required_columns - set(history.columns)
 
     if missing:
-        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+        raise ValueError(
+            f"Missing required columns: {', '.join(sorted(missing))}"
+        )
 
-    valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
+    valid_history = get_valid_price_history(history)
 
     if len(valid_history) < 2:
         return PriceDropResult(
@@ -41,15 +46,12 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
             drop_percent=None,
         )
 
-    valid_history = valid_history.sort_values("scraped_at")
-
-    previous_price = int(valid_history.iloc[-2]["current_price_minor"])
-    current_price = int(valid_history.iloc[-1]["current_price_minor"])
-
-    if previous_price <= 0 or current_price <= 0:
-        raise ValueError(
-            "Prices must be non-negative and previous price must be greater than zero."
-        )
+    previous_price = int(
+        valid_history.iloc[-2]["current_price_minor"]
+    )
+    current_price = int(
+        valid_history.iloc[-1]["current_price_minor"]
+    )
 
     if current_price >= previous_price:
         return PriceDropResult(

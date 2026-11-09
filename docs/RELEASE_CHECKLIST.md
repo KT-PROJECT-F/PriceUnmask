@@ -248,3 +248,7 @@ the commit hash. Link each issue in the table. If nothing failed, write
 | 9. Saved to the database | PASS | `check_db`: Run 1, status `success`, `products_seen` 60, 60 snapshots. Total products: 63. Products without a snapshot in this run: 0. Duplicate product names: None. Health status: `HEALTHY`. Latest finished run timestamp: `2026-11-04 06:22:10.764941+00:00`. `/api/scrape-runs` confirmed Run ID `1`, status `success`, `products_seen: 60`, and `error_message: null`. |
 | 10. Automated checks | PASS | `ruff check .`: `All checks passed!`; `ruff format --check .`: `66 files already formatted`; `pytest -q`: `354 passed, 1 warning in 21.66s`. Warning: `StarletteDeprecationWarning` about using `httpx` with `starlette.testclient`. |
 | 11. Failures | PASS | No failures found. |
+
+## Known limitations (v1.1)
+
+- **Trust Score and anomaly detection are untested against real price movement.** Books to Scrape (the only live source) has fixed prices, so neither model has ever seen a real discount claim or a real price change. `docs/design/trust_score_findings.md` and `docs/design/anomaly_findings.md` were re-run against the latest export on 2026-11-04 and are current, but both report zero real signal. This is accepted as a known limitation of v1.1, not a release blocker — closing out when real price-change data exists is tracked in #226 if it's reopened.

@@ -20,6 +20,19 @@ const runCollectorButton = document.getElementById("run-collector-button");
 const collectorActionMessage = document.getElementById("collector-action-message");
 let priceHistoryChart = null;
 
+const categorySelect = document.getElementById("category-select");
+const categoryTrendsStatus = document.getElementById(
+  "category-trends-status"
+);
+const categoryTrendCanvas = document.getElementById(
+  "category-trend-chart"
+);
+
+let categoryTrendChart = null;
+let categoryTrendRequestId = 0;
+let trendProducts = [];
+const trendProductSelect = document.getElementById("trend-product-select");
+
 const trustLabels = {
   genuine: "Genuine",
   uncertain: "Uncertain",
@@ -278,6 +291,40 @@ if (runCollectorButton) {
 }
 
 
+const WATCHLIST_STORAGE_KEY = "priceunmask-watchlist";
+
+function getWatchlist() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(WATCHLIST_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(saved) ? saved.map(String) : [];
+  } catch (error) {
+    console.error("Unable to read watchlist:", error);
+    return [];
+  }
+}
+
+function isWatchlisted(productId) {
+  return getWatchlist().includes(String(productId));
+}
+
+function toggleWatchlist(productId) {
+  const id = String(productId);
+  const watchlist = getWatchlist();
+
+  const updated = watchlist.includes(id)
+    ? watchlist.filter((item) => item !== id)
+    : [...watchlist, id];
+
+  localStorage.setItem(
+    WATCHLIST_STORAGE_KEY,
+    JSON.stringify(updated)
+  );
+
+  return updated.includes(id);
+}
+
 function createProductCard(product, onSelect) {
   const card = document.createElement("article");
   card.className = "product-card";
@@ -314,7 +361,43 @@ function createProductCard(product, onSelect) {
     trustLabel.textContent = trustLabels.insufficient_data;
   }
 
-  card.append(name, latestPrice, lowestPrice, trustLabel);
+
+const watchlistButton = document.createElement("button");
+watchlistButton.type = "button";
+watchlistButton.className = "watchlist-button";
+
+function updateWatchlistButton() {
+  const saved = isWatchlisted(product.id);
+  watchlistButton.textContent = saved
+    ? "♥ Remove from Watchlist"
+    : "♡ Add to Watchlist";
+  watchlistButton.setAttribute("aria-pressed", String(saved));
+}
+
+updateWatchlistButton();
+
+
+watchlistButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+
+  toggleWatchlist(product.id);
+  updateWatchlistButton();
+
+  // Notify the dashboard that the watchlist changed.
+  window.dispatchEvent(new Event("watchlist-changed"));
+});
+
+watchlistButton.addEventListener("keydown", (event) => {
+  event.stopPropagation();
+});
+
+card.append(
+  name,
+  latestPrice,
+  lowestPrice,
+  trustLabel,
+  watchlistButton
+);
 
   card.addEventListener("click", () => onSelect(product));
 
@@ -429,6 +512,213 @@ async function loadPriceHistory(productId) {
   return history.points;
 }
 
+function detectLatestPriceDrop(history) {
+  if (!Array.isArray(history) || history.length < 2) {
+    return null;
+  }
+
+  const sortedHistory = [...history].sort(
+    (a, b) =>
+      Date.parse(a.scraped_at) - Date.parse(b.scraped_at)
+  );
+
+  const previous = sortedHistory[sortedHistory.length - 2];
+  const latest = sortedHistory[sortedHistory.length - 1];
+
+  const previousPrice = previous.current_price_minor;
+  const currentPrice = latest.current_price_minor;
+
+  if (
+    !Number.isFinite(previousPrice) ||
+    !Number.isFinite(currentPrice) ||
+    previousPrice <= 0 ||
+    currentPrice >= previousPrice
+  ) {
+    return null;
+  }
+
+  return {
+    previousPrice,
+    currentPrice,
+    dropAmount: previousPrice - currentPrice,
+    dropPercentage:
+      ((previousPrice - currentPrice) / previousPrice) * 100,
+    detectedAt: latest.scraped_at
+  };
+}
+
+async function updatePriceDropNotifications(products) {
+  const status = document.getElementById("notification-status");
+  const list = document.getElementById("notification-list");
+
+  if (!status || !list) return;
+
+  list.replaceChildren();
+
+  const watchedIds = new Set(getWatchlist());
+  const watchedProducts = products.filter(
+    (product) => watchedIds.has(String(product.id))
+  );
+
+  if (watchedProducts.length === 0) {
+    status.textContent = "No watched products to check.";
+    return;
+  }
+
+  status.textContent = "Checking watched products...";
+
+  const results = await Promise.allSettled(
+    watchedProducts.map(async (product) => {
+      const history = await loadPriceHistory(product.id);
+      return {
+        product,
+        drop: detectLatestPriceDrop(history)
+      };
+    })
+  );
+
+  let alertCount = 0;
+  let failedCount = 0;
+
+  results.forEach((result) => {
+    if (result.status === "rejected") {
+      console.error("Price history check failed:", result.reason);
+      failedCount++;
+      return;
+    }
+
+    const { product, drop } = result.value;
+    if (!drop) return;
+
+    alertCount++;
+
+    const alert = document.createElement("article");
+    alert.className = "price-drop-alert";
+
+    const title = document.createElement("strong");
+    title.textContent = product.name;
+
+    const price = document.createElement("p");
+    price.textContent =
+      `${formatPrice(drop.previousPrice, product.currency)} \u2192 ` +
+      formatPrice(drop.currentPrice, product.currency);
+
+    const percentage = document.createElement("p");
+    percentage.className = "price-drop-percentage";
+    percentage.textContent =
+      `Price dropped ${drop.dropPercentage.toFixed(1)}%`;
+
+    alert.append(title, price, percentage);
+    list.append(alert);
+  });
+
+  status.textContent = alertCount
+    ? `${alertCount} watched product(s) have a recent price drop.` +
+      (failedCount ? ` ${failedCount} could not be checked.` : "")
+    : failedCount
+      ? `No drops found. ${failedCount} product(s) could not be checked.`
+      : "No recent price drops for watched products.";
+}
+
+function updateTrendProductOptions(products) {
+  trendProducts = products;
+  if (!trendProductSelect) {
+    return;
+  }
+
+  const previousSelection = trendProductSelect.value;
+
+  trendProductSelect.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Choose a product";
+  trendProductSelect.append(placeholder);
+
+  for (const product of products) {
+    const option = document.createElement("option");
+    option.value = String(product.id);
+    option.textContent = product.name;
+    trendProductSelect.append(option);
+  }
+
+  const selectionExists = products.some(
+    (product) => String(product.id) === previousSelection
+  );
+
+  trendProductSelect.value = selectionExists
+    ? previousSelection
+    : "";
+
+  trendProductSelect.disabled = products.length === 0;
+
+  loadCategoryTrendView();
+}
+
+function filterProductsByCategory(products) {
+  if (
+    !categorySelect ||
+    !categorySelect.value ||
+    categorySelect.value === "all"
+  ) {
+    return products;
+  }
+
+  const selectedCategory = categorySelect.value;
+
+  return products.filter(
+    (product) =>
+      typeof product.category === "string" &&
+      product.category.trim() === selectedCategory
+  );
+}
+
+function updateCategoryOptions(products) {
+  if (!categorySelect || !categoryTrendsStatus) {
+    return;
+  }
+
+  const previousSelection = categorySelect.value;
+
+  const categories = [
+    ...new Set(
+      products
+        .map((product) => product.category)
+        .filter(
+          (category) =>
+            typeof category === "string" &&
+            category.trim().length > 0
+        )
+        .map((category) => category.trim())
+    )
+  ].sort((a, b) => a.localeCompare(b));
+
+  categorySelect.replaceChildren();
+
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All Categories";
+  categorySelect.append(allOption);
+
+  for (const category of categories) {
+    const option = document.createElement("option");
+    option.value = category;
+    option.textContent = category;
+    categorySelect.append(option);
+  }
+
+  categorySelect.value = categories.includes(previousSelection)
+    ? previousSelection
+    : "all";
+
+  categorySelect.disabled = categories.length === 0;
+
+  categoryTrendsStatus.textContent =
+    categories.length === 0
+      ? "Category information is not available yet."
+      : `${categories.length} categories available.`;
+}
+
 // Format history timestamps for readable chart labels.
 function formatChartDate(isoString) {
   return new Date(isoString).toLocaleDateString("en-IN", {
@@ -437,6 +727,151 @@ function formatChartDate(isoString) {
   });
 }
 
+
+function renderCategoryTrendChart(history, currency, productName) {
+  if (!categoryTrendCanvas || typeof Chart === "undefined") {
+    return;
+  }
+
+  if (categoryTrendChart) {
+    categoryTrendChart.destroy();
+    categoryTrendChart = null;
+  }
+
+  const points = [...history].sort(
+    (a, b) => new Date(a.scraped_at) - new Date(b.scraped_at)
+  );
+
+  categoryTrendChart = new Chart(categoryTrendCanvas, {
+    type: "line",
+    data: {
+      labels: points.map((point) =>
+        formatChartDate(point.scraped_at)
+      ),
+      datasets: [
+        {
+          label: `${productName} - Price`,
+          data: points.map(
+            (point) => point.current_price_minor / 100
+          ),
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37, 99, 235, 0.1)",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.2,
+          fill: true
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: (context) =>
+              formatPrice(
+                Math.round(context.parsed.y * 100),
+                currency
+              )
+          }
+        }
+      },
+      scales: {
+        y: {
+          title: {
+            display: true,
+            text: `Price (${currency})`
+          }
+        },
+        x: {
+          ticks: {
+            maxTicksLimit: 8
+          }
+        }
+      }
+    }
+  });
+}
+
+async function loadCategoryTrendView() {
+  if (
+    !categoryTrendCanvas ||
+    !categoryTrendsStatus ||
+    !trendProductSelect
+  ) {
+    return;
+  }
+ // Invalidate any previous price-history request.
+ const requestId = ++categoryTrendRequestId;
+
+  const productId = Number(trendProductSelect.value);
+
+  if (!productId) {
+    if (categoryTrendChart) {
+      categoryTrendChart.destroy();
+      categoryTrendChart = null;
+    }
+
+    categoryTrendsStatus.textContent =
+      "Select a product to view its price trend.";
+    return;
+  }
+
+  const selectedOption =
+    trendProductSelect.selectedOptions[0];
+
+  const productName = selectedOption.textContent;
+
+  try {
+    categoryTrendsStatus.textContent =
+      "Loading price trends...";
+
+    const history = await loadPriceHistory(productId);
+
+    if (requestId !== categoryTrendRequestId) {
+      return;
+    }
+
+    if (!history.length) {
+      if (categoryTrendChart) {
+        categoryTrendChart.destroy();
+        categoryTrendChart = null;
+      }
+
+      categoryTrendsStatus.textContent =
+        "No price history is available for this product.";
+      return;
+    }
+
+    const product = trendProducts.find(
+      (item) => item.id === productId
+    );
+
+    renderCategoryTrendChart(
+      history,
+      product?.currency || "INR",
+      productName
+    );
+
+    categoryTrendsStatus.textContent =
+      `Showing price trends for ${productName}.`;
+  } catch (error) {
+    if (requestId !== categoryTrendRequestId) {
+      return;
+    }
+
+    console.error("Error loading price trends:", error);
+
+    if (categoryTrendChart) {
+      categoryTrendChart.destroy();
+      categoryTrendChart = null;
+    }
+
+    categoryTrendsStatus.textContent =
+      "Price trends are not available right now.";
+  }
+}
 
  // Render the selected product's price history.
 function renderPriceHistoryChart(canvas, history, currency, trustScore) {
@@ -982,9 +1417,16 @@ async function loadProducts() {
   let currentProducts = [];
   let selectedProductId = null;
 
+  // Refresh price-drop notifications when the watchlist changes.
+  window.addEventListener("watchlist-changed", () => {
+    updatePriceDropNotifications(currentProducts);
+  });
+
+
   const showGrid = () => {
     selectedProductId = null;
-    showProductGrid(grid, currentProducts, showProductDetailForProduct);
+    const filteredProducts = filterProductsByCategory(currentProducts);
+    showProductGrid(grid, filteredProducts, showProductDetailForProduct);
   };
 
   const showProductDetailForProduct = async (product) => {
@@ -1047,7 +1489,13 @@ async function loadProducts() {
       }
 
       currentProducts = products;
-      renderProducts(currentProducts, grid, showProductDetailForProduct);
+      updateCategoryOptions(currentProducts);
+      updateTrendProductOptions(currentProducts);
+      const filteredProducts = filterProductsByCategory(currentProducts);
+      renderProducts(filteredProducts, grid, showProductDetailForProduct);
+
+      // Check watched products for price drops.
+      updatePriceDropNotifications(currentProducts);
 
       if (products.length === 0) {
         productStatus.textContent = query
@@ -1068,6 +1516,25 @@ async function loadProducts() {
     }
   }
 
+  if (categorySelect) {
+    categorySelect.addEventListener("change", () => {
+      const filteredProducts = filterProductsByCategory(currentProducts);
+
+      renderProducts(
+        filteredProducts,
+        grid,
+        showProductDetailForProduct
+      );
+
+      if (filteredProducts.length === 0) {
+        productStatus.textContent =
+          "No products match the selected category.";
+      } else {
+        productStatus.textContent = "";
+      }
+    });
+  }
+
   searchInput.addEventListener("input", () => {
     clearTimeout(searchTimer);
 
@@ -1078,6 +1545,13 @@ async function loadProducts() {
     }, 300);
   });
   await fetchProducts();
+}
+
+if (trendProductSelect) {
+  trendProductSelect.addEventListener(
+    "change",
+    loadCategoryTrendView
+  );
 }
 
 loadProducts();

@@ -38,6 +38,53 @@
       </button>
       <p id="collector-action-message" role="status" aria-live="polite"></p>
     </section>
+    <section
+      id="price-drop-notifications"
+      class="price-drop-notifications"
+      aria-labelledby="price-drop-heading"
+    >
+      <h2 id="price-drop-heading">
+        Price-Drop Notifications
+      </h2>
+
+      <p id="notification-status" role="status" aria-live="polite">
+        Checking watched products...
+      </p>
+
+      <div id="notification-list"></div>
+    </section>
+    <section
+      id="category-trends"
+      class="category-trends"
+      aria-labelledby="category-trends-heading"
+    >
+      <h2 id="category-trends-heading">Category &amp; Price Trends</h2>
+
+      <div class="category-filter">
+        <label for="category-select">Filter by Category</label>
+        <select id="category-select">
+          <option value="all">All Categories</option>
+        </select>
+      </div>
+
+      <p id="category-trends-status" role="status">
+        Loading category and trend information...
+      </p>
+      <div class="category-filter">
+        <label for="trend-product-select">Select Product for Price Trend</label>
+        <select id="trend-product-select">
+          <option value="">Choose a product</option>
+        </select>
+      </div>
+      <div class="trend-chart-container">
+        <h3>Price Trends</h3>
+        <canvas
+          id="category-trend-chart"
+          role="img"
+          aria-label="Price history chart for the selected product">
+        </canvas>
+      </div>
+    </section>
     <p id="product-status">Loading products...</p>
     <!-- Product grid and detail view are rendered by script.js. -->
   </main>

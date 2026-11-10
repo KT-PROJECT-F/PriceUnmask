@@ -2,7 +2,21 @@
 
 **Evaluation date:** 3 November 2026
 
-**Purpose:** Evaluate Croma and Reliance Digital as potential shops for price tracking in PriceUnmask.
+**Purpose:** Evaluate Croma, Reliance Digital, and Web Scraper's demo site as potential sources for
+PriceUnmask, and document the price observations used to assess feasibility.
+
+## Evaluation Standard
+
+A practice site is considered suitable only after reviewing the current `robots.txt` rules for the
+exact listing and product paths under the applicable user-agent group, with no matching
+`Disallow`. A robots.txt error or unclear rule leaves the site unverified; an allowed path is not
+permission by itself.
+
+The applicable terms must explicitly permit the intended automated access and use, or the site
+owner must provide written permission. Permission to fetch a page does not automatically permit
+retaining or redistributing it as a test fixture; that use must also be covered. Record the source
+URLs, relevant rule or terms clause, and review date. If either robots or terms are unclear, do not
+call the site clear or enable collection.
 
 ## 1. Croma
 
@@ -43,9 +57,12 @@
 
 **Decision:** Do not use the Web Scraper demo listing for live collection or claim that a real-page fixture requirement is complete. Obtain permission or select another practice site with a suitable robots.txt and terms review.
 
-## 4. Price Observations
+## 4. Price Observations — Croma and Reliance Digital
 
-Manual browser observations; bank, exchange and EMI offers are recorded separately from the displayed selling price.
+Manual browser observations for Croma and Reliance Digital; bank, exchange and EMI offers are
+recorded separately from the displayed selling price. The Web Scraper demo site is not included
+because its proposed listing path is disallowed by robots.txt and its terms do not establish
+permission.
 
 | Shop             | Product URL                                                                                                                                    | Visit | Date and time                | Selling price           | MRP                   | Offer, badge or "was" price |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------- | ----------------------- | --------------------- | --------------------------- |
@@ -64,7 +81,11 @@ Manual browser observations; bank, exchange and EMI offers are recorded separate
 
 ## 5. Recommendation — 3 November 2026
 
-**Pick:** Croma remains the only candidate of the two not expressly ruled out by the reviewed terms. This is not approval to begin automated collection.
+**Pick:** Of the two retail shops evaluated, Croma is the only one not expressly ruled out by the
+reviewed terms. It is not approved for automated collection. Web Scraper's demo site was also
+evaluated, but is not a suitable second adapter target: its proposed listing path is disallowed by
+robots.txt and its terms do not establish permission. The required second ToS-clear practice site
+remains unresolved.
 
 **Category URL:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
 

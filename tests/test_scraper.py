@@ -9,6 +9,7 @@ from backend.scraper import product_scraper
 from backend.scraper.product_scraper import (
     BooksToScrapeAdapter,
     CromaAdapter,
+    SourceAdapter,
     WebScraperDemoAdapter,
     parse_croma_product,
     parse_listing,
@@ -693,6 +694,15 @@ def test_source_adapter_selection_includes_croma():
     )
 
 
+def test_source_adapter_cannot_be_instantiated_without_all_methods():
+    class IncompleteAdapter(SourceAdapter):
+        def supports(self, url: str) -> bool:
+            return True
+
+    with pytest.raises(TypeError, match="abstract"):
+        IncompleteAdapter()
+
+
 def test_source_adapter_selection():
     assert isinstance(source_adapter_for_url(BASE_URL), BooksToScrapeAdapter)
     assert isinstance(
@@ -741,6 +751,26 @@ def test_webscraper_demo_parses_valid_product_card():
     assert products[0].source == "webscraper-demo"
 
 
+def test_webscraper_demo_missing_currency_logs_usd_fallback(caplog):
+    html = """
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/790"
+         title="Laptop Without Currency">
+        Laptop Without Currency
+      </a>
+      <h4 itemprop="price">$899.00</h4>
+    </div>
+    """
+
+    with caplog.at_level(logging.WARNING):
+        products = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].currency == "USD"
+    assert "no usable price currency; assuming USD: Laptop Without Currency" in caplog.text
+
+
 @pytest.mark.parametrize(
     ("card", "warning"),
     [
@@ -767,6 +797,36 @@ def test_webscraper_demo_adapter_skips_malformed_cards(card, warning, caplog):
 
     assert products == []
     assert warning in caplog.text
+
+
+def test_webscraper_demo_keeps_valid_card_when_another_card_is_invalid(caplog):
+    html = """
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/789"
+         title="Valid Laptop">
+        Valid Laptop
+      </a>
+      <h4 itemprop="price">$899.00</h4>
+      <meta itemprop="priceCurrency" content="USD">
+    </div>
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/790"
+         title="Laptop Without Price">
+        Laptop Without Price
+      </a>
+    </div>
+    """
+
+    with caplog.at_level(logging.WARNING):
+        products = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].name == "Valid Laptop"
+    assert products[0].external_id == "789"
+    assert products[0].current_price_minor == 89900
+    assert "no price: Laptop Without Price" in caplog.text
 
 
 def test_webscraper_demo_adapter_uses_same_listing_for_next_page():

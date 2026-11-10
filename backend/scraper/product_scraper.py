@@ -1,6 +1,7 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
 Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+It raises ValueError before fetching when no registered source adapter supports the URL.
 
 Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
 against saved HTML files with zero network calls.
@@ -8,11 +9,11 @@ against saved HTML files with zero network calls.
 
 import logging
 import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep
-from typing import Protocol
 from urllib.parse import urldefrag, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
@@ -43,11 +44,14 @@ class ScrapedProduct:
     source: str | None = None
 
 
-class SourceAdapter(Protocol):
+class SourceAdapter(ABC):
+    @abstractmethod
     def supports(self, url: str) -> bool: ...
 
+    @abstractmethod
     def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]: ...
 
+    @abstractmethod
     def parse_next_page_url(self, html: str, base_url: str) -> str | None: ...
 
 
@@ -246,6 +250,7 @@ def _validated_next_page_url(
     *,
     require_same_path: bool = False,
 ) -> str | None:
+    """Validate a next link; optionally keep pagination on the current listing path."""
     next_url = urldefrag(urljoin(base_url, href.strip())).url
     clean_base_url = urldefrag(base_url).url
     base_parts = urlsplit(clean_base_url)
@@ -265,7 +270,7 @@ def _validated_next_page_url(
     return next_url
 
 
-class BooksToScrapeAdapter:
+class BooksToScrapeAdapter(SourceAdapter):
     def supports(self, url: str) -> bool:
         parsed_url = urlsplit(url)
         return parsed_url.scheme in {"http", "https"} and parsed_url.hostname in {
@@ -280,7 +285,7 @@ class BooksToScrapeAdapter:
         return parse_next_page_url(html, base_url)
 
 
-class CromaAdapter:
+class CromaAdapter(SourceAdapter):
     source = "croma"
 
     def supports(self, url: str) -> bool:
@@ -296,7 +301,7 @@ class CromaAdapter:
         return None
 
 
-class WebScraperDemoAdapter:
+class WebScraperDemoAdapter(SourceAdapter):
     source = "webscraper-demo"
     _hostnames = {"webscraper.io", "www.webscraper.io"}
     _listing_path = "/test-sites/e-commerce/static"
@@ -361,7 +366,14 @@ class WebScraperDemoAdapter:
 
             currency_element = card.select_one("[itemprop='priceCurrency'][content]")
             currency_value = currency_element.get("content") if currency_element else None
-            currency = currency_value if isinstance(currency_value, str) else "USD"
+            if not isinstance(currency_value, str) or not currency_value.strip():
+                logger.warning(
+                    "Demo product card has no usable price currency; assuming USD: %s",
+                    name,
+                )
+                currency = "USD"
+            else:
+                currency = currency_value.strip()
 
             products.append(
                 ScrapedProduct(

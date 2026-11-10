@@ -8,6 +8,17 @@ It saves each page’s raw HTML snapshot and returns product records; the collec
 
 ## Source adapters
 
+- `SourceAdapter` is an abstract base class. A new adapter subclasses it and implements
+  `supports(url)`, `parse_listing(html, base_url)`, and
+  `parse_next_page_url(html, base_url)`. Python prevents instantiating an adapter that omits an
+  abstract method. This and the unsupported-URL behavior are scraper contract changes in this PR;
+  `ScrapedProduct.source` itself already exists on `dev` from #236.
+- The demo adapter requires pagination links to stay on the same listing path, preventing a
+  next-page link from sending collection to another category. Books to Scrape pagination is not
+  restricted to the same path because its valid next pages use paths such as
+  `/catalogue/page-2.html`; both adapters still require the same host and a valid HTTP(S) URL.
+- If a demo card has no usable currency metadata, it is retained with the existing USD fallback
+  and a warning is logged so the assumption is visible.
 - **Books to Scrape** remains a supported practice adapter. Its existing public parsing functions
   and pagination behavior are retained. Products leave `source` unset, so the scheduler's
   existing `SOURCE_KEY` remains the single place defining `books-toscrape`.

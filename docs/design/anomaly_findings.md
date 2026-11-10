@@ -121,7 +121,16 @@ Re-run command:
 
 ## Synthetic validation - 9 November 2026
 
-Four controlled synthetic price histories were tested against the existing anomaly detector. These examples validate detector behaviour only; they are not evidence of real-world price changes.
+Three synthetic detector cases were already covered by existing tests:
+a significant price drop, a small price increase, and a significant
+price hike. This PR added one new unit test for a large drop against
+a volatile baseline.
+
+It also added a report-level integration test that seeds three
+synthetic histories in SQLite and exercises the actual report
+pipeline. These tests validate synthetic detector behaviour and
+pipeline integration only; they are not evidence of real-world
+price changes.
 
 The detector compares each current price with the preceding five prices. For a non-flat baseline, an observation is flagged only when both conditions are met:
 
@@ -185,23 +194,45 @@ The 30% drop passes the percentage threshold, but the absolute z-score is below 
 
 Covered by `test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline`.
 
-### Test execution
+### Reproducing the checks
 
-Run focused tests:
+Run the focused synthetic detector and report integration tests:
 
-    python -m pytest tests/test_anomaly_model.py -v
+    python -m pytest tests/test_anomaly_model.py tests/test_anomaly_report.py -v
 
-Run the full suite:
+Run the full test suite:
 
     python -m pytest -v
 
 ### Interpretation and limitation
 
-The synthetic cases demonstrate that the detector applies both thresholds as intended. Significant drops and increases are flagged when both thresholds pass. A 3% increase is not flagged because it does not meet the percentage threshold. A 30% drop against a volatile baseline is not flagged because its z-score remains below 3.
+The synthetic cases demonstrate that significant price drops and
+increases are flagged when both thresholds pass. A 3% increase is
+not flagged because it does not meet the percentage threshold. A
+30% drop against a volatile baseline is not flagged because its
+z-score remains below 3.
 
-This is controlled synthetic behavioural validation only. The collected Books to Scrape exports contain no observed price movements, so validation against genuine real-world price changes remains outstanding.
+This is controlled synthetic behavioural validation only. The collected
+Books to Scrape exports contain no observed price movements, so
+validation against genuine real-world price changes remains outstanding.
 
-### New tests
+### Report-level synthetic integration test
 
-- `test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline`
-  - Verifies that a 30% drop is not flagged when the volatile baseline keeps the absolute z-score below 3.
+Added `test_report_processes_synthetic_histories_from_sqlite` in
+`tests/test_anomaly_report.py`.
+
+The test seeds an isolated SQLite database with three synthetic
+product histories and executes the actual `anomaly_report.report()`
+pipeline. This exercises product enumeration, database history
+retrieval, snapshot-to-DataFrame conversion, and anomaly detection.
+
+Expected outcomes:
+
+- Significant price drop: flagged.
+- Significant price hike: flagged.
+- Volatile baseline: not flagged.
+
+This confirms that the report pipeline processes these controlled
+synthetic histories as expected. It does not establish real-world
+anomaly detection accuracy; validation against real price changes
+remains outstanding.

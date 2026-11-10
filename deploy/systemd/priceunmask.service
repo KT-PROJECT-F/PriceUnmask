@@ -1,3 +1,4 @@
+
 [Unit]
 Description=PriceUnmask FastAPI application
 Wants=network-online.target
@@ -9,8 +10,8 @@ User=priceunmask
 Group=priceunmask
 WorkingDirectory=/opt/priceunmask/current
 EnvironmentFile=/etc/priceunmask/priceunmask.env
-ExecStart=/opt/priceunmask/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
-Restart=always
+ExecStart=/opt/priceunmask/current/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
 RestartSec=5
 
 [Install]

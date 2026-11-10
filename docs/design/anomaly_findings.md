@@ -118,3 +118,121 @@ Re-run command:
 
     $env:DATABASE_URL = 'sqlite:///data/exports/priceunmask-20261026T080206Z.db'
     python -m backend.devtools.anomaly_report
+
+## Synthetic validation - 9 November 2026
+
+Three synthetic detector cases were already covered by existing tests:
+a significant price drop, a small price increase, and a significant
+price hike. This PR added one new unit test for a large drop against
+a volatile baseline.
+
+It also added a report-level integration test that seeds three
+synthetic histories in SQLite and exercises the actual report
+pipeline. These tests validate synthetic detector behaviour and
+pipeline integration only; they are not evidence of real-world
+price changes.
+
+The detector compares each current price with the preceding five prices. For a non-flat baseline, an observation is flagged only when both conditions are met:
+
+- Absolute percentage change is at least 10%.
+- Absolute z-score is at least 3.
+
+### Case 1: Synthetic significant price drop - flagged
+
+Input prices: `[1000, 1010, 990, 1000, 1000, 800]`
+
+- Baseline mean: 1000
+- Sample standard deviation: approximately 7.07
+- Percentage change: 20%
+- Z-score: approximately -28.28
+
+**Expected and observed result:** Flagged.
+
+Covered by `test_detect_anomalies_flags_a_sudden_big_drop`.
+
+### Case 2: Synthetic small price increase - not flagged
+
+Input prices: `[1000, 1010, 990, 1000, 1000, 1030]`
+
+- Baseline mean: 1000
+- Sample standard deviation: approximately 7.07
+- Percentage change: 3%
+- Z-score: approximately 4.24
+
+**Expected and observed result:** Not flagged.
+
+The z-score threshold is met, but the percentage threshold is not.
+
+Covered by `test_detect_anomalies_does_not_flag_a_3_percent_change`.
+
+### Case 3: Synthetic significant price hike (increase) - flagged
+
+Input prices: `[1000, 1010, 990, 1000, 1000, 1200]`
+
+- Baseline mean: 1000
+- Sample standard deviation: approximately 7.07
+- Percentage change: 20%
+- Z-score: approximately 28.28
+
+**Expected and observed result:** Flagged.
+
+Covered by `test_detect_anomalies_flags_an_obvious_high_spike`.
+
+### Case 4: Synthetic large price drop with volatile baseline - not flagged
+
+Input prices: `[700, 1300, 800, 1200, 1000, 700]`
+
+- Baseline mean: 1000
+- Sample standard deviation: approximately 254.95
+- Current price: 700
+- Percentage change: 30%
+- Z-score: approximately -1.18
+
+**Expected and observed result:** Not flagged.
+
+The 30% drop passes the percentage threshold, but the absolute z-score is below 3. This demonstrates that the z-score condition independently prevents an anomaly from being flagged.
+
+Covered by `test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline`.
+
+### Reproducing the checks
+
+Run the focused synthetic detector and report integration tests:
+
+    python -m pytest tests/test_anomaly_model.py tests/test_anomaly_report.py -v
+
+Run the full test suite:
+
+    python -m pytest -v
+
+### Interpretation and limitation
+
+The synthetic cases demonstrate that significant price drops and
+increases are flagged when both thresholds pass. A 3% increase is
+not flagged because it does not meet the percentage threshold. A
+30% drop against a volatile baseline is not flagged because its
+z-score remains below 3.
+
+This is controlled synthetic behavioural validation only. The collected
+Books to Scrape exports contain no observed price movements, so
+validation against genuine real-world price changes remains outstanding.
+
+### Report-level synthetic integration test
+
+Added `test_report_processes_synthetic_histories_from_sqlite` in
+`tests/test_anomaly_report.py`.
+
+The test seeds an isolated SQLite database with three synthetic
+product histories and executes the actual `anomaly_report.report()`
+pipeline. This exercises product enumeration, database history
+retrieval, snapshot-to-DataFrame conversion, and anomaly detection.
+
+Expected outcomes:
+
+- Significant price drop: flagged.
+- Significant price hike: flagged.
+- Volatile baseline: not flagged.
+
+This confirms that the report pipeline processes these controlled
+synthetic histories as expected. It does not establish real-world
+anomaly detection accuracy; validation against real price changes
+remains outstanding.

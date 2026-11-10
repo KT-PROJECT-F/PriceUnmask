@@ -1,8 +1,10 @@
 # Shop Evaluation
 
-**Evaluation date:** 3 November 2026
+**Initial evaluation date:** 3 November 2026
+**Last updated:** 10 November 2026
 
-**Purpose:** Evaluate Croma and Reliance Digital as potential shops for price tracking in PriceUnmask.
+**Purpose:** Evaluate Croma, Reliance Digital, and Web Scraper's demo site as potential sources for
+PriceUnmask, and document the price observations used to assess feasibility.
 
 ## 1. Croma
 
@@ -28,9 +30,26 @@
 | Price in raw HTML | Yes                                           | Lloyd washing machine https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo — source `offers.price` = `13590`, matching displayed Deal Price ₹13,590; `selling.min` and `selling.max` = `15490`, matching displayed Offer Price ₹15,490. |
 | Price changes     | Not assessed                                  | Reliance Digital is ruled out for automated tracking by section 12 of its Terms of Use; no second product-price visit was made.                                                                                                                                                                                                                          |
 
-## 3. Price Observations
+## 3. Web Scraper Demo Site
 
-Manual browser observations; bank, exchange and EMI offers are recorded separately from the displayed selling price.
+**Shop:** https://webscraper.io/
+**Practice listing URL:** https://webscraper.io/test-sites/e-commerce/static/computers/laptops
+**Evaluation date:** 10 November 2026
+
+| Check | Result | Evidence |
+|---|---|---|
+| robots.txt | No matching disallow found | https://webscraper.io/robots.txt — Retrieved on 10 November 2026. The file's complete rules are `User-agent: *`, `Disallow: /test-sites/product/`, `Disallow: /test-sites/pagination/`, `Disallow: /test-sites/pagination*?page=`, `Disallow: /test-sites/scroll/`, `Disallow: /test-sites/load-more/`, and `Sitemap: https://webscraper.io/sitemap.xml`. None of the five `Disallow` rules matches the proposed `/test-sites/e-commerce/static/computers/laptops` listing, its `?page=2` pagination URL, or product paths under `/test-sites/e-commerce/static/`. This robots.txt review does not grant permission under the site's terms. |
+| Test-site purpose | Permission for fixture use not established | https://webscraper.io/test-sites — Retrieved on 10 November 2026. The page says: “Here are some test sites that you can use for training while learning how to use the Web Scraper extension.” This identifies the pages as training sites for learning the extension, but does not expressly address automated collection by PriceUnmask or retaining/redistributing a page as a repository fixture. Reviewer/site-owner determination is needed before treating this as permission for those uses. |
+| Fixture | Not collected pending terms decision | The robots.txt rules do not disallow the proposed path. No real listing page has been added as a fixture because the test-sites page does not clarify whether retaining its HTML in this repository is permitted. Tests currently use controlled HTML only. |
+| Adapter tests | Local parser tests | Controlled HTML tests cover valid product cards, cards without a price or link, and product links to an external host. These tests require no network access and do not establish permission for live collection. |
+
+**Decision:** The reviewed robots.txt does not disallow the proposed e-commerce paths. The reviewer is deciding whether the site's training-use statement is sufficient for collection and retaining a real-page fixture. Until that decision, leave the fixture out and do not enable live collection.
+
+## 4. Price Observations — Croma and Reliance Digital
+
+Manual browser observations for Croma and Reliance Digital; bank, exchange and EMI offers are
+recorded separately from the displayed selling price. The Web Scraper demo section is a practice
+site review, not a retail price observation, and is therefore not included in this table.
 
 | Shop             | Product URL                                                                                                                                    | Visit | Date and time                | Selling price           | MRP                   | Offer, badge or "was" price |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------- | ----------------------- | --------------------- | --------------------------- |
@@ -47,9 +66,14 @@ Manual browser observations; bank, exchange and EMI offers are recorded separate
 
 **What this tells us:** The manual observations show both a real displayed price change and a discount claim against MRP. This establishes that Croma can supply evidence relevant to the anomaly and trust-score features, but not that automated collection is permitted.
 
-## 4. Recommendation — 3 November 2026
+## 5. Recommendation — 3 November 2026
 
-**Pick:** Croma remains the only candidate of the two not expressly ruled out by the reviewed terms. This is not approval to begin automated collection.
+**Pick:** Of the two retail shops evaluated, Croma is the only one not expressly ruled out by the
+reviewed terms. It is not approved for automated collection. Web Scraper's demo site was also
+evaluated: its proposed listing path is not disallowed by the robots.txt reviewed on 10 November
+2026, but the test-sites page does not establish permission to collect or retain the page as a
+fixture. The required second ToS-clear practice site remains unresolved pending the reviewer's
+decision.
 
 **Category URL:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
 

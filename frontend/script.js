@@ -199,6 +199,10 @@ async function waitForScrapeCompletion(runId) {
       } else if (currentRun.status === "partial") {
         collectorActionMessage.textContent =
           "Price collection finished with partial results.";
+
+        window.dispatchEvent(
+          new Event("priceunmask:collection-complete")
+        );
       } else {
         collectorActionMessage.textContent =
           "Price collection did not complete successfully. Check the collector status.";
@@ -558,7 +562,7 @@ function detectLatestPriceDrop(history) {
   // Walk backwards while prices are decreasing.
   while (
     startIndex > 0 &&
-    sortedHistory[startIndex - 1].current_price_minor >
+    sortedHistory[startIndex - 1].current_price_minor >=
       sortedHistory[startIndex].current_price_minor
   ) {
     startIndex--;
@@ -688,6 +692,14 @@ async function updatePriceDropNotifications(products) {
       : "No recent price drops for watched products.";
 }
 
+function resetTrendCache() {
+  trendCacheGeneration++;
+  cachedTrendProductHistories = null;
+  trendHistoriesPromise = null;
+  hasLoadedTrendData = false;
+  categoryTrendRequestId++;
+}
+
 function updateTrendProductOptions(products) {
   const previousIds = trendProducts.map((product) => String(product.id));
   const nextIds = products.map((product) => String(product.id));
@@ -696,11 +708,7 @@ function updateTrendProductOptions(products) {
     previousIds.length !== nextIds.length ||
     previousIds.some((id, index) => id !== nextIds[index])
   ) {
-    trendCacheGeneration++;
-    cachedTrendProductHistories = null;
-    trendHistoriesPromise = null;
-    hasLoadedTrendData = false;
-    categoryTrendRequestId++;
+    resetTrendCache();
   }
 
   trendProducts = products;
@@ -1715,11 +1723,8 @@ async function loadProducts() {
     }, 300);
   });
   window.addEventListener("priceunmask:collection-complete", async () => {
-    trendCacheGeneration++;
-    cachedTrendProductHistories = null;
-    trendHistoriesPromise = null;
-    hasLoadedTrendData = false;
-    categoryTrendRequestId++;
+    hasLoadedPriceDropNotifications = false;
+    resetTrendCache();
 
     await fetchProducts();
   });

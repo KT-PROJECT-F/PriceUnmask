@@ -68,7 +68,7 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/products/{id}` | `ProductOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
-| GET | `/api/products/{product_id}/price-drop` | `PriceDropOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/products/{id}/price-drop` | `PriceDropOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/trends/overview?period_days=` | `TrendOverviewOut` | 422 `VALIDATION_ERROR` |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | - |
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202 Accepted) | 409 `SCRAPE_ALREADY_RUNNING`; 500 `INTERNAL_SERVER_ERROR` |
@@ -88,6 +88,39 @@ Product list responses include active products only. Product detail requests can
 
 `ProductOut` includes `trust_label`, calculated using the same trust-score logic as the trust-score endpoint and the product's loaded price snapshots.
 
+`GET /api/trends/overview?period_days=` returns trend information for all active
+products, including products without sufficient price history.
+
+Trend overview rules:
+
+- `period_days` selects the lookback window beginning at the current UTC time minus
+  the requested number of days.
+- Only snapshots with a positive `current_price_minor` in the lookback window are
+  used for trend calculations.
+- The first and latest valid snapshots determine the price change.
+- Products with fewer than two valid snapshots are returned with
+  `insufficient_history`; their price and change fields are `null`.
+- Inactive products are excluded.
+
+Trend directions:
+
+| Direction | Meaning |
+|---|---|
+| `decreasing` | Latest price is lower than the first price. |
+| `increasing` | Latest price is higher than the first price. |
+| `stable` | First and latest prices are equal. |
+| `insufficient_history` | Fewer than two valid snapshots are available. |
+
+`products_analyzed` counts all active products included in the overview,
+including products with `insufficient_history`.
+
+`products_with_price_drop`, `products_with_price_increase`,
+`products_unchanged`, and `products_with_insufficient_history` count products
+in their respective direction categories. Their sum equals `products_analyzed`.
+
+`average_change_percent` is the arithmetic mean of percentage changes for
+products with sufficient history. Products with `insufficient_history` are
+excluded. It is `null` when no products have sufficient history.
 `TrustScoreOut` includes the trust score and label. When the result is `no_discount`, the score is `null`.
 
 The trust-score response also includes anomaly information:

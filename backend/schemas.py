@@ -79,7 +79,12 @@ class ProductTrendOut(BaseModel):
     latest_price_minor: int | None
     change_minor: int | None
     change_percent: float | None
-    direction: Literal["drop", "increase", "unchanged", "insufficient_history"]
+    direction: Literal[
+        "decreasing",
+        "increasing",
+        "stable",
+        "insufficient_history",
+    ]
 
 
 class TrendOverviewOut(BaseModel):
@@ -88,6 +93,7 @@ class TrendOverviewOut(BaseModel):
     products_with_price_drop: int
     products_with_price_increase: int
     products_unchanged: int
+    products_with_insufficient_history: int
     average_change_percent: float | None
     products: list[ProductTrendOut]
 

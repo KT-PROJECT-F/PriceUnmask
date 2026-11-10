@@ -58,7 +58,11 @@ def upsert_product_and_snapshot(
     item: ScrapedProduct,
     run: ScrapeRun,
 ) -> PriceSnapshot:
-    """Find-or-create a product, then append one price snapshot."""
+    """Find-or-create the Product (by source + external_id).
+
+    Update name/url/last_seen_at, then append one PriceSnapshot.
+    Never updates an existing snapshot.
+    """
 
     statement = select(Product).where(
         Product.source == source,
@@ -83,6 +87,7 @@ def upsert_product_and_snapshot(
         product.name = item.name
         product.url = item.url
 
+    # A product seen again by the scraper is considered active.
     product.is_active = True
     product.last_seen_at = item.scraped_at
 
@@ -293,7 +298,7 @@ def get_product_trends(
     session: Session,
     since: datetime,
 ) -> list[dict]:
-    """Return the first and latest valid snapshots for active products."""
+    """Return trend snapshots for all active products, including products without valid history."""
 
     if since.tzinfo is None or since.utcoffset() is None:
         raise ValueError("since must be a timezone-aware datetime")
@@ -348,11 +353,11 @@ def get_product_trends(
             LatestSnapshot.current_price_minor.label("latest_price_minor"),
         )
         .select_from(Product)
-        .join(
+        .outerjoin(
             FirstSnapshot,
             FirstSnapshot.id == first_snapshot_id,
         )
-        .join(
+        .outerjoin(
             LatestSnapshot,
             LatestSnapshot.id == latest_snapshot_id,
         )

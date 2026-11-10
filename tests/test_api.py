@@ -885,9 +885,9 @@ def test_list_products_search_percent_is_literal(client):
         "expected_percent",
     ),
     [
-        ([10000, 8000], "drop", 10000, 8000, -2000, -20.0),
-        ([10000, 12000], "increase", 10000, 12000, 2000, 20.0),
-        ([10000, 10000], "unchanged", 10000, 10000, 0, 0.0),
+        ([10000, 8000], "decreasing", 10000, 8000, -2000, -20.0),
+        ([10000, 12000], "increasing", 10000, 12000, 2000, 20.0),
+        ([10000, 10000], "stable", 10000, 10000, 0, 0.0),
         ([0, 100], "insufficient_history", None, None, None, None),
         ([100], "insufficient_history", None, None, None, None),
     ],
@@ -921,7 +921,7 @@ def test_trends_overview_price_directions(
 
 
 def test_trends_overview_returns_correct_aggregate_statistics(client):
-    # Deactivate demo products so only our three test products are counted.
+    # Deactivate demo products so only our test products are counted.
     with TestingSessionLocal() as session:
         session.query(Product).update(
             {Product.is_active: False},
@@ -932,6 +932,7 @@ def test_trends_overview_returns_correct_aggregate_statistics(client):
     add_product_with_prices("aggregate-drop", [10000, 8000])
     add_product_with_prices("aggregate-increase", [10000, 12000])
     add_product_with_prices("aggregate-unchanged", [10000, 10000])
+    add_product_with_prices("aggregate-insufficient", [10000])
 
     response = client.get("/api/trends/overview?period_days=3650")
 
@@ -939,16 +940,105 @@ def test_trends_overview_returns_correct_aggregate_statistics(client):
 
     data = response.json()
 
-    assert data["products_analyzed"] == 3
+    assert data["products_analyzed"] == 4
     assert data["products_with_price_drop"] == 1
     assert data["products_with_price_increase"] == 1
     assert data["products_unchanged"] == 1
+    assert data["products_with_insufficient_history"] == 1
+
+    assert (
+        data["products_with_price_drop"]
+        + data["products_with_price_increase"]
+        + data["products_unchanged"]
+        + data["products_with_insufficient_history"]
+        == data["products_analyzed"]
+    )
+
     assert data["average_change_percent"] == 0.0
+
+
+def test_trends_overview_excludes_inactive_products(client):
+    product_id = add_product_with_prices(
+        "inactive-trend-product",
+        [10000, 8000],
+    )
+
+    with TestingSessionLocal() as session:
+        product = session.get(Product, product_id)
+        product.is_active = False
+        session.commit()
+
+    response = client.get("/api/trends/overview?period_days=3650")
+
+    assert response.status_code == 200
+
+    product_ids = {item["product_id"] for item in response.json()["products"]}
+
+    assert product_id not in product_ids
+
+
+def test_trends_overview_includes_product_without_snapshots_in_period(client):
+    with TestingSessionLocal() as session:
+        product = Product(
+            source="test",
+            external_id="old-trend-snapshot",
+            name="Old Trend Snapshot",
+            url="https://example.com/old-trend-snapshot",
+        )
+        session.add(product)
+        session.flush()
+
+        session.add(
+            PriceSnapshot(
+                product_id=product.id,
+                scraped_at=datetime(2020, 1, 1, tzinfo=UTC),
+                current_price_minor=10000,
+                original_price_minor=None,
+                in_stock=True,
+            )
+        )
+
+        product_id = product.id
+        session.commit()
+
+    response = client.get("/api/trends/overview?period_days=30")
+
+    assert response.status_code == 200
+
+    product_data = next(
+        item for item in response.json()["products"] if item["product_id"] == product_id
+    )
+
+    assert product_data["direction"] == "insufficient_history"
+    assert product_data["first_price_minor"] is None
+    assert product_data["latest_price_minor"] is None
+    assert product_data["change_minor"] is None
+    assert product_data["change_percent"] is None
+
+
+def test_trends_overview_detects_one_paisa_price_change(client):
+    product_id = add_product_with_prices(
+        "one-paisa-change",
+        [10000, 9999],
+    )
+
+    response = client.get("/api/trends/overview?period_days=3650")
+
+    assert response.status_code == 200
+
+    product_data = next(
+        item for item in response.json()["products"] if item["product_id"] == product_id
+    )
+
+    assert product_data["direction"] == "decreasing"
+    assert product_data["first_price_minor"] == 10000
+    assert product_data["latest_price_minor"] == 9999
+    assert product_data["change_minor"] == -1
+    assert product_data["change_percent"] == -0.01
 
 
 @pytest.mark.parametrize("period_days", [0, 3651])
 def test_trends_overview_rejects_invalid_period_days(client, period_days):
-
     response = client.get(f"/api/trends/overview?period_days={period_days}")
 
     assert response.status_code == 422
@@ -1004,7 +1094,32 @@ def test_price_drop_endpoint_handles_insufficient_history(client):
     assert data["current_price_minor"] is None
 
 
+def test_price_drop_endpoint_handles_zero_previous_price(client):
+    product_id = add_product_with_prices(
+        "zero-previous-price",
+        [0, 80000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/price-drop")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "insufficient_history"
+    assert data["previous_price_minor"] is None
+    assert data["current_price_minor"] is None
+    assert data["drop_amount_minor"] is None
+    assert data["drop_percent"] is None
+
+
 def test_price_drop_endpoint_returns_404_for_missing_product(client):
     response = client.get("/api/products/999999/price-drop")
 
     assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product not found",
+            "details": None,
+        }
+    }

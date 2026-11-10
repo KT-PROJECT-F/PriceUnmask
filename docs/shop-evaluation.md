@@ -46,23 +46,22 @@ call the site clear or enable collection.
 
 **Shop:** https://webscraper.io/
 **Practice listing URL:** https://webscraper.io/test-sites/e-commerce/static/computers/laptops
-**Evaluation date:** 9 November 2026
+**Evaluation date:** 10 November 2026
 
 | Check | Result | Evidence |
 |---|---|---|
-| robots.txt | Disallowed | https://webscraper.io/robots.txt — The reviewed `User-agent: *` rules include `Disallow: /test-sites/e-commerce/`, which covers the proposed listing URL. Do not fetch this listing for a fixture or enable live collection unless the site owner grants permission or the policy changes. |
-| Terms of Use | Permission not established | https://forum.webscraper.io/tos — general Web Scraper website terms. https://cloud.webscraper.io/auth/terms-and-conditions — Cloud terms include restrictions on reproducing, copying, or redistributing Web Scraper material. Applicability to the demo catalog needs confirmation; the reviewed pages do not establish permission to collect and retain the listing as PriceUnmask test data. |
-| Fixture | Not collected | No new real listing page was fetched because the proposed listing path is disallowed by robots.txt. A previously downloaded local copy was removed from the repository; tests use controlled HTML only. |
+| robots.txt | No matching disallow found | https://webscraper.io/robots.txt — Retrieved on 10 November 2026. The file's complete rules are `User-agent: *`, `Disallow: /test-sites/product/`, `Disallow: /test-sites/pagination/`, `Disallow: /test-sites/pagination*?page=`, `Disallow: /test-sites/scroll/`, `Disallow: /test-sites/load-more/`, and `Sitemap: https://webscraper.io/sitemap.xml`. None of the five `Disallow` rules matches the proposed `/test-sites/e-commerce/static/computers/laptops` listing, its `?page=2` pagination URL, or product paths under `/test-sites/e-commerce/static/`. This robots.txt review does not grant permission under the site's terms. |
+| Test-site purpose | Permission for fixture use not established | https://webscraper.io/test-sites — Retrieved on 10 November 2026. The page says: “Here are some test sites that you can use for training while learning how to use the Web Scraper extension.” This identifies the pages as training sites for learning the extension, but does not expressly address automated collection by PriceUnmask or retaining/redistributing a page as a repository fixture. Reviewer/site-owner determination is needed before treating this as permission for those uses. |
+| Fixture | Not collected pending terms decision | The robots.txt rules do not disallow the proposed path. No real listing page has been added as a fixture because the test-sites page does not clarify whether retaining its HTML in this repository is permitted. Tests currently use controlled HTML only. |
 | Adapter tests | Local parser tests | Controlled HTML tests cover valid product cards, cards without a price or link, and product links to an external host. These tests require no network access and do not establish permission for live collection. |
 
-**Decision:** Do not use the Web Scraper demo listing for live collection or claim that a real-page fixture requirement is complete. Obtain permission or select another practice site with a suitable robots.txt and terms review.
+**Decision:** The reviewed robots.txt does not disallow the proposed e-commerce paths, but that alone does not establish permission for collection or retaining a real-page fixture. Ask the reviewer to determine whether the stated training purpose is sufficient or whether written permission is needed. Until then, do not enable live collection or claim the real-page fixture requirement is complete.
 
 ## 4. Price Observations — Croma and Reliance Digital
 
 Manual browser observations for Croma and Reliance Digital; bank, exchange and EMI offers are
-recorded separately from the displayed selling price. The Web Scraper demo site is not included
-because its proposed listing path is disallowed by robots.txt and its terms do not establish
-permission.
+recorded separately from the displayed selling price. The Web Scraper demo section is a practice
+site review, not a retail price observation, and is therefore not included in this table.
 
 | Shop             | Product URL                                                                                                                                    | Visit | Date and time                | Selling price           | MRP                   | Offer, badge or "was" price |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------- | ----------------------- | --------------------- | --------------------------- |
@@ -83,9 +82,10 @@ permission.
 
 **Pick:** Of the two retail shops evaluated, Croma is the only one not expressly ruled out by the
 reviewed terms. It is not approved for automated collection. Web Scraper's demo site was also
-evaluated, but is not a suitable second adapter target: its proposed listing path is disallowed by
-robots.txt and its terms do not establish permission. The required second ToS-clear practice site
-remains unresolved.
+evaluated: its proposed listing path is not disallowed by the robots.txt reviewed on 10 November
+2026, but the test-sites page does not establish permission to collect or retain the page as a
+fixture. The required second ToS-clear practice site remains unresolved pending reviewer or
+site-owner determination.
 
 **Category URL:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
 

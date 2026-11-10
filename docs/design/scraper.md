@@ -26,10 +26,14 @@ It saves each page’s raw HTML snapshot and returns product records; the collec
   terms were assessed as unclear in [shop-evaluation.md](../shop-evaluation.md); do not use it for
   unattended collection unless permission is established.
 - **Web Scraper's static e-commerce test site** has a parser adapter (`webscraper-demo`) used only
-  with controlled local HTML tests for now. The 9 November 2026 review recorded that
-  `https://webscraper.io/robots.txt` disallows `/test-sites/e-commerce/`; the proposed listing must
-  not be fetched for a real-page fixture or live collection unless permission is granted or the
-  policy changes. Terms applicability is unresolved; see [shop-evaluation.md](../shop-evaluation.md).
+  with controlled local HTML tests for now. The `User-agent: *` rules in
+  `https://webscraper.io/robots.txt`, retrieved 10 November 2026, do not disallow the proposed
+  e-commerce listing, pagination, or product paths. However, the site's
+  [test-sites page](https://webscraper.io/test-sites) describes them as training sites for learning
+  the Web Scraper extension and does not establish permission for PriceUnmask collection or
+  retaining a real-page fixture. Do not add a real-page fixture or enable live collection until
+  the reviewer or site owner confirms that use is permitted; see
+  [shop-evaluation.md](../shop-evaluation.md).
 - Every page still passes through the common fetcher, including its robots.txt check, User-Agent,
   delay, timeout, and retry policy.
 - `ScrapedProduct.source` is already an optional field in the current contract. Croma and
@@ -57,7 +61,7 @@ It saves each page’s raw HTML snapshot and returns product records; the collec
 
 ## How it is tested
 
-Tests replace `requests.get` with fake responses, so they check scraper behavior without sending requests to a real website. Saved Books to Scrape fixtures and controlled Web Scraper card HTML test parsing offline; no Web Scraper listing fixture is included because its path is disallowed by the reviewed robots.txt.
+Tests replace `requests.get` with fake responses, so they check scraper behavior without sending requests to a real website. Saved Books to Scrape fixtures and controlled Web Scraper card HTML test parsing offline; no Web Scraper listing fixture is included pending a decision on whether the site's training-use statement permits retaining its HTML in this repository.
 - `test_disallowed_url_never_requests_the_page` proves a robots.txt block prevents the page request ([`test_fetcher.py:284`](../../tests/test_fetcher.py#L284)).
 - `test_timeout_is_retried` proves timeouts get bounded retries ([`test_fetcher.py:241`](../../tests/test_fetcher.py#L241)).
 - `test_scrape_saves_raw_html` proves fetched HTML is saved as a snapshot ([`test_fetcher.py:375`](../../tests/test_fetcher.py#L375)).
@@ -65,7 +69,8 @@ Tests replace `requests.get` with fake responses, so they check scraper behavior
 ## Known limits and what we would do next
 
 Books to Scrape uses fixed sample prices. The Web Scraper demo adapter is not approved for live
-collection: its reviewed robots.txt disallows the proposed listing path, and terms applicability
-is unresolved. These adapters exercise the collection pipeline but do not demonstrate real market
-trends or validate price-change alerts. Next, obtain permission or evaluate another practice shop
-whose robots.txt and terms allow the intended use, then review the parsing assumptions with Mathan.
+collection: its reviewed robots.txt does not disallow the proposed path, but the terms page does
+not establish permission for PriceUnmask collection or retaining a fixture. These adapters
+exercise the collection pipeline but do not demonstrate real market trends or validate price-change
+alerts. Next, obtain a reviewer/site-owner decision or evaluate another practice shop whose
+robots.txt and terms allow the intended use, then review the parsing assumptions with Mathan.

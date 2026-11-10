@@ -5,7 +5,10 @@ from typing import Literal
 
 import pandas as pd
 
-from .price_history_utils import get_valid_price_history
+from .price_history_utils import (
+    compare_first_and_latest_prices,
+    get_valid_price_history,
+)
 
 PriceDropStatus = Literal[
     "insufficient_history",
@@ -24,7 +27,7 @@ class PriceDropResult:
 
 
 def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
-    """Compare the latest valid price with the previous valid price."""
+    """Compare the first and latest valid prices using the shared 1% rule."""
 
     required_columns = {"scraped_at", "current_price_minor"}
     missing = required_columns - set(history.columns)
@@ -34,7 +37,9 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
 
     valid_history = get_valid_price_history(history)
 
-    if len(valid_history) < 2:
+    comparison = compare_first_and_latest_prices(valid_history)
+
+    if comparison["direction"] == "insufficient_history":
         return PriceDropResult(
             status="insufficient_history",
             previous_price_minor=None,
@@ -43,26 +48,24 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
             drop_percent=None,
         )
 
-    previous_price = int(valid_history.iloc[-2]["current_price_minor"])
-    current_price = int(valid_history.iloc[-1]["current_price_minor"])
+    first_price = comparison["first_price_minor"]
+    latest_price = comparison["latest_price_minor"]
+    change_amount = comparison["change_amount_minor"]
+    change_percent = comparison["change_percent"]
 
-    if current_price >= previous_price:
+    if comparison["direction"] != "decreasing":
         return PriceDropResult(
             status="no_drop",
-            previous_price_minor=previous_price,
-            current_price_minor=current_price,
+            previous_price_minor=first_price,
+            current_price_minor=latest_price,
             drop_amount_minor=0,
             drop_percent=0.0,
         )
 
-    drop_amount = previous_price - current_price
-
-    drop_percent = None if previous_price == 0 else round(drop_amount / previous_price * 100, 2)
-
     return PriceDropResult(
         status="price_dropped",
-        previous_price_minor=previous_price,
-        current_price_minor=current_price,
-        drop_amount_minor=drop_amount,
-        drop_percent=drop_percent,
+        previous_price_minor=first_price,
+        current_price_minor=latest_price,
+        drop_amount_minor=abs(change_amount),
+        drop_percent=abs(change_percent),
     )

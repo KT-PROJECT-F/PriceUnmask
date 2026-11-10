@@ -192,6 +192,10 @@ async function waitForScrapeCompletion(runId) {
       if (currentRun.status === "success") {
         collectorActionMessage.textContent =
           "Price collection completed successfully.";
+
+        window.dispatchEvent(
+          new Event("priceunmask:collection-complete")
+        );
       } else if (currentRun.status === "partial") {
         collectorActionMessage.textContent =
           "Price collection finished with partial results.";
@@ -538,52 +542,63 @@ function detectLatestPriceDrop(history) {
     return null;
   }
 
-  // Find the most recent actual price change.
-  for (let i = sortedHistory.length - 1; i > 0; i--) {
-    const previous = sortedHistory[i - 1];
-    const latest = sortedHistory[i];
+  // Find the start of the latest continuous downward trend.
+  let latestIndex = sortedHistory.length - 1;
+  let startIndex = latestIndex;
 
-    const previousPrice = previous.current_price_minor;
-    const currentPrice = latest.current_price_minor;
-
-    // Ignore repeated scrapes with the same price.
-    if (currentPrice === previousPrice) {
-      continue;
-    }
-
-    // The most recent actual price change was not a drop.
-    if (currentPrice > previousPrice) {
-      return null;
-    }
-
-    const dropPercentage =
-      ((previousPrice - currentPrice) / previousPrice) * 100;
-
-    // Do not notify for price drops below 1%.
-    if (dropPercentage < MIN_PRICE_DROP_PERCENTAGE) {
-      return null;
-    }
-    return {
-      previousPrice,
-      currentPrice,
-      dropAmount: previousPrice - currentPrice,
-      dropPercentage:
-        ((previousPrice - currentPrice) / previousPrice) * 100,
-      detectedAt: latest.scraped_at
-    };
+  // Skip repeated readings at the latest price.
+  while (
+    startIndex > 0 &&
+    sortedHistory[startIndex - 1].current_price_minor ===
+      sortedHistory[startIndex].current_price_minor
+  ) {
+    startIndex--;
   }
 
-  return null;
+  // Walk backwards while prices are decreasing.
+  while (
+    startIndex > 0 &&
+    sortedHistory[startIndex - 1].current_price_minor >
+      sortedHistory[startIndex].current_price_minor
+  ) {
+    startIndex--;
+  }
+
+  // No downward trend found.
+  if (
+    sortedHistory[startIndex].current_price_minor ===
+    sortedHistory[latestIndex].current_price_minor
+  ) {
+    return null;
+  }
+
+  const previousPrice = sortedHistory[startIndex].current_price_minor;
+  const currentPrice = sortedHistory[latestIndex].current_price_minor;
+
+  const dropPercentage =
+    ((previousPrice - currentPrice) / previousPrice) * 100;
+
+  if (dropPercentage < MIN_PRICE_DROP_PERCENTAGE) {
+    return null;
+  }
+
+  return {
+    previousPrice,
+    currentPrice,
+    dropAmount: previousPrice - currentPrice,
+    dropPercentage,
+    detectedAt: sortedHistory[latestIndex].scraped_at
+  };
 }
 
-  let priceDropNotificationRequestId = 0;
-  let hasLoadedPriceDropNotifications = false;
+let priceDropNotificationRequestId = 0;
+let hasLoadedPriceDropNotifications = false;
 
-  async function updatePriceDropNotifications(products) {
-    const requestId = ++priceDropNotificationRequestId;
+async function updatePriceDropNotifications(products) {
+  const requestId = ++priceDropNotificationRequestId;
 
-    const status = document.getElementById("notification-status");
-    const list = document.getElementById("notification-list");
+  const status = document.getElementById("notification-status");
+  const list = document.getElementById("notification-list");
 
   if (!status || !list) return;
 
@@ -673,8 +688,21 @@ function detectLatestPriceDrop(history) {
       : "No recent price drops for watched products.";
 }
 
-
 function updateTrendProductOptions(products) {
+  const previousIds = trendProducts.map((product) => String(product.id));
+  const nextIds = products.map((product) => String(product.id));
+
+  if (
+    previousIds.length !== nextIds.length ||
+    previousIds.some((id, index) => id !== nextIds[index])
+  ) {
+    trendCacheGeneration++;
+    cachedTrendProductHistories = null;
+    trendHistoriesPromise = null;
+    hasLoadedTrendData = false;
+    categoryTrendRequestId++;
+  }
+
   trendProducts = products;
 
   if (!trendProductSelect) {
@@ -852,7 +880,7 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
       labels: dates.map((date) => formatChartDate(`${date}T12:00:00`)),
       datasets: [
         {
-          label: "Price Trend (Fixed-Cohort Median)",
+          label: `Price Trend (Fixed-Cohort Median, ${fixedCohortCount} products)`,
           data: overallTrend,
           borderColor: colors[0],
           backgroundColor: colors[0],
@@ -910,6 +938,9 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
 }
 
 let hasLoadedTrendData = false;
+let cachedTrendProductHistories = null;
+let trendHistoriesPromise = null;
+let trendCacheGeneration = 0;
 
 async function loadCategoryTrendView() {
 
@@ -922,20 +953,38 @@ async function loadCategoryTrendView() {
 
   // Keep all products for the overall comparison.
   const selectedProducts = trendProducts;
+  const requestGeneration = trendCacheGeneration;
   const selectedProductId = trendProductSelect?.value || "";
 
   try {
     categoryTrendsStatus.textContent =
       "Loading price trends...";
 
+    if (!cachedTrendProductHistories && !trendHistoriesPromise) {
+      trendHistoriesPromise = Promise.allSettled(
+        selectedProducts.map(async (product) => ({
+          product,
+          history: await loadPriceHistory(product.id)
+        }))
+      );
+    }
 
-    const results = await Promise.allSettled(
-      selectedProducts.map(async (product) => ({
-        product,
-        history: await loadPriceHistory(product.id)
-      }))
-    );
+    const activePromise = trendHistoriesPromise;
+    const results =
+      cachedTrendProductHistories || (await activePromise);
 
+    if (trendHistoriesPromise === activePromise) {
+      trendHistoriesPromise = null;
+    }
+
+    if (
+      (cachedTrendProductHistories === null) &&
+      (trendHistoriesPromise === null) &&
+      requestGeneration === trendCacheGeneration &&
+      results.every((result) => result.status === "fulfilled")
+    ) {
+      cachedTrendProductHistories = results;
+    }
     const productHistories = results
       .filter((result) => result.status === "fulfilled")
       .map((result) => result.value)
@@ -979,7 +1028,10 @@ async function loadCategoryTrendView() {
       `Showing ${productHistories.length} product histories. ` +
       `The overall trend is the median percentage price change ` +
       `of ${fixedCohortCount} products tracked from the earliest ` +
-      `available date, measured against their starting prices.`;
+      `available date, measured against their starting prices.` +
+      (fixedCohortCount === 1
+        ? " Only one product qualifies, so this line represents that product rather than a market-wide median."
+        : "");
     } catch (error) {
       if (requestId !== categoryTrendRequestId) {
         return;
@@ -1552,8 +1604,7 @@ async function loadProducts() {
 
   const showGrid = () => {
     selectedProductId = null;
-    const filteredProducts = currentProducts;
-    showProductGrid(grid, filteredProducts, showProductDetailForProduct);
+    showProductGrid(grid, currentProducts, showProductDetailForProduct);
   };
 
   const showProductDetailForProduct = async (product) => {
@@ -1663,6 +1714,16 @@ async function loadProducts() {
       }
     }, 300);
   });
+  window.addEventListener("priceunmask:collection-complete", async () => {
+    trendCacheGeneration++;
+    cachedTrendProductHistories = null;
+    trendHistoriesPromise = null;
+    hasLoadedTrendData = false;
+    categoryTrendRequestId++;
+
+    await fetchProducts();
+  });
+
   await fetchProducts();
 }
 

@@ -5,12 +5,18 @@ from pathlib import Path
 
 import pytest
 
+from backend.scraper import product_scraper
 from backend.scraper.product_scraper import (
+    BooksToScrapeAdapter,
+    CromaAdapter,
+    SourceAdapter,
+    WebScraperDemoAdapter,
     parse_croma_product,
     parse_listing,
     parse_next_page_url,
     parse_price_to_minor,
     scrape,
+    source_adapter_for_url,
 )
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent.parent / "data" / "snapshots"
@@ -24,6 +30,7 @@ CATEGORY_FIXTURE_PATH = SNAPSHOT_DIR / "sample_books_category.html"
 
 BASE_URL = "https://books.toscrape.com/"
 CATEGORY_BASE_URL = "https://books.toscrape.com/catalogue/category/books/travel_2/index.html"
+DEMO_LISTING_URL = "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
 
 
 def parse_fixture(fixture_path: Path, base_url: str) -> list:
@@ -252,6 +259,7 @@ def test_parse_listing_same_timestamp_for_page():
         ("£51.77", 5177),
         ("£52", 5200),
         ("£51.7", 5170),
+        ("$416.99", 41699),
         ("₹1,299.50", 129950),
         ("₹1,409", 140900),
         ("Rs. 999.99", 99999),
@@ -677,3 +685,201 @@ def test_scrape_books_listing_keeps_existing_parser(monkeypatch, tmp_path):
     assert len(products) == 20
     assert products[0].external_id == "a-light-in-the-attic"
     assert products[0].source is None
+
+
+def test_source_adapter_selection_includes_croma():
+    assert isinstance(
+        source_adapter_for_url("https://www.croma.com/example-product/p/322406"),
+        CromaAdapter,
+    )
+
+
+def test_source_adapter_cannot_be_instantiated_without_all_methods():
+    class IncompleteAdapter(SourceAdapter):
+        def supports(self, url: str) -> bool:
+            return True
+
+    with pytest.raises(TypeError, match="abstract"):
+        IncompleteAdapter()
+
+
+def test_source_adapter_selection():
+    assert isinstance(source_adapter_for_url(BASE_URL), BooksToScrapeAdapter)
+    assert isinstance(
+        source_adapter_for_url(DEMO_LISTING_URL),
+        WebScraperDemoAdapter,
+    )
+
+
+def test_source_adapter_selection_rejects_unsupported_urls():
+    with pytest.raises(ValueError, match="No source adapter supports URL"):
+        source_adapter_for_url("https://example.com/products")
+
+
+@pytest.mark.parametrize("url", ["https://example.com/products", ""])
+def test_scrape_rejects_unsupported_urls_before_fetching(monkeypatch, url):
+    monkeypatch.setattr(
+        product_scraper,
+        "fetch_html",
+        lambda _: pytest.fail("unsupported URLs must be rejected before fetching"),
+    )
+
+    with pytest.raises(ValueError, match="No source adapter supports URL"):
+        scrape(url)
+
+
+def test_webscraper_demo_parses_valid_product_card():
+    html = """
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/789"
+         title="Valid Laptop">
+        Valid Laptop
+      </a>
+      <h4 itemprop="price">$899.00</h4>
+      <meta itemprop="priceCurrency" content="USD">
+    </div>
+    """
+
+    products = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].name == "Valid Laptop"
+    assert products[0].external_id == "789"
+    assert products[0].current_price_minor == 89900
+    assert products[0].currency == "USD"
+    assert products[0].source == "webscraper-demo"
+
+
+def test_webscraper_demo_missing_currency_logs_usd_fallback(caplog):
+    html = """
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/790"
+         title="Laptop Without Currency">
+        Laptop Without Currency
+      </a>
+      <h4 itemprop="price">$899.00</h4>
+    </div>
+    """
+
+    with caplog.at_level(logging.WARNING):
+        products = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].currency == "USD"
+    assert "no usable price currency; assuming USD: Laptop Without Currency" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("card", "warning"),
+    [
+        (
+            '<div class="card thumbnail"><a class="title" '
+            'href="/test-sites/e-commerce/static/product/31">Item</a></div>',
+            "no price",
+        ),
+        (
+            '<div class="card thumbnail"><span itemprop="price">$10.00</span></div>',
+            "no product link",
+        ),
+        (
+            '<div class="card thumbnail"><span itemprop="price">$10.00</span>'
+            '<a class="title" href="https://example.com/test-sites/e-commerce/static/'
+            'product/31">Item</a></div>',
+            "invalid product URL",
+        ),
+    ],
+)
+def test_webscraper_demo_adapter_skips_malformed_cards(card, warning, caplog):
+    with caplog.at_level(logging.WARNING):
+        products = WebScraperDemoAdapter().parse_listing(card, DEMO_LISTING_URL)
+
+    assert products == []
+    assert warning in caplog.text
+
+
+def test_webscraper_demo_keeps_valid_card_when_another_card_is_invalid(caplog):
+    html = """
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/789"
+         title="Valid Laptop">
+        Valid Laptop
+      </a>
+      <h4 itemprop="price">$899.00</h4>
+      <meta itemprop="priceCurrency" content="USD">
+    </div>
+    <div class="card thumbnail">
+      <a class="title"
+         href="/test-sites/e-commerce/static/product/790"
+         title="Laptop Without Price">
+        Laptop Without Price
+      </a>
+    </div>
+    """
+
+    with caplog.at_level(logging.WARNING):
+        products = WebScraperDemoAdapter().parse_listing(html, DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].name == "Valid Laptop"
+    assert products[0].external_id == "789"
+    assert products[0].current_price_minor == 89900
+    assert "no price: Laptop Without Price" in caplog.text
+
+
+def test_webscraper_demo_adapter_uses_same_listing_for_next_page():
+    html = """
+    <ul class="pagination">
+      <li><a class="page-link next" rel="next" aria-label="Next"
+        href="/test-sites/e-commerce/static/computers/laptops?page=2">›</a></li>
+    </ul>
+    """
+
+    assert WebScraperDemoAdapter().parse_next_page_url(html, DEMO_LISTING_URL) == (
+        "https://webscraper.io/test-sites/e-commerce/static/computers/laptops?page=2"
+    )
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://example.com/next",
+        "/test-sites/e-commerce/static/computers/phones?page=2",
+        "javascript:alert(1)",
+    ],
+)
+def test_webscraper_demo_adapter_rejects_invalid_next_page(href):
+    html = (
+        '<ul class="pagination"><li><a class="page-link next" rel="next" '
+        f'href="{escape(href, quote=True)}">Next</a></li></ul>'
+    )
+
+    assert WebScraperDemoAdapter().parse_next_page_url(html, DEMO_LISTING_URL) is None
+
+
+def test_scrape_uses_webscraper_demo_adapter(monkeypatch, tmp_path):
+    html = """
+    <div class="card thumbnail">
+      <h4 class="price"><span itemprop="price">$416.99</span>
+        <meta content="USD" itemprop="priceCurrency">
+      </h4>
+      <h4><a class="title" href="/test-sites/e-commerce/static/product/31"
+        title="Packard 255 G2">Packard 255 G2</a></h4>
+    </div>
+    """
+    monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html)
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(
+        product_scraper,
+        "settings",
+        type("Settings", (), {"scrape_max_pages": 1})(),
+    )
+
+    products = product_scraper.scrape(DEMO_LISTING_URL)
+
+    assert len(products) == 1
+    assert products[0].external_id == "31"
+    assert products[0].source == "webscraper-demo"
+    assert len(list(tmp_path.glob("*.html"))) == 1

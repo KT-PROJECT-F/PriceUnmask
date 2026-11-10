@@ -11,6 +11,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, status
 from fastapi import Path as FastAPIPath
 from fastapi.encoders import jsonable_encoder
@@ -23,6 +24,7 @@ from starlette.responses import JSONResponse
 from backend import converters
 from backend.analysis.anomaly_service import summarize_anomalies
 from backend.analysis.price_drop import detect_price_drop
+from backend.analysis.price_trend import calculate_price_trend
 from backend.config import settings
 from backend.db import crud
 from backend.db.database import get_session, init_db
@@ -323,7 +325,47 @@ def get_trends_overview(
 ) -> TrendOverviewOut:
     since = datetime.now(UTC) - timedelta(days=period_days)
 
-    trends = crud.get_product_trends(session, since)
+    trend_rows = crud.get_product_trends(session, since)
+
+    direction_map = {
+        "decreasing": "drop",
+        "increasing": "increase",
+        "stable": "unchanged",
+        "insufficient_history": "insufficient_history",
+    }
+
+    trends = []
+
+    for row in trend_rows:
+        history = [
+            {
+                "scraped_at": row["first_scraped_at"],
+                "current_price_minor": row["first_price_minor"],
+            }
+        ]
+
+        if row["latest_snapshot_id"] != row["first_snapshot_id"]:
+            history.append(
+                {
+                    "scraped_at": row["latest_scraped_at"],
+                    "current_price_minor": row["latest_price_minor"],
+                }
+            )
+
+        result = calculate_price_trend(pd.DataFrame(history))
+
+        trends.append(
+            {
+                "product_id": row["product_id"],
+                "product_name": row["product_name"],
+                "currency": row["currency"],
+                "first_price_minor": result.first_price_minor,
+                "latest_price_minor": result.latest_price_minor,
+                "change_minor": result.change_amount_minor,
+                "change_percent": result.change_percent,
+                "direction": direction_map[result.direction],
+            }
+        )
 
     drops = sum(item["direction"] == "drop" for item in trends)
     increases = sum(item["direction"] == "increase" for item in trends)

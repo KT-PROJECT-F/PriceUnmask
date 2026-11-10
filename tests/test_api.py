@@ -62,6 +62,7 @@ def client(seeded_database):
 
 
 def add_product_with_prices(external_id: str, prices: list[int]) -> int:
+    """Create a test product with the supplied price history."""
     with TestingSessionLocal() as session:
         product = Product(
             source="test",
@@ -875,23 +876,33 @@ def test_list_products_search_percent_is_literal(client):
 
 
 @pytest.mark.parametrize(
-    ("prices", "expected_direction", "expected_change", "expected_percent"),
+    (
+        "prices",
+        "expected_direction",
+        "expected_first",
+        "expected_latest",
+        "expected_change",
+        "expected_percent",
+    ),
     [
-        ([10000, 8000], "drop", -2000, -20.0),
-        ([10000, 12000], "increase", 2000, 20.0),
-        ([10000, 10000], "unchanged", 0, 0.0),
-        ([0, 100], "increase", 100, None),
+        ([10000, 8000], "drop", 10000, 8000, -2000, -20.0),
+        ([10000, 12000], "increase", 10000, 12000, 2000, 20.0),
+        ([10000, 10000], "unchanged", 10000, 10000, 0, 0.0),
+        ([0, 100], "insufficient_history", None, None, None, None),
+        ([100], "insufficient_history", None, None, None, None),
     ],
 )
 def test_trends_overview_price_directions(
     client,
     prices,
     expected_direction,
+    expected_first,
+    expected_latest,
     expected_change,
     expected_percent,
 ):
     product_id = add_product_with_prices(
-        f"trend-test-{expected_direction}",
+        f"trend-test-{expected_direction}-{len(prices)}-{prices[-1]}",
         prices,
     )
 
@@ -902,18 +913,42 @@ def test_trends_overview_price_directions(
     data = response.json()
     product = next(item for item in data["products"] if item["product_id"] == product_id)
 
-    assert product["first_price_minor"] == prices[0]
-    assert product["latest_price_minor"] == prices[-1]
+    assert product["first_price_minor"] == expected_first
+    assert product["latest_price_minor"] == expected_latest
     assert product["change_minor"] == expected_change
     assert product["change_percent"] == expected_percent
     assert product["direction"] == expected_direction
 
 
+def test_trends_overview_returns_correct_aggregate_statistics(client):
+    # Deactivate demo products so only our three test products are counted.
+    with TestingSessionLocal() as session:
+        session.query(Product).update(
+            {Product.is_active: False},
+            synchronize_session=False,
+        )
+        session.commit()
+
+    add_product_with_prices("aggregate-drop", [10000, 8000])
+    add_product_with_prices("aggregate-increase", [10000, 12000])
+    add_product_with_prices("aggregate-unchanged", [10000, 10000])
+
+    response = client.get("/api/trends/overview?period_days=3650")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["products_analyzed"] == 3
+    assert data["products_with_price_drop"] == 1
+    assert data["products_with_price_increase"] == 1
+    assert data["products_unchanged"] == 1
+    assert data["average_change_percent"] == 0.0
+
+
 @pytest.mark.parametrize("period_days", [0, 3651])
-def test_trends_overview_rejects_invalid_period_days(
-    client,
-    period_days,
-):
+def test_trends_overview_rejects_invalid_period_days(client, period_days):
+
     response = client.get(f"/api/trends/overview?period_days={period_days}")
 
     assert response.status_code == 422

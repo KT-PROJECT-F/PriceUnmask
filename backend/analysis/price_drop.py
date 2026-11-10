@@ -22,7 +22,7 @@ class PriceDropResult:
 
 
 def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
-    """Compare the latest price with the immediately previous observed price."""
+    """Compare the latest two valid positive prices."""
 
     required_columns = {"scraped_at", "current_price_minor"}
     missing = required_columns - set(history.columns)
@@ -31,6 +31,8 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
     valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
+
+    valid_history = valid_history[valid_history["current_price_minor"] > 0]
 
     if len(valid_history) < 2:
         return PriceDropResult(
@@ -45,11 +47,6 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
 
     previous_price = int(valid_history.iloc[-2]["current_price_minor"])
     current_price = int(valid_history.iloc[-1]["current_price_minor"])
-
-    if previous_price <= 0 or current_price < 0:
-        raise ValueError(
-            "Prices must be non-negative and previous price must be greater than zero."
-        )
 
     if current_price >= previous_price:
         return PriceDropResult(

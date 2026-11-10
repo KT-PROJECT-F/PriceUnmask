@@ -68,6 +68,8 @@ Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 | GET | `/api/products/{id}` | `ProductOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/products/{product_id}/price-drop` | `PriceDropOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/trends/overview?period_days=` | `TrendOverviewOut` | 422 `VALIDATION_ERROR` |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | - |
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202 Accepted) | 409 `SCRAPE_ALREADY_RUNNING`; 500 `INTERNAL_SERVER_ERROR` |
 

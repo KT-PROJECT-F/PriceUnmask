@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.scraper.product_scraper import ScrapedProduct
@@ -58,8 +58,7 @@ def upsert_product_and_snapshot(
     item: ScrapedProduct,
     run: ScrapeRun,
 ) -> PriceSnapshot:
-    """Find-or-create the Product (by source + external_id), update name/url/last_seen_at,
-    then append one PriceSnapshot. Never updates an existing snapshot."""
+    """Find-or-create a product, then append one price snapshot."""
 
     statement = select(Product).where(
         Product.source == source,
@@ -84,10 +83,9 @@ def upsert_product_and_snapshot(
         product.name = item.name
         product.url = item.url
 
-    # A product seen again by the scraper is considered active.
     product.is_active = True
-
     product.last_seen_at = item.scraped_at
+
     snapshot = PriceSnapshot(
         product_id=product.id,
         scrape_run_id=run.id,
@@ -169,6 +167,7 @@ def list_scrape_runs(
 
 def count_runs_by_status(session: Session) -> dict[str, int]:
     """Return the number of scrape runs for each status."""
+
     rows = session.execute(
         select(ScrapeRun.status, func.count(ScrapeRun.id)).group_by(ScrapeRun.status)
     ).all()
@@ -178,17 +177,21 @@ def count_runs_by_status(session: Session) -> dict[str, int]:
 
 def has_running_scrape_run(session: Session) -> bool:
     """Return whether any scrape run is currently running."""
+
     statement = select(ScrapeRun.id).where(ScrapeRun.status == "running").limit(1)
+
     return session.scalar(statement) is not None
 
 
 def count_products(session: Session) -> int:
     """Return the total number of products, including inactive products."""
+
     return session.scalar(select(func.count()).select_from(Product)) or 0
 
 
 def count_snapshots_by_run(session: Session) -> dict[int, int]:
     """Return snapshot counts for runs that have snapshots."""
+
     rows = session.execute(
         select(
             PriceSnapshot.scrape_run_id,
@@ -210,6 +213,7 @@ def list_products_not_seen_in_run(
     If the run has no snapshots, its source cannot be identified, so return
     no missing products rather than incorrectly flagging every product.
     """
+
     run_sources = (
         select(Product.source)
         .join(PriceSnapshot, PriceSnapshot.product_id == Product.id)
@@ -232,6 +236,7 @@ def list_products_not_seen_in_run(
         )
         .order_by(Product.name)
     )
+
     return session.scalars(statement).all()
 
 
@@ -240,6 +245,7 @@ def list_duplicate_product_names(session: Session) -> list[tuple[str, str, int]]
 
     (source, external_id) is unique, so these are the same product stored under two ids.
     """
+
     rows = session.execute(
         select(Product.source, Product.name, func.count(Product.id))
         .group_by(Product.source, Product.name)
@@ -256,6 +262,7 @@ def mark_stale_runs_failed(
     now: datetime | None = None,
 ) -> int:
     """Mark running scrape runs older than the threshold as failed."""
+
     if now is None:
         now = datetime.now(UTC)
 
@@ -278,6 +285,7 @@ def mark_stale_runs_failed(
         )
 
     session.commit()
+
     return len(stale_runs)
 
 
@@ -285,73 +293,86 @@ def get_product_trends(
     session: Session,
     since: datetime,
 ) -> list[dict]:
-    """Return price trends for active products since the given UTC datetime."""
+    """Return the first and latest valid snapshots for active products."""
 
     if since.tzinfo is None or since.utcoffset() is None:
         raise ValueError("since must be a timezone-aware datetime")
 
     since = since.astimezone(UTC)
 
-    statement = (
-        select(
-            Product.id,
-            Product.name,
-            Product.currency,
-            PriceSnapshot.id.label("snapshot_id"),
-            PriceSnapshot.scraped_at,
-            PriceSnapshot.current_price_minor,
-        )
-        .join(PriceSnapshot, PriceSnapshot.product_id == Product.id)
+    first_snapshot_id = (
+        select(PriceSnapshot.id)
         .where(
-            Product.is_active.is_(True),
+            PriceSnapshot.product_id == Product.id,
             PriceSnapshot.scraped_at >= since,
+            PriceSnapshot.current_price_minor > 0,
         )
         .order_by(
-            Product.id,
-            PriceSnapshot.scraped_at,
-            PriceSnapshot.id,
+            PriceSnapshot.scraped_at.asc(),
+            PriceSnapshot.id.asc(),
         )
+        .limit(1)
+        .correlate(Product)
+        .scalar_subquery()
+    )
+
+    latest_snapshot_id = (
+        select(PriceSnapshot.id)
+        .where(
+            PriceSnapshot.product_id == Product.id,
+            PriceSnapshot.scraped_at >= since,
+            PriceSnapshot.current_price_minor > 0,
+        )
+        .order_by(
+            PriceSnapshot.scraped_at.desc(),
+            PriceSnapshot.id.desc(),
+        )
+        .limit(1)
+        .correlate(Product)
+        .scalar_subquery()
+    )
+
+    FirstSnapshot = aliased(PriceSnapshot)
+    LatestSnapshot = aliased(PriceSnapshot)
+
+    statement = (
+        select(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Product.currency.label("currency"),
+            FirstSnapshot.id.label("first_snapshot_id"),
+            FirstSnapshot.scraped_at.label("first_scraped_at"),
+            FirstSnapshot.current_price_minor.label("first_price_minor"),
+            LatestSnapshot.id.label("latest_snapshot_id"),
+            LatestSnapshot.scraped_at.label("latest_scraped_at"),
+            LatestSnapshot.current_price_minor.label("latest_price_minor"),
+        )
+        .select_from(Product)
+        .join(
+            FirstSnapshot,
+            FirstSnapshot.id == first_snapshot_id,
+        )
+        .join(
+            LatestSnapshot,
+            LatestSnapshot.id == latest_snapshot_id,
+        )
+        .where(Product.is_active.is_(True))
+        .order_by(Product.id)
     )
 
     rows = session.execute(statement).all()
 
-    grouped = {}
-
-    for row in rows:
-        if row.id not in grouped:
-            grouped[row.id] = {
-                "product_id": row.id,
-                "product_name": row.name,
-                "currency": row.currency,
-                "first_price_minor": row.current_price_minor,
-                "latest_price_minor": row.current_price_minor,
-            }
-        else:
-            grouped[row.id]["latest_price_minor"] = row.current_price_minor
-
-    trends = []
-
-    for product in grouped.values():
-        first_price = product["first_price_minor"]
-        latest_price = product["latest_price_minor"]
-        change = latest_price - first_price
-
-        change_percent = round((change / first_price) * 100, 2) if first_price > 0 else None
-
-        if change < 0:
-            direction = "drop"
-        elif change > 0:
-            direction = "increase"
-        else:
-            direction = "unchanged"
-
-        trends.append(
-            {
-                **product,
-                "change_minor": change,
-                "change_percent": change_percent,
-                "direction": direction,
-            }
-        )
-
-    return trends
+    return [
+        {
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "currency": row.currency,
+            "first_snapshot_id": row.first_snapshot_id,
+            "first_scraped_at": row.first_scraped_at,
+            "first_price_minor": row.first_price_minor,
+            "latest_snapshot_id": row.latest_snapshot_id,
+            "latest_scraped_at": row.latest_scraped_at,
+            "latest_price_minor": row.latest_price_minor,
+        }
+        for row in rows
+    ]

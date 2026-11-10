@@ -5,7 +5,12 @@ from typing import Literal
 
 import pandas as pd
 
-TrendDirection = Literal["increasing", "decreasing", "stable", "insufficient_history"]
+TrendDirection = Literal[
+    "increasing",
+    "decreasing",
+    "stable",
+    "insufficient_history",
+]
 
 
 @dataclass
@@ -19,7 +24,7 @@ class PriceTrendResult:
 
 
 def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
-    """Compare the earliest and latest observed prices."""
+    """Compare the earliest and latest valid positive prices."""
 
     required_columns = {"scraped_at", "current_price_minor"}
     missing = required_columns - set(history.columns)
@@ -29,23 +34,24 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
 
     valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
 
-    if len(valid_history) < 2:
+    valid_history = valid_history[valid_history["current_price_minor"] > 0]
+
+    snapshot_count = len(valid_history)
+
+    if snapshot_count < 2:
         return PriceTrendResult(
             direction="insufficient_history",
             first_price_minor=None,
             latest_price_minor=None,
             change_amount_minor=None,
             change_percent=None,
-            snapshot_count=len(valid_history),
+            snapshot_count=snapshot_count,
         )
 
     valid_history = valid_history.sort_values("scraped_at")
 
     first_price = int(valid_history.iloc[0]["current_price_minor"])
     latest_price = int(valid_history.iloc[-1]["current_price_minor"])
-
-    if first_price <= 0 or latest_price < 0:
-        raise ValueError("Prices must be non-negative and first price must be greater than zero.")
 
     change_amount = latest_price - first_price
     change_percent = (change_amount / first_price) * 100
@@ -63,5 +69,5 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
         latest_price_minor=latest_price,
         change_amount_minor=change_amount,
         change_percent=round(change_percent, 2),
-        snapshot_count=len(valid_history),
+        snapshot_count=snapshot_count,
     )

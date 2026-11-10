@@ -8,7 +8,12 @@ from backend.analysis.price_trend import calculate_price_trend
 def make_history(prices):
     return pd.DataFrame(
         {
-            "scraped_at": pd.date_range("2026-01-01", periods=len(prices), freq="D", tz="UTC"),
+            "scraped_at": pd.date_range(
+                "2026-01-01",
+                periods=len(prices),
+                freq="D",
+                tz="UTC",
+            ),
             "current_price_minor": prices,
         }
     )
@@ -34,6 +39,8 @@ def test_no_price_drop_when_price_is_same():
     result = detect_price_drop(make_history([100000, 100000]))
 
     assert result.status == "no_drop"
+    assert result.drop_amount_minor == 0
+    assert result.drop_percent == 0.0
 
 
 def test_price_drop_insufficient_history():
@@ -97,11 +104,21 @@ def test_missing_columns_raise_error():
         calculate_price_trend(history)
 
 
-def test_zero_previous_price_raises_error():
+def test_zero_previous_price_returns_insufficient_history():
     history = make_history([0, 80000])
 
-    with pytest.raises(ValueError):
-        detect_price_drop(history)
+    drop_result = detect_price_drop(history)
 
-    with pytest.raises(ValueError):
-        calculate_price_trend(history)
+    assert drop_result.status == "insufficient_history"
+    assert drop_result.previous_price_minor is None
+    assert drop_result.current_price_minor is None
+    assert drop_result.drop_amount_minor is None
+    assert drop_result.drop_percent is None
+
+    trend_result = calculate_price_trend(history)
+
+    assert trend_result.direction == "insufficient_history"
+    assert trend_result.snapshot_count == 1
+    assert trend_result.first_price_minor is None
+    assert trend_result.latest_price_minor is None
+    assert trend_result.change_percent is None

@@ -1016,6 +1016,61 @@ def test_trends_overview_includes_product_without_snapshots_in_period(client):
     assert product_data["change_percent"] is None
 
 
+def test_trends_overview_uses_first_snapshot_inside_period(client):
+    now = datetime.now(UTC)
+
+    with TestingSessionLocal() as session:
+        product = Product(
+            source="test",
+            external_id="trend-snapshots-in-period",
+            name="Trend Snapshots In Period",
+            url="https://example.com/trend-snapshots-in-period",
+        )
+        session.add(product)
+        session.flush()
+
+        session.add_all(
+            [
+                PriceSnapshot(
+                    product_id=product.id,
+                    scraped_at=now - timedelta(days=40),
+                    current_price_minor=50000,
+                    original_price_minor=None,
+                    in_stock=True,
+                ),
+                PriceSnapshot(
+                    product_id=product.id,
+                    scraped_at=now - timedelta(days=20),
+                    current_price_minor=20000,
+                    original_price_minor=None,
+                    in_stock=True,
+                ),
+                PriceSnapshot(
+                    product_id=product.id,
+                    scraped_at=now - timedelta(days=5),
+                    current_price_minor=15000,
+                    original_price_minor=None,
+                    in_stock=True,
+                ),
+            ]
+        )
+
+        product_id = product.id
+        session.commit()
+
+    response = client.get("/api/trends/overview?period_days=30")
+
+    assert response.status_code == 200
+
+    product_data = next(
+        item for item in response.json()["products"] if item["product_id"] == product_id
+    )
+
+    assert product_data["first_price_minor"] == 20000
+    assert product_data["latest_price_minor"] == 15000
+    assert product_data["change_minor"] == -5000
+
+
 def test_trends_overview_detects_one_paisa_price_change(client):
     product_id = add_product_with_prices(
         "one-paisa-change",

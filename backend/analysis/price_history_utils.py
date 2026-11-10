@@ -1,7 +1,26 @@
+from dataclasses import dataclass
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 
 STABLE_THRESHOLD_PCT = 1.0
+
+TrendDirection = Literal[
+    "increasing",
+    "decreasing",
+    "stable",
+    "insufficient_history",
+]
+
+
+@dataclass
+class PriceComparisonResult:
+    first_price_minor: int | None
+    latest_price_minor: int | None
+    change_amount_minor: int | None
+    change_percent: float | None
+    direction: TrendDirection
 
 
 def get_valid_price_history(history: pd.DataFrame) -> pd.DataFrame:
@@ -50,7 +69,7 @@ def get_valid_price_history(history: pd.DataFrame) -> pd.DataFrame:
 
 def compare_first_and_latest_prices(
     valid_history: pd.DataFrame,
-) -> dict:
+) -> PriceComparisonResult:
     """
     Compare the first and latest valid prices using a 1% threshold.
 
@@ -59,13 +78,13 @@ def compare_first_and_latest_prices(
     """
 
     if len(valid_history) < 2:
-        return {
-            "first_price_minor": None,
-            "latest_price_minor": None,
-            "change_amount_minor": None,
-            "change_percent": None,
-            "direction": "insufficient_history",
-        }
+        return PriceComparisonResult(
+            first_price_minor=None,
+            latest_price_minor=None,
+            change_amount_minor=None,
+            change_percent=None,
+            direction="insufficient_history",
+        )
 
     first_price = int(valid_history.iloc[0]["current_price_minor"])
     latest_price = int(valid_history.iloc[-1]["current_price_minor"])
@@ -80,10 +99,10 @@ def compare_first_and_latest_prices(
     else:
         direction = "decreasing"
 
-    return {
-        "first_price_minor": first_price,
-        "latest_price_minor": latest_price,
-        "change_amount_minor": change_amount,
-        "change_percent": round(change_percent, 2),
-        "direction": direction,
-    }
+    return PriceComparisonResult(
+        first_price_minor=first_price,
+        latest_price_minor=latest_price,
+        change_amount_minor=change_amount,
+        change_percent=round(change_percent, 3),
+        direction=direction,
+    )

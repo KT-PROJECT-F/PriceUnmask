@@ -42,10 +42,10 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
     comparison = compare_first_and_latest_prices(valid_history)
 
     return PriceTrendResult(
-        direction=comparison["direction"],
-        first_price_minor=comparison["first_price_minor"],
-        latest_price_minor=comparison["latest_price_minor"],
-        change_amount_minor=comparison["change_amount_minor"],
-        change_percent=comparison["change_percent"],
+        direction=comparison.direction,
+        first_price_minor=comparison.first_price_minor,
+        latest_price_minor=comparison.latest_price_minor,
+        change_amount_minor=comparison.change_amount_minor,
+        change_percent=comparison.change_percent,
         snapshot_count=len(valid_history),
     )

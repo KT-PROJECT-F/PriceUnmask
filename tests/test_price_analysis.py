@@ -343,6 +343,7 @@ def test_price_drop_detected_even_when_overall_trend_is_increasing():
     # Latest movement: 120000 -> 110000 (8.333...% decrease)
     assert drop.status == "price_dropped"
     assert drop.previous_price_minor == 120000
+    assert drop.previous_price_minor != trend.first_price_minor
     assert drop.current_price_minor == 110000
     assert drop.drop_amount_minor == 10000
     assert drop.drop_percent == pytest.approx(8.3333333333)

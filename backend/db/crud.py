@@ -115,9 +115,7 @@ def list_products(
     """Return active products with snapshots loaded, optionally filtered by name."""
 
     statement = (
-        select(Product)
-        .options(selectinload(Product.snapshots))
-        .where(Product.is_active.is_(True))
+        select(Product).options(selectinload(Product.snapshots)).where(Product.is_active.is_(True))
     )
 
     if search:

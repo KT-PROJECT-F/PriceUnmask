@@ -56,12 +56,13 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
         )
 
     drop_amount = previous_price - current_price
-    drop_percent = (drop_amount / previous_price) * 100
+
+    drop_percent = None if previous_price == 0 else round(drop_amount / previous_price * 100, 2)
 
     return PriceDropResult(
         status="price_dropped",
         previous_price_minor=previous_price,
         current_price_minor=current_price,
         drop_amount_minor=drop_amount,
-        drop_percent=round(drop_percent, 2),
+        drop_percent=drop_percent,
     )

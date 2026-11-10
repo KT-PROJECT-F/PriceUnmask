@@ -7,6 +7,8 @@ import pandas as pd
 
 from .price_history_utils import get_valid_price_history
 
+STABLE_CHANGE_THRESHOLD_MINOR = 1
+
 TrendDirection = Literal[
     "increasing",
     "decreasing",
@@ -50,20 +52,21 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
     latest_price = int(valid_history.iloc[-1]["current_price_minor"])
 
     change_amount = latest_price - first_price
-    change_percent = (change_amount / first_price) * 100
 
-    if change_amount > 0:
-        direction = "increasing"
-    elif change_amount < 0:
-        direction = "decreasing"
-    else:
+    change_percent = None if first_price == 0 else round(change_amount / first_price * 100, 2)
+
+    if abs(change_amount) <= STABLE_CHANGE_THRESHOLD_MINOR:
         direction = "stable"
+    elif change_amount > 0:
+        direction = "increasing"
+    else:
+        direction = "decreasing"
 
     return PriceTrendResult(
         direction=direction,
         first_price_minor=first_price,
         latest_price_minor=latest_price,
         change_amount_minor=change_amount,
-        change_percent=round(change_percent, 2),
+        change_percent=change_percent,
         snapshot_count=len(valid_history),
     )

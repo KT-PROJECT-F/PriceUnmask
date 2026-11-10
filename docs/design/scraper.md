@@ -31,8 +31,8 @@ It saves each page’s raw HTML snapshot and returns product records; the collec
   e-commerce listing, pagination, or product paths. However, the site's
   [test-sites page](https://webscraper.io/test-sites) describes them as training sites for learning
   the Web Scraper extension and does not establish permission for PriceUnmask collection or
-  retaining a real-page fixture. Do not add a real-page fixture or enable live collection until
-  the reviewer or site owner confirms that use is permitted; see
+  retaining a real-page fixture. Leave the fixture out and do not enable live collection pending
+  the reviewer's decision; see
   [shop-evaluation.md](../shop-evaluation.md).
 - Every page still passes through the common fetcher, including its robots.txt check, User-Agent,
   delay, timeout, and retry policy.

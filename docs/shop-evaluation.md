@@ -1,22 +1,10 @@
 # Shop Evaluation
 
-**Evaluation date:** 3 November 2026
+**Initial evaluation date:** 3 November 2026
+**Last updated:** 10 November 2026
 
 **Purpose:** Evaluate Croma, Reliance Digital, and Web Scraper's demo site as potential sources for
 PriceUnmask, and document the price observations used to assess feasibility.
-
-## Evaluation Standard
-
-A practice site is considered suitable only after reviewing the current `robots.txt` rules for the
-exact listing and product paths under the applicable user-agent group, with no matching
-`Disallow`. A robots.txt error or unclear rule leaves the site unverified; an allowed path is not
-permission by itself.
-
-The applicable terms must explicitly permit the intended automated access and use, or the site
-owner must provide written permission. Permission to fetch a page does not automatically permit
-retaining or redistributing it as a test fixture; that use must also be covered. Record the source
-URLs, relevant rule or terms clause, and review date. If either robots or terms are unclear, do not
-call the site clear or enable collection.
 
 ## 1. Croma
 
@@ -55,7 +43,7 @@ call the site clear or enable collection.
 | Fixture | Not collected pending terms decision | The robots.txt rules do not disallow the proposed path. No real listing page has been added as a fixture because the test-sites page does not clarify whether retaining its HTML in this repository is permitted. Tests currently use controlled HTML only. |
 | Adapter tests | Local parser tests | Controlled HTML tests cover valid product cards, cards without a price or link, and product links to an external host. These tests require no network access and do not establish permission for live collection. |
 
-**Decision:** The reviewed robots.txt does not disallow the proposed e-commerce paths, but that alone does not establish permission for collection or retaining a real-page fixture. Ask the reviewer to determine whether the stated training purpose is sufficient or whether written permission is needed. Until then, do not enable live collection or claim the real-page fixture requirement is complete.
+**Decision:** The reviewed robots.txt does not disallow the proposed e-commerce paths. The reviewer is deciding whether the site's training-use statement is sufficient for collection and retaining a real-page fixture. Until that decision, leave the fixture out and do not enable live collection.
 
 ## 4. Price Observations — Croma and Reliance Digital
 
@@ -84,8 +72,8 @@ site review, not a retail price observation, and is therefore not included in th
 reviewed terms. It is not approved for automated collection. Web Scraper's demo site was also
 evaluated: its proposed listing path is not disallowed by the robots.txt reviewed on 10 November
 2026, but the test-sites page does not establish permission to collect or retain the page as a
-fixture. The required second ToS-clear practice site remains unresolved pending reviewer or
-site-owner determination.
+fixture. The required second ToS-clear practice site remains unresolved pending the reviewer's
+decision.
 
 **Category URL:** https://www.croma.com/home-appliances/washing-machines-dryers/c/48
 

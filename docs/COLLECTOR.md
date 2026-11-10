@@ -225,3 +225,6 @@ The original export remains unchanged. Do not commit `.db` files.
 The database health check can report `CHECK REQUIRED` when the latest
 collector run is older than 24 hours. Report this status honestly; adding
 synthetic demo products does not make the collector data fresher.
+
+Collector runs on host as priceunmask-collector.service, same DB as API.
+GitHub Actions stays collector until real host exists, never run both at once.

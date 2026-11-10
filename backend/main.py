@@ -382,10 +382,10 @@ def get_trends_overview(
     return TrendOverviewOut(
         period_days=period_days,
         products_analyzed=len(trends),
-        products_with_price_drop=decreasing,
-        products_with_price_increase=increasing,
-        products_unchanged=stable,
-        products_with_insufficient_history=insufficient,
+        products_decreasing=decreasing,
+        products_increasing=increasing,
+        products_stable=stable,
+        products_insufficient_history=insufficient,
         average_change_percent=average_change,
         products=[ProductTrendOut(**item) for item in trends],
     )

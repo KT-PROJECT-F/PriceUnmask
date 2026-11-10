@@ -941,16 +941,16 @@ def test_trends_overview_returns_correct_aggregate_statistics(client):
     data = response.json()
 
     assert data["products_analyzed"] == 4
-    assert data["products_with_price_drop"] == 1
-    assert data["products_with_price_increase"] == 1
-    assert data["products_unchanged"] == 1
-    assert data["products_with_insufficient_history"] == 1
+    assert data["products_decreasing"] == 1
+    assert data["products_increasing"] == 1
+    assert data["products_stable"] == 1
+    assert data["products_insufficient_history"] == 1
 
     assert (
-        data["products_with_price_drop"]
-        + data["products_with_price_increase"]
-        + data["products_unchanged"]
-        + data["products_with_insufficient_history"]
+        data["products_decreasing"]
+        + data["products_increasing"]
+        + data["products_stable"]
+        + data["products_insufficient_history"]
         == data["products_analyzed"]
     )
 

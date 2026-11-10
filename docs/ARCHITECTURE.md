@@ -114,13 +114,35 @@ Trend directions:
 `products_analyzed` counts all active products included in the overview,
 including products with `insufficient_history`.
 
-`products_with_price_drop`, `products_with_price_increase`,
-`products_unchanged`, and `products_with_insufficient_history` count products
-in their respective direction categories. Their sum equals `products_analyzed`.
+`products_decreasing`, `products_increasing`, `products_stable`, and
+`products_insufficient_history` count products in each direction/status.
+These counts add up to `products_analyzed`.
 
 `average_change_percent` is the arithmetic mean of percentage changes for
 products with sufficient history. Products with `insufficient_history` are
 excluded. It is `null` when no products have sufficient history.
+
+`GET /api/products/{product_id}/price-drop` compares the latest two valid positive prices for a product.
+
+Price-drop status meanings:
+
+| Status | Meaning |
+|---|---|
+| `insufficient_history` | Fewer than two valid positive price snapshots are available. All price and drop fields are `null`. |
+| `price_dropped` | The latest price is lower than the previous price. Drop amount and percentage are calculated from those two prices. |
+| `no_drop` | The latest price is equal to or higher than the previous price. Drop amount is `0` and drop percentage is `0.0`. |
+
+The `PriceDropOut` response includes:
+
+- `product_id`: Product identifier.
+- `status`: Price-drop status.
+- `previous_price_minor`: Previous valid price in minor units (paise).
+- `current_price_minor`: Latest valid price in minor units (paise).
+- `drop_amount_minor`: Difference between previous and current prices in minor units.
+- `drop_percent`: Percentage decrease, rounded to two decimal places.
+
+A product that does not exist returns 404 `PRODUCT_NOT_FOUND`. Invalid product IDs return 422 `VALIDATION_ERROR`.
+
 `TrustScoreOut` includes the trust score and label. When the result is `no_discount`, the score is `null`.
 
 The trust-score response also includes anomaly information:

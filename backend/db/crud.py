@@ -115,7 +115,9 @@ def list_products(
     """Return active products with snapshots loaded, optionally filtered by name."""
 
     statement = (
-        select(Product).options(selectinload(Product.snapshots)).where(Product.is_active.is_(True))
+        select(Product)
+        .options(selectinload(Product.snapshots))
+        .where(Product.is_active.is_(True))
     )
 
     if search:
@@ -172,7 +174,6 @@ def list_scrape_runs(
 
 def count_runs_by_status(session: Session) -> dict[str, int]:
     """Return the number of scrape runs for each status."""
-
     rows = session.execute(
         select(ScrapeRun.status, func.count(ScrapeRun.id)).group_by(ScrapeRun.status)
     ).all()
@@ -182,21 +183,17 @@ def count_runs_by_status(session: Session) -> dict[str, int]:
 
 def has_running_scrape_run(session: Session) -> bool:
     """Return whether any scrape run is currently running."""
-
     statement = select(ScrapeRun.id).where(ScrapeRun.status == "running").limit(1)
-
     return session.scalar(statement) is not None
 
 
 def count_products(session: Session) -> int:
     """Return the total number of products, including inactive products."""
-
     return session.scalar(select(func.count()).select_from(Product)) or 0
 
 
 def count_snapshots_by_run(session: Session) -> dict[int, int]:
     """Return snapshot counts for runs that have snapshots."""
-
     rows = session.execute(
         select(
             PriceSnapshot.scrape_run_id,
@@ -218,7 +215,6 @@ def list_products_not_seen_in_run(
     If the run has no snapshots, its source cannot be identified, so return
     no missing products rather than incorrectly flagging every product.
     """
-
     run_sources = (
         select(Product.source)
         .join(PriceSnapshot, PriceSnapshot.product_id == Product.id)
@@ -250,7 +246,6 @@ def list_duplicate_product_names(session: Session) -> list[tuple[str, str, int]]
 
     (source, external_id) is unique, so these are the same product stored under two ids.
     """
-
     rows = session.execute(
         select(Product.source, Product.name, func.count(Product.id))
         .group_by(Product.source, Product.name)
@@ -267,7 +262,6 @@ def mark_stale_runs_failed(
     now: datetime | None = None,
 ) -> int:
     """Mark running scrape runs older than the threshold as failed."""
-
     if now is None:
         now = datetime.now(UTC)
 
@@ -290,7 +284,6 @@ def mark_stale_runs_failed(
         )
 
     session.commit()
-
     return len(stale_runs)
 
 

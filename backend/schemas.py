@@ -90,10 +90,10 @@ class ProductTrendOut(BaseModel):
 class TrendOverviewOut(BaseModel):
     period_days: int
     products_analyzed: int
-    products_with_price_drop: int
-    products_with_price_increase: int
-    products_unchanged: int
-    products_with_insufficient_history: int
+    products_decreasing: int
+    products_increasing: int
+    products_stable: int
+    products_insufficient_history: int
     average_change_percent: float | None
     products: list[ProductTrendOut]
 

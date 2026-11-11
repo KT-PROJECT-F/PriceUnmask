@@ -70,7 +70,15 @@ The `current` path must be a symbolic link to a directory inside `releases`, not
 
 If `/opt/priceunmask/current` already exists as a real directory, do not overwrite it. Preserve and migrate the existing installation deliberately before continuing.
 
-**Important:** Run the deployment commands in Sections 5–8 sequentially in the same Bash session.
+**Important:** Do not paste the commands in Sections 5–8 directly into an interactive Bash shell. They use `set -euo pipefail` and `exit 1` for failure handling.
+
+Until the deployment script is implemented in a follow-up PR, copy the Bash commands from Sections 5–8, in order, into a temporary script (for example, `/tmp/priceunmask-deploy-manual.sh`). Omit Markdown fences and expected-output examples. Review and replace all placeholder values before running it.
+
+Run the temporary script using:
+
+```bash
+bash /tmp/priceunmask-deploy-manual.sh
+```
 
 ## 5. Copy the application and install Python dependencies
 Set the source repository path. Replace the example with the location of your own repository:
@@ -125,13 +133,13 @@ echo "Deploying commit: $COMMIT"
 APP_ROOT="/opt/priceunmask"
 PREVIOUS_RELEASE=""
 
-if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
+if sudo test -e "$APP_ROOT/current" && ! sudo test -L "$APP_ROOT/current"; then
     echo "STOP: Existing current path is not a symlink. Migrate it safely first."
     exit 1
 fi
 
-if [ -L "$APP_ROOT/current" ]; then
-    PREVIOUS_RELEASE="$(readlink -f "$APP_ROOT/current")" || {
+if sudo test -L "$APP_ROOT/current"; then
+    PREVIOUS_RELEASE="$(sudo readlink -f "$APP_ROOT/current")" || {
         echo "STOP: Cannot resolve existing current symlink."
         exit 1
     }
@@ -145,13 +153,12 @@ if [ -L "$APP_ROOT/current" ]; then
             ;;
     esac
 
-    if [ ! -d "$PREVIOUS_RELEASE" ]; then
+    if ! sudo test -d "$PREVIOUS_RELEASE"; then
         echo "STOP: Existing current symlink does not point to a valid release."
         exit 1
     fi
 fi
 ```
-
 This procedure deliberately deploys the selected committed revision. Uncommitted working-tree changes are not included.
 
 Create a unique release directory:
@@ -160,7 +167,7 @@ Create a unique release directory:
 
 RELEASE_NAME="$(date -u +%Y%m%d-%H%M%S)-$(git -C "$SOURCE_DIR" rev-parse --short "$COMMIT")"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_NAME"
-if [ -e "$RELEASE_DIR" ]; then
+if sudo test -e "$RELEASE_DIR"; then
     echo "STOP: Release directory already exists: $RELEASE_DIR"
     exit 1
 fi
@@ -209,7 +216,7 @@ No broken requirements found.
 ```
 ```bash
 # Activate the new release.
-if [ -e "$APP_ROOT/current.new" ] || [ -L "$APP_ROOT/current.new" ]; then
+if sudo test -e "$APP_ROOT/current.new" || sudo test -L "$APP_ROOT/current.new"; then
     echo "STOP: Temporary current.new path already exists."
     exit 1
 fi
@@ -229,6 +236,7 @@ else
     sudo rm -f "$APP_ROOT/previous-release"
 fi
 ```
+
 ## 6. Configure the environment file
 
 Create the environment file:
@@ -289,10 +297,30 @@ Enable and start the API only:
 ```bash
 sudo systemctl enable priceunmask.service
 sudo systemctl restart priceunmask.service
-sudo systemctl status priceunmask.service --no-pager
-```
 
-Do not start the collector yet. Follow Section 9 first.
+HEALTHY=0
+
+for attempt in $(seq 1 30); do
+    if curl --fail --silent \
+        http://127.0.0.1:8000/api/health >/dev/null; then
+        echo "API is healthy."
+        HEALTHY=1
+        break
+    fi
+
+    echo "Waiting for API ($attempt/30)..."
+    sleep 2
+done
+
+if [ "$HEALTHY" -eq 1 ]; then
+    sudo systemctl status priceunmask.service --no-pager
+else
+    echo "STOP: API did not become healthy within 60 seconds."
+    sudo journalctl -u priceunmask.service -n 50 --no-pager
+    echo "Do not continue with deployment or start the collector."
+    exit 1
+fi
+```
 
 ## 8. Configure the Nginx reverse proxy
 
@@ -343,6 +371,7 @@ Check Nginx:
 sudo systemctl is-active nginx
 ```
 
+
 ## 9. Collector execution decision
 
 GitHub Actions and the host collector must never collect simultaneously. Running both can cause overlapping scrape jobs and duplicate collection activity.
@@ -354,29 +383,49 @@ Before starting the host collector:
 3. Confirm that the host collector is not already running.
 4. Confirm that the API is healthy.
 
-Check the host collector:
+To disable the GitHub Actions workflow:
+
+1. Open the repository on GitHub.
+2. Select **Actions**.
+3. Select the **Collector** workflow.
+4. Open the workflow's three-dot menu and select **Disable workflow**.
+5. Return to the Collector workflow runs page.
+6. Confirm that no run is queued or in progress.
+
+Do not start the host collector until the workflow is disabled and all existing runs have finished.
+
+Check the host collector and API before starting it:
 
 ```bash
 if sudo systemctl is-active --quiet priceunmask-collector.service; then
     echo "STOP: Host collector is already running. Do not start another collector."
-    exit 1
+else
+    HEALTHY=0
+
+    for attempt in $(seq 1 30); do
+        if curl --fail --silent \
+            http://127.0.0.1:8000/api/health >/dev/null; then
+            echo "API is healthy."
+            HEALTHY=1
+            break
+        fi
+
+        echo "Waiting for API ($attempt/30)..."
+        sleep 2
+    done
+
+    if [ "$HEALTHY" -eq 1 ]; then
+        sudo systemctl start priceunmask-collector.service
+        sudo systemctl status priceunmask-collector.service --no-pager
+    else
+        echo "STOP: API did not become healthy within 60 seconds."
+        echo "Do not start the collector."
+    fi
 fi
-```
-
-Only after confirming the GitHub Actions workflow is disabled and no run is in progress, enable and start the host collector:
-
-```bash
-if ! curl --fail --silent --show-error \
-    http://127.0.0.1:8000/api/health; then
-    echo "STOP: API health check failed. Do not start the collector."
-    exit 1
-fi
-
-sudo systemctl start priceunmask-collector.service
-sudo systemctl status priceunmask-collector.service --no-pager
 ```
 
 The collector starts scraping when the service starts. Avoid restarting it unnecessarily.
+
 
 ## 10. Health checks
 
@@ -461,10 +510,13 @@ sudo systemctl is-active nginx
 ```
 
 ## 12. SQLite backup
+**Important:** Do not paste the backup commands directly into an interactive Bash shell. The integrity check uses `exit 1`. Until a dedicated backup script is provided, place the commands in this section, in order, into a temporary script such as `/tmp/priceunmask-backup.sh` and run it using `bash /tmp/priceunmask-backup.sh`. This ensures a failed check stops the script without closing your original terminal.
 
 Create the backup directory if it does not already exist:
 
 ```bash
+set -euo pipefail
+
 sudo install -d -o priceunmask -g priceunmask -m 750 \
     /opt/priceunmask/backups
 ```
@@ -508,10 +560,11 @@ ok
 Do not manually delete or copy SQLite `-wal` or `-shm` files while the database is active.
 
 ## 13. Restore a database backup
+**Important:** Do not paste the restore commands directly into an interactive Bash shell. First list the available backups and select the backup you intend to restore. Then place the remaining commands in this section, starting with the `BACKUP_FILE` assignment, in order, into a temporary script such as `/tmp/priceunmask-restore.sh`. Replace the backup filename before running it using `bash /tmp/priceunmask-restore.sh`.
 
 **Warning:** Restoring a backup replaces the active database and causes temporary downtime. Only perform this procedure when necessary.
 
-**Before starting:** Disable the GitHub Actions collector workflow and confirm that no collector workflow run is in progress. Keep the workflow disabled throughout the restore. Do not proceed if you cannot verify this.
+**Before starting:** Disable the GitHub Actions collector workflow and confirm that no collector workflow run is in progress. Keep the workflow disabled throughout the restore. Review the selected backup path and verify all preconditions before running the script. A failed check must stop the procedure; do not skip it or continue manually.
 
 List available backups:
 
@@ -522,10 +575,12 @@ sudo ls -lh /opt/priceunmask/backups/
 Set the path to the verified backup:
 
 ```bash
+set -euo pipefail
+
 BACKUP_FILE="/opt/priceunmask/backups/REPLACE_WITH_BACKUP_FILENAME.db"
 
-if [ ! -f "$BACKUP_FILE" ]; then
-    echo "STOP: Backup file does not exist. Do not continue."
+if ! sudo test -s "$BACKUP_FILE"; then
+    echo "STOP: Backup file does not exist or is empty. Do not continue."
     exit 1
 fi
 ```
@@ -635,7 +690,26 @@ fi
 Verify API health:
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:8000/api/health
+# Wait up to 60 seconds for the API to become healthy.
+HEALTHY=0
+
+for attempt in $(seq 1 30); do
+    if curl --fail --silent \
+        http://127.0.0.1:8000/api/health >/dev/null; then
+        echo "API is healthy."
+        HEALTHY=1
+        break
+    fi
+
+    echo "Waiting for API ($attempt/30)..."
+    sleep 2
+done
+
+if [ "$HEALTHY" -ne 1 ]; then
+    echo "STOP: API did not become healthy within 60 seconds."
+    sudo journalctl -u priceunmask.service -n 50 --no-pager
+    exit 1
+fi
 ```
 
 Leave the collector stopped after the database restore.
@@ -653,260 +727,28 @@ If you cannot verify that GitHub Actions collection is disabled and idle, leave 
 
 ## 14. Application rollback
 
-The release-based layout keeps previous application versions available under `/opt/priceunmask/releases`. The `current` symbolic link identifies the active release.
+**Deferred:** A safe, tested application rollback procedure is out of scope for this PR and will be implemented in a follow-up PR together with `deploy.sh`.
 
-The deployment procedure records the previous release in:
+**Do not use this section to perform a production rollback.**
 
-`/opt/priceunmask/previous-release`
+The release-based layout may retain previous application versions under `/opt/priceunmask/releases`, and the deployment process may record a previous release in `/opt/priceunmask/previous-release`. However, these records alone do not establish that a rollback is safe.
 
-**Warning:** Rollback causes temporary application downtime. It does not restore or replace the shared database. If a database migration or schema change is incompatible with the previous release, application rollback alone may not restore service.
+The follow-up implementation must address:
 
-Before rolling back, verify the previous release record:
+- Release directory ownership and permissions.
+- Safe validation of the previous-release record and symbolic links.
+- API service restart and health verification, including a bounded startup wait.
+- Compatibility between the previous application version and the current shared database.
+- Failure handling that does not leave the application pointing to an invalid release.
 
-```bash
-PREVIOUS_RELEASE="$(sudo cat /opt/priceunmask/previous-release)" || {
-    echo "STOP: Cannot read previous release record."
-    exit 1
-}
-
-if [ -z "$PREVIOUS_RELEASE" ]; then
-    echo "STOP: Previous release record is empty."
-    exit 1
-fi
-
-PREVIOUS_RELEASE="$(readlink -f -- "$PREVIOUS_RELEASE")" || {
-    echo "STOP: Cannot resolve previous release path."
-    exit 1
-}
-
-case "$PREVIOUS_RELEASE" in
-    /opt/priceunmask/releases/*)
-        ;;
-    *)
-        echo "STOP: Previous release resolves outside the releases directory."
-        exit 1
-        ;;
-esac
-
-if [ ! -d "$PREVIOUS_RELEASE" ]; then
-    echo "STOP: Previous release directory does not exist."
-    exit 1
-fi
-
-for FILE in \
-    deploy/systemd/priceunmask.service \
-    deploy/systemd/priceunmask-collector.service \
-    deploy/nginx/priceunmask.conf
-do
-    if [ ! -f "$PREVIOUS_RELEASE/$FILE" ]; then
-        echo "STOP: Required rollback configuration is missing: $FILE"
-        exit 1
-    fi
-done
-
-echo "Previous release: $PREVIOUS_RELEASE"
-```
-
-Check whether the collector is running:
-
-```bash
-COLLECTOR_WAS_ACTIVE="no"
-
-if sudo systemctl is-active --quiet priceunmask-collector.service; then
-    COLLECTOR_WAS_ACTIVE="yes"
-fi
-```
-Record and validate the currently active release:
-
-```bash
-CURRENT_RELEASE="$(readlink -f /opt/priceunmask/current)"
-
-case "$CURRENT_RELEASE" in
-    /opt/priceunmask/releases/*)
-        ;;
-    *)
-        echo "STOP: Current release path is invalid."
-        exit 1
-        ;;
-esac
-
-if [ ! -d "$CURRENT_RELEASE" ]; then
-    echo "STOP: Current release directory does not exist."
-    exit 1
-fi
-if [ "$PREVIOUS_RELEASE" = "$CURRENT_RELEASE" ]; then
-    echo "STOP: Previous release is already active."
-    exit 1
-fi
-echo "Current release: $CURRENT_RELEASE"
-```
-
-Stop both application services before switching releases:
-
-```bash
-sudo systemctl stop priceunmask-collector.service
-sudo systemctl stop priceunmask.service
-```
-Confirm both application services have stopped:
-
-```bash
-if sudo systemctl is-active --quiet priceunmask.service || \
-   sudo systemctl is-active --quiet priceunmask-collector.service; then
-    echo "STOP: One or more application services are still running."
-    exit 1
-fi
-
-echo "Both application services are stopped."
-```
-
-
-Switch back to the previous release:
-
-```bash
-ROLLBACK_LINK="/opt/priceunmask/current.rollback.$$"
-
-if [ -e "$ROLLBACK_LINK" ] || [ -L "$ROLLBACK_LINK" ]; then
-    echo "STOP: Temporary rollback link already exists."
-    exit 1
-fi
-
-sudo ln -s "$PREVIOUS_RELEASE" "$ROLLBACK_LINK"
-
-if ! sudo mv -Tf "$ROLLBACK_LINK" /opt/priceunmask/current; then
-    sudo rm -f "$ROLLBACK_LINK"
-    echo "STOP: Release switch failed."
-    exit 1
-fi
-
-if [ "$(readlink -f /opt/priceunmask/current)" != "$PREVIOUS_RELEASE" ]; then
-    echo "STOP: Active release verification failed."
-    exit 1
-fi
-```
-
-Restore the systemd service definitions from the previous release:
-
-```bash
-sudo install -o root -g root -m 644 \
-    "$PREVIOUS_RELEASE/deploy/systemd/priceunmask.service" \
-    /etc/systemd/system/priceunmask.service
-
-sudo install -o root -g root -m 644 \
-    "$PREVIOUS_RELEASE/deploy/systemd/priceunmask-collector.service" \
-    /etc/systemd/system/priceunmask-collector.service
-
-sudo systemctl daemon-reload
-```
-
-Restore and validate the Nginx configuration:
-
-Verify that the PriceUnmask Nginx site is enabled:
-
-```bash
-if [ ! -L /etc/nginx/sites-enabled/priceunmask ]; then
-    echo "STOP: PriceUnmask Nginx site is not enabled."
-    exit 1
-fi
-
-readlink -f /etc/nginx/sites-enabled/priceunmask
-```
-
-
-```bash
-sudo install -o root -g root -m 644 \
-    "$PREVIOUS_RELEASE/deploy/nginx/priceunmask.conf" \
-    /etc/nginx/sites-available/priceunmask
-
-sudo nginx -t
-```
-
-If Nginx validation fails, do not proceed as though rollback is complete. Investigate and correct the configuration first.
-
-Start the API:
-
-```bash
-sudo systemctl start priceunmask.service
-
-if ! sudo systemctl is-active --quiet priceunmask.service; then
-    echo "STOP: API service is not active."
-    sudo journalctl -u priceunmask.service -n 50 --no-pager
-    exit 1
-fi
-
-sudo systemctl status priceunmask.service --no-pager
-```
-
-Verify the active release:
-
-```bash
-ACTIVE_RELEASE="$(readlink -f /opt/priceunmask/current)"
-
-if [ "$ACTIVE_RELEASE" != "$PREVIOUS_RELEASE" ]; then
-    echo "STOP: Active release does not match the previous release."
-    exit 1
-fi
-
-echo "Active release verified: $ACTIVE_RELEASE"
-```
-
-Verify application health:
-
-```bash
-curl --fail --silent --show-error http://127.0.0.1:8000/api/health
-```
-
-Do not continue if the API health check fails. Investigate the service and application logs first.
-
-Reload Nginx after the API health check succeeds:
-
-```bash
-if ! sudo systemctl reload nginx; then
-    echo "STOP: Nginx reload failed."
-    exit 1
-fi
-
-if ! sudo systemctl is-active --quiet nginx; then
-    echo "STOP: Nginx is not active after reload."
-    exit 1
-fi
-
-sudo systemctl status nginx --no-pager
-```
-
-Update the previous-release record only after the API health check and Nginx reload succeed:
-
-```bash
-printf '%s\n' "$CURRENT_RELEASE" |
-    sudo tee /opt/priceunmask/previous-release >/dev/null
-```
-
-If the collector was running before rollback, start it again only after confirming GitHub Actions collection is disabled and no workflow run is in progress:
-
-```bash
-if [ "$COLLECTOR_WAS_ACTIVE" = "yes" ]; then
-    sudo systemctl start priceunmask-collector.service
-
-    if ! sudo systemctl is-active --quiet priceunmask-collector.service; then
-        echo "STOP: Collector service failed to start."
-        sudo journalctl -u priceunmask-collector.service -n 50 --no-pager
-        exit 1
-    fi
-
-    sudo systemctl status priceunmask-collector.service --no-pager
-fi
-
-```
-
-The database remains in `/opt/priceunmask/shared/data` and is not replaced during application rollback.
-
-Keep previous releases until the new release has been verified. Do not claim rollback testing is complete until the procedure has been exercised on the Linux VM.
+No application rollback test is claimed for this PR. A rollback procedure must be implemented and safely tested before it is used in production.
 
 ## 15. Deployment limitations
 
 - Tested on Ubuntu 24.04 under WSL2, not on a public VPS.
 - WSL2 services depend on the local Windows machine and WSL instance being available.
 - No public-domain, TLS, firewall, or external VPS deployment test has been completed.
-- `deploy/deploy.sh` is not yet available in this working tree; its automated deployment flow remains untested.
+- `deploy/deploy.sh` is not yet available in this working tree; its automated deployment flow remains untested and is deferred to a follow-up PR.
 - Backup creation and integrity verification were tested. A full restore drill remains to be performed.
-- Application rollback using versioned releases is documented but has not yet been tested on the Linux VM.
+- Application rollback is deferred to a follow-up PR and has not been implemented or tested.
 - The runbook describes the intended release-based deployment procedure. Do not treat every documented step as tested merely because the API and collector were previously run successfully on WSL2.

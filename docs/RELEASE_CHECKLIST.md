@@ -252,3 +252,56 @@ the commit hash. Link each issue in the table. If nothing failed, write
 ## Known limitations (v1.1)
 
 - **Trust Score and anomaly detection are untested against real price movement.** Books to Scrape (the only live source) has fixed prices, so neither model has ever seen a real discount claim or a real price change. `docs/design/trust_score_findings.md` and `docs/design/anomaly_findings.md` were re-run against the latest export on 2026-11-04 and are current, but both report zero real signal. This is accepted as a known limitation of v1.1, not a release blocker — closing out when real price-change data exists is tracked in #226 if it's reopened.
+
+## Draft v2.0 release checklist
+
+**Status:** Draft — not yet verified.
+
+Run this checklist on a fresh clone before declaring v2.0 ready to ship.
+
+### 1. Fresh-clone verification
+
+- [ ] Clone the repository into a new directory.
+- [ ] Check out the intended v2.0 release commit.
+- [ ] Confirm the working tree is clean.
+- [ ] Install dependencies using the documented setup instructions.
+- [ ] Verify the application starts without relying on files from another local checkout.
+
+### 2. CI and automated checks
+
+- [ ] All required GitHub Actions CI workflows pass on the release commit.
+- [ ] `ruff check .` passes.
+- [ ] `ruff format --check .` passes.
+- [ ] `pytest -q` passes.
+- [ ] No unresolved release-blocking test failures remain.
+
+### 3. Production deployment
+
+- [ ] The application is deployed to the intended production host.
+- [ ] The deployed application is reachable through its public URL.
+- [ ] The health endpoint returns a successful response.
+- [ ] The dashboard and API are reachable from outside the deployment host.
+- [ ] A process supervisor restarts the application after a process failure.
+- [ ] Deployment and rollback procedures are documented and verified.
+
+### 4. Multi-source collector
+
+- [ ] Every configured and approved source is included in the collector registry.
+- [ ] One collection cycle attempts every configured source.
+- [ ] A failure in one source does not prevent other sources from being collected.
+- [ ] Each source's result and any failure are recorded.
+- [ ] The scheduled collector runs on the deployed environment.
+- [ ] Database snapshots are persisted for each successful source.
+- [ ] Health monitoring confirms the collector is running and reports stale or failed runs.
+- [ ] No unapproved source, including Croma while its Terms decision remains unresolved, is enabled by default.
+
+### 5. Final release decision
+
+- [ ] Fresh-clone verification completed.
+- [ ] CI is green.
+- [ ] Deployed application is reachable.
+- [ ] Process supervision and rollback are verified.
+- [ ] Collector runs every approved configured source.
+- [ ] Release evidence and known limitations are documented.
+
+**Release rule:** Do not mark v2.0 ready until every required item above has been verified with actual evidence. Keep unverified items unchecked.

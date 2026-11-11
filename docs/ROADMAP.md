@@ -12,24 +12,32 @@ Confirmed working end to end: a scraper against one site (books.toscrape.com), a
 
 Collector reliability is also still an open problem structurally, not just a one-off: two multi-day outages happened in a single pilot month (24–26 Oct, and 30 Oct–2 Nov, the second one spanning the live demo itself), both from a personal laptop sleeping, and both were only caught by cross-checking the database by hand against a written log. The second outage was initially misreported as "no gap, ran throughout demo day" before the real database record corrected it (see issue #155's full thread for that history — worth reading as a case study in verifying claims against evidence, not taking a status report at face value).
 
-## v1.1 — Stabilization
+
+### v1.1 — Stabilization
 
 Make what already exists trustworthy and self-monitoring before building anything new on top of it.
 
-- **Real discount data (highest priority).** Add or switch to a source with prices that actually change and carry discount claims — books.toscrape.com's fixed catalog has made this impossible to test. The schema already supports it: `products.source` plus `external_id` unique per source. Without this, Trust Score and the anomaly detector stay unvalidated no matter what else ships.
-- **Collector reliability.** Move off a personal laptop onto something that can't sleep: a scheduled GitHub Actions workflow is the lowest-cost option (free, no infra, runs on a cron, can commit or export snapshots), or a small always-on VM. This removes the single point of failure behind both outages this month.
-- **Automated health alerting.** Replace the manual "post a morning check-in comment" process with a job that runs `check_db` on a schedule and posts or alerts automatically when the latest run is older than expected. The manual version already failed once — missed days, then a mislabeled catch-up comment presented as healthy when it wasn't. Automating the check removes that human-reliability gap entirely.
-- **API hardening**, per `docs/design/api.md`: a standardized error-response schema across endpoints, clearer scrape-progress reporting than polling `/api/scrape-runs`, and expanded contract tests as the API grows.
-- **DB hardening**, per `docs/design/database.md`: integration tests for concurrent writes (collector writing while the API reads), and a deliberate SQLite-vs-server-database decision once real collection volume is known, not before.
+- [x] #222 — scheduler: move collector off a personal laptop and automate health alerting — @Saidivya-20 — [PR #232](https://github.com/KT-PROJECT-F/PriceUnmask/pull/232)
+- [x] #223 — scraper: add a source with real price changes and discount claims — @Naveen5901 — [PR #236](https://github.com/KT-PROJECT-F/PriceUnmask/pull/236)
+- [x] #224 — api: standardize error responses and scrape-progress reporting — @rajeshkandlapudi-glitch — [PR #234](https://github.com/KT-PROJECT-F/PriceUnmask/pull/234)
+- [x] #225 — db: concurrent-write integration tests and SQLite-vs-server-DB decision — @Hemalatha1729 — [PR #235](https://github.com/KT-PROJECT-F/PriceUnmask/pull/235)
+- [x] #226 — analysis: re-validate Trust Score and anomaly detection — @sujithareddy-1324 — closure commit `739d92f` (interim validation; real-data limitation remains)
+- [x] #227 — docs: v1.1 release verification pass — @mathango — [PR #239](https://github.com/KT-PROJECT-F/PriceUnmask/pull/239)
+- [x] #228 — docs: document the real limitations found this cycle — @lakshmiprasanna45 — [PR #231](https://github.com/KT-PROJECT-F/PriceUnmask/pull/231)
 
-## v2.0 — Growth
+### v2.0 — Growth
 
 Once v1.1's real data and reliability work have landed, grow the product itself.
 
-- **Multi-site scraping.** Generalize `scraper/` into a source-adapter pattern: one module per site behind the existing `ScrapedProduct` contract. The schema already allows multiple sources per product, so this is additive, not a rewrite — and it further diversifies the data Trust Score and the anomaly detector see.
-- **ML anomaly detection.** Upgrade from rolling z-score to IsolationForest. This is already the documented next step in `docs/design/anomaly.md`; it was deliberately deferred until there is real changing-price history to train and validate against, which is exactly what v1.1 is meant to produce.
-- **Shopper-facing features.** Watchlists (save a product), price-drop notifications, category or trend views across products. None of this exists today — the app is currently a read-only dashboard with no accounts.
-- **Production deployment.** Move off local `uvicorn --reload` to a real host with a process supervisor and a CI/CD deploy step. Revisit the SQLite-vs-server-database decision from v1.1 once there is an actual place to deploy to.
+- [ ] #241 — scraper: multi-site source-adapter pattern — @mathango, @Naveen5901 — **Open** (PR #249 merged; second-site Terms evidence pending review)
+- [x] #242 — analysis: validate anomaly detection against synthetic price fixtures — @sujithareddy-1324 — **Merged** (PR #247)
+- [ ] #243 — frontend: shopper-facing features (watchlists, price-drop notifications, trend views) — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch — **Open** (PR #248 merged; PR #246 in review)
+- [ ] #244 — setup: production deployment (host, process supervisor, CI/CD deploy step) — @Hemalatha1729, @Saidivya-20 — **Open** (PRs #251 and #252 in review)
+- [ ] #254 — scraper: collect every configured source in one run — @Naveen5901 — **Open**
+- [ ] #255 — frontend: use analysis API instead of duplicated JavaScript rules — @Kanamarlapudip — **Open / Blocked**
+- [ ] #256 — analysis: price-position summary — @lakshmiprasanna45 — **Open**
+- [ ] #257 — analysis: compare IsolationForest with z-score — @sujithareddy-1324 — **Open**
+
 
 ## Architecture changes needed
 

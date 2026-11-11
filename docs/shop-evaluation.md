@@ -30,20 +30,47 @@ PriceUnmask, and document the price observations used to assess feasibility.
 | Price in raw HTML | Yes                                           | Lloyd washing machine https://www.reliancedigital.in/product/lloyd-8-kg-top-loading-semi-automatic-washing-machine-elante-glwms80avgel-lg55vo — source `offers.price` = `13590`, matching displayed Deal Price ₹13,590; `selling.min` and `selling.max` = `15490`, matching displayed Offer Price ₹15,490. |
 | Price changes     | Not assessed                                  | Reliance Digital is ruled out for automated tracking by section 12 of its Terms of Use; no second product-price visit was made.                                                                                                                                                                                                                          |
 
+
 ## 3. Web Scraper Demo Site
 
 **Shop:** https://webscraper.io/
 **Practice listing URL:** https://webscraper.io/test-sites/e-commerce/static/computers/laptops
-**Evaluation date:** 10 November 2026
+**Evaluation date:** 11 November 2026
+**Robots.txt and Terms rechecked:** 11 November 2026
 
 | Check | Result | Evidence |
 |---|---|---|
-| robots.txt | No matching disallow found | https://webscraper.io/robots.txt — Retrieved on 10 November 2026. The file's complete rules are `User-agent: *`, `Disallow: /test-sites/product/`, `Disallow: /test-sites/pagination/`, `Disallow: /test-sites/pagination*?page=`, `Disallow: /test-sites/scroll/`, `Disallow: /test-sites/load-more/`, and `Sitemap: https://webscraper.io/sitemap.xml`. None of the five `Disallow` rules matches the proposed `/test-sites/e-commerce/static/computers/laptops` listing, its `?page=2` pagination URL, or product paths under `/test-sites/e-commerce/static/`. This robots.txt review does not grant permission under the site's terms. |
-| Test-site purpose | Permission for fixture use not established | https://webscraper.io/test-sites — Retrieved on 10 November 2026. The page says: “Here are some test sites that you can use for training while learning how to use the Web Scraper extension.” This identifies the pages as training sites for learning the extension, but does not expressly address automated collection by PriceUnmask or retaining/redistributing a page as a repository fixture. Reviewer/site-owner determination is needed before treating this as permission for those uses. |
-| Fixture | Not collected pending terms decision | The robots.txt rules do not disallow the proposed path. No real listing page has been added as a fixture because the test-sites page does not clarify whether retaining its HTML in this repository is permitted. Tests currently use controlled HTML only. |
-| Adapter tests | Local parser tests | Controlled HTML tests cover valid product cards, cards without a price or link, and product links to an external host. These tests require no network access and do not establish permission for live collection. |
+| robots.txt | No matching disallow found | https://webscraper.io/robots.txt — Retrieved on 11 November 2026. The applicable group is `User-agent: *`. Its exact directives are quoted below. None of the listed Disallow paths matches `/test-sites/e-commerce/`, including the proposed laptop listing and its product paths. This is not permission to scrape. |
+| Terms and Conditions | Automated access permission not established | https://cloud.webscraper.io/auth/terms-and-conditions — Reviewed on 11 November 2026. The License section states: "You must not: Republish material from https://www.webscraper.io; Sell, rent or sub-license material from https://www.webscraper.io; Reproduce, duplicate or copy material from https://www.webscraper.io." It also restricts redistribution unless content is specifically made for redistribution. The reviewed Terms do not explicitly grant PriceUnmask permission for automated collection or retaining a real-page HTML fixture. |
+| Test-site purpose | Training use described; collection permission unclear | https://webscraper.io/test-sites — The page describes the sites as training sites for learning how to use the Web Scraper extension. This does not expressly establish permission for automated collection by PriceUnmask or retaining the page as a repository fixture. |
+| Fixture | Not collected pending Terms decision | No real listing page has been added as a fixture. Tests continue to use controlled HTML without network access. |
+| Adapter tests | Local parser tests | Controlled HTML tests cover valid product cards, cards without a price or link, and product links to an external host. These tests do not establish permission for live collection. |
 
-**Decision:** The reviewed robots.txt does not disallow the proposed e-commerce paths. The reviewer is deciding whether the site's training-use statement is sufficient for collection and retaining a real-page fixture. Until that decision, leave the fixture out and do not enable live collection.
+### robots.txt rules reviewed
+
+The following is the exact content retrieved from the robots.txt file:
+
+```text
+User-agent: *
+Disallow: /test-sites/product/
+Disallow: /test-sites/pagination/
+Disallow: /test-sites/pagination*?page=
+Disallow: /test-sites/scroll/
+Disallow: /test-sites/load-more/
+
+Sitemap: https://webscraper.io/sitemap.xml
+```
+
+### Decision
+
+The reviewed robots.txt does not disallow the proposed `/test-sites/e-commerce/` paths.
+
+However, the Terms do not expressly authorize automated collection or retaining real-page HTML fixtures. The training-site description alone is insufficient to establish that permission.
+
+Keep the real-page fixture excluded and do not enable live collection until the reviewer/site owner confirms the permitted use.
+
+**Last checked:** 11 November 2026.
+
 
 ## 4. Price Observations — Croma and Reliance Digital
 

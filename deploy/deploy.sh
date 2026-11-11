@@ -18,12 +18,12 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 NEW_RELEASE="$RELEASES/$TIMESTAMP"
 PREV_RELEASE="$(readlink "$CURRENT" || echo "")"
 
-mkdir -p "$NEW_RELEASE" "$SHARED/data/exports"
+mkdir -p "$RELEASES" "$SHARED/data/exports"
 
 # 1. Clone the exact commit, not the tip of the dev branch.
 # Deploying the branch tip is unsafe: a merge during deploy
 # would silently change what goes live.
-git clone --depth 50 https://github.com/PriceUnmask/PriceUnmask.git "$NEW_RELEASE"
+git clone --depth 50 https://github.com/KT-PROJECT-F/PriceUnmask.git "$NEW_RELEASE"
 cd "$NEW_RELEASE"
 git checkout "$COMMIT_SHA"
 git rev-parse HEAD

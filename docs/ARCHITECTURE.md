@@ -1,4 +1,4 @@
-# PriceUnmask architecture
+﻿# PriceUnmask architecture
 
 Status: v1, agreed at kickoff. Changes to anything in sections 3 to 6 need a PR the mentor approves.
 
@@ -48,16 +48,30 @@ signature without a PR tagged `contract-change` that the affected owners review.
 
 | Module | Public contract | Depends on |
 |---|---|---|
-| `scraper/product_scraper.py` | `ScrapedProduct`, `parse_price_to_minor`, `parse_listing`, `fetch_html`, `scrape` | nothing |
-| `db/crud.py` | `start_scrape_run`, `finish_scrape_run`, `upsert_product_and_snapshot`, `list_products`, `get_product`, `get_history`, `list_scrape_runs` | models |
+| `scraper/product_scraper.py` | `ScrapedProduct`, `SourceAdapter`, `parse_price_to_minor`, `parse_listing`, `fetch_html`, `scrape` | nothing |
+| `db/crud.py` | `start_scrape_run`, `finish_scrape_run`, `upsert_product_and_snapshot`, `list_products`, `get_product`, `get_history`, `list_scrape_runs`, `get_product_trends` | models |
 | `scheduler/jobs.py` | `run_scrape_cycle() -> int`, `build_scheduler()` | scraper, crud |
 | `analysis/trust_score.py` | `compute_signals(df)`, `compute_trust_score(df) -> TrustScore` | pandas only |
 | `analysis/anomaly_model.py` | `detect_anomalies(df) -> AnomalyResult` | pandas, sklearn |
+| `analysis/price_history_utils.py` | `get_valid_price_history`, `compare_first_and_latest_prices` | pandas |
+| `analysis/price_drop.py` | `calculate_price_drop` | price_history_utils |
+| `analysis/price_trend.py` | `calculate_price_trend` | price_history_utils |
 | `schemas.py` + `main.py` | endpoints in section 5 | crud, analysis |
 | `frontend/` | consumes section 5 only | API |
 
 Analysis functions take a **pandas DataFrame**, not ORM objects, with columns
 `scraped_at, current_price_minor, original_price_minor`, oldest first. The API layer converts.
+
+`ScrapedProduct.source` is an optional field already present on `dev` from #236; this PR does not
+change the product contract. This PR adds the scraper's `SourceAdapter` extension contract and
+changes `scrape(url)` to raise `ValueError` before fetching when no adapter supports the URL; these
+scraper API changes require the `contract-change` label and scraper-owner review. `SourceAdapter`
+is an abstract base class: each adapter must implement `supports`, `parse_listing`, and
+`parse_next_page_url`, and an incomplete adapter cannot be instantiated. Adapters that need a
+non-default source set it on parsed products; Books to Scrape leaves it unset so the scheduler's
+existing `SOURCE_KEY` remains the single source of its `books-toscrape` key. The source adapter is
+selected from the URL inside `scrape()`, so adding a site does not require per-site changes to
+scheduler or database code.
 
 ## 5. API (all under /api)
 
@@ -98,6 +112,10 @@ Trend overview rules:
 - Only snapshots with a positive `current_price_minor` in the lookback window are
   used for trend calculations.
 - The first and latest valid snapshots determine the price change.
+- The percentage change is rounded to two decimal places before applying the
+  stability threshold.
+- Absolute percentage changes below 1% are classified as `stable`.
+- Changes at or above 1% are classified as `increasing` or `decreasing`.
 - Products with fewer than two valid snapshots are returned with
   `insufficient_history`; their price and change fields are `null`.
 - Inactive products are excluded.
@@ -106,9 +124,9 @@ Trend directions:
 
 | Direction | Meaning |
 |---|---|
-| `decreasing` | Latest price is lower than the first price. |
-| `increasing` | Latest price is higher than the first price. |
-| `stable` | First and latest prices are equal. |
+| `decreasing` | The latest price is lower than the first price by at least 1%. |
+| `increasing` | The latest price is higher than the first price by at least 1%. |
+| `stable` | The percentage change is below the 1% stability threshold. |
 | `insufficient_history` | Fewer than two valid snapshots are available. |
 
 `products_analyzed` counts all active products included in the overview,
@@ -122,21 +140,29 @@ These counts add up to `products_analyzed`.
 products with sufficient history. Products with `insufficient_history` are
 excluded. It is `null` when no products have sufficient history.
 
-`GET /api/products/{product_id}/price-drop` compares the latest two valid positive prices for a product.
+`GET /api/products/{product_id}/price-drop` checks whether the product's latest valid positive price represents a qualifying decrease.
+
+Price-drop calculation rules:
+
+- The latest valid positive price is compared with the reference price at the start of the latest falling stretch.
+- Equal consecutive prices remain part of the falling stretch.
+- If the latest price has increased, it is compared with the immediately previous valid positive price.
+- The drop percentage is rounded to two decimal places.
+- A decrease of less than 1% is treated as no qualifying drop. A decrease of at least 1% is treated as a price drop.
 
 Price-drop status meanings:
 
 | Status | Meaning |
 |---|---|
 | `insufficient_history` | Fewer than two valid positive price snapshots are available. All price and drop fields are `null`. |
-| `price_dropped` | The latest price is lower than the previous price. Drop amount and percentage are calculated from those two prices. |
-| `no_drop` | The latest price is equal to or higher than the previous price. Drop amount is `0` and drop percentage is `0.0`. |
+| `price_dropped` | The calculated decrease is at least 1%. Drop amount and percentage are calculated using the reference price and latest price. |
+| `no_drop` | No qualifying decrease is detected. Drop amount and percentage are `0` and `0.0`, respectively. |
 
 The `PriceDropOut` response includes:
 
 - `product_id`: Product identifier.
 - `status`: Price-drop status.
-- `previous_price_minor`: Previous valid price in minor units (paise).
+- `previous_price_minor`: Reference price used for the price-drop calculation, in minor units (paise). This is the price at the start of the latest falling stretch, or the immediately previous valid price when the latest price has increased.
 - `current_price_minor`: Latest valid price in minor units (paise).
 - `drop_amount_minor`: Difference between previous and current prices in minor units.
 - `drop_percent`: Percentage decrease, rounded to two decimal places.

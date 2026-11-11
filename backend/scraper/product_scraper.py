@@ -1,6 +1,7 @@
 """Scraper. Owners: Scraper track (2 people: parsing + robustness).
 
 Contract: `scrape(url)` returns a list of ScrapedProduct and NEVER touches the database.
+It raises ValueError before fetching when no registered source adapter supports the URL.
 
 Keeping the scraper pure (HTML in, dataclasses out) means it can be unit-tested
 against saved HTML files with zero network calls.
@@ -8,6 +9,7 @@ against saved HTML files with zero network calls.
 
 import logging
 import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,6 +44,17 @@ class ScrapedProduct:
     source: str | None = None
 
 
+class SourceAdapter(ABC):
+    @abstractmethod
+    def supports(self, url: str) -> bool: ...
+
+    @abstractmethod
+    def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]: ...
+
+    @abstractmethod
+    def parse_next_page_url(self, html: str, base_url: str) -> str | None: ...
+
+
 def parse_price_to_minor(text: str) -> int | None:
     """'Rs. 1,299.50' / '£1,299' / '₹1,299' / '1299' -> minor units."""
     if not isinstance(text, str):
@@ -52,7 +65,7 @@ def parse_price_to_minor(text: str) -> int | None:
         return None
 
     value = re.sub(
-        r"^(?:Rs\.?|[\u00a3\u20b9])\s*",
+        r"^(?:Rs\.?|[$\u00a3\u20b9])\s*",
         "",
         value,
         flags=re.IGNORECASE,
@@ -228,23 +241,190 @@ def parse_next_page_url(html: str, base_url: str) -> str | None:
     if not isinstance(href, str) or not href.strip():
         return None
 
-    # Remove fragments because they do not identify a different page.
+    return _validated_next_page_url(href, base_url)
+
+
+def _validated_next_page_url(
+    href: str,
+    base_url: str,
+    *,
+    require_same_path: bool = False,
+) -> str | None:
+    """Validate a next link; optionally keep pagination on the current listing path."""
     next_url = urldefrag(urljoin(base_url, href.strip())).url
     clean_base_url = urldefrag(base_url).url
-
     base_parts = urlsplit(clean_base_url)
     next_parts = urlsplit(next_url)
 
-    if next_parts.scheme not in {"http", "https"}:
-        return None
-
-    if next_parts.netloc.lower() != base_parts.netloc.lower():
-        return None
-
-    if next_url == clean_base_url:
+    if (
+        next_parts.scheme not in {"http", "https"}
+        or next_parts.netloc.lower() != base_parts.netloc.lower()
+        or next_url == clean_base_url
+        or (
+            require_same_path
+            and (next_parts.scheme != base_parts.scheme or next_parts.path != base_parts.path)
+        )
+    ):
         return None
 
     return next_url
+
+
+class BooksToScrapeAdapter(SourceAdapter):
+    def supports(self, url: str) -> bool:
+        parsed_url = urlsplit(url)
+        return parsed_url.scheme in {"http", "https"} and parsed_url.hostname in {
+            "books.toscrape.com",
+            "www.books.toscrape.com",
+        }
+
+    def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]:
+        return parse_listing(html, base_url)
+
+    def parse_next_page_url(self, html: str, base_url: str) -> str | None:
+        return parse_next_page_url(html, base_url)
+
+
+class CromaAdapter(SourceAdapter):
+    source = "croma"
+
+    def supports(self, url: str) -> bool:
+        return _is_croma_product_url(url)
+
+    def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]:
+        product = parse_croma_product(html, base_url)
+        if product is None:
+            raise RuntimeError(f"Could not parse Croma product page: {base_url}")
+        return [product]
+
+    def parse_next_page_url(self, html: str, base_url: str) -> str | None:
+        return None
+
+
+class WebScraperDemoAdapter(SourceAdapter):
+    source = "webscraper-demo"
+    _hostnames = {"webscraper.io", "www.webscraper.io"}
+    _listing_path = "/test-sites/e-commerce/static"
+
+    def supports(self, url: str) -> bool:
+        parsed_url = urlsplit(url)
+        path = parsed_url.path.rstrip("/")
+        return (
+            parsed_url.scheme in {"http", "https"}
+            and parsed_url.hostname in self._hostnames
+            and (path == self._listing_path or path.startswith(f"{self._listing_path}/"))
+        )
+
+    def parse_listing(self, html: str, base_url: str) -> list[ScrapedProduct]:
+        soup = BeautifulSoup(html, "html.parser")
+        products: list[ScrapedProduct] = []
+        scraped_at = datetime.now(UTC)
+        cards = soup.select(".card.thumbnail")
+
+        for card in cards:
+            link = card.select_one("a.title[href]")
+            price_element = card.select_one("[itemprop='price']")
+
+            if link is None:
+                logger.warning("Skipping demo product card with no product link")
+                continue
+
+            name = link.get("title") or link.get_text(" ", strip=True)
+            if not name:
+                logger.warning("Skipping demo product card with no name")
+                continue
+
+            if price_element is None:
+                logger.warning("Skipping demo product card with no price: %s", name)
+                continue
+
+            href = link.get("href")
+            if not isinstance(href, str) or not href.strip():
+                logger.warning("Skipping demo product card with no product URL: %s", name)
+                continue
+
+            product_url = urljoin(base_url, href.strip())
+            product_parts = urlsplit(product_url)
+            base_parts = urlsplit(base_url)
+            product_id_match = re.fullmatch(
+                re.escape(f"{self._listing_path}/product/") + r"([^/]+)/?",
+                product_parts.path,
+            )
+            if (
+                product_parts.scheme != base_parts.scheme
+                or product_parts.netloc.lower() != base_parts.netloc.lower()
+                or product_id_match is None
+            ):
+                logger.warning("Skipping demo product card with invalid product URL: %s", name)
+                continue
+
+            price_text = price_element.get_text(strip=True)
+            price_minor = parse_price_to_minor(price_text)
+            if price_minor is None:
+                logger.warning("Skipping demo product card with unreadable price: %s", name)
+                continue
+
+            currency_element = card.select_one("[itemprop='priceCurrency'][content]")
+            currency_value = currency_element.get("content") if currency_element else None
+            if not isinstance(currency_value, str) or not currency_value.strip():
+                logger.warning(
+                    "Demo product card has no usable price currency; assuming USD: %s",
+                    name,
+                )
+                currency = "USD"
+            else:
+                currency = currency_value.strip()
+
+            products.append(
+                ScrapedProduct(
+                    external_id=product_id_match.group(1),
+                    name=name,
+                    url=product_url,
+                    current_price_minor=price_minor,
+                    original_price_minor=None,
+                    in_stock=None,
+                    currency=currency,
+                    scraped_at=scraped_at,
+                    source=self.source,
+                )
+            )
+
+        if cards and not products:
+            logger.error(
+                "Skipped all %d demo product cards; the page layout may have changed",
+                len(cards),
+            )
+
+        return products
+
+    def parse_next_page_url(self, html: str, base_url: str) -> str | None:
+        soup = BeautifulSoup(html, "html.parser")
+        next_link = soup.select_one(
+            "ul.pagination a[rel~='next'][href], ul.pagination a.page-link.next[href]"
+        )
+        if next_link is None:
+            return None
+
+        href = next_link.get("href")
+        if not isinstance(href, str) or not href.strip():
+            return None
+
+        return _validated_next_page_url(href, base_url, require_same_path=True)
+
+
+SOURCE_ADAPTERS: tuple[SourceAdapter, ...] = (
+    CromaAdapter(),
+    BooksToScrapeAdapter(),
+    WebScraperDemoAdapter(),
+)
+
+
+def source_adapter_for_url(url: str) -> SourceAdapter:
+    for adapter in SOURCE_ADAPTERS:
+        if adapter.supports(url):
+            return adapter
+
+    raise ValueError(f"No source adapter supports URL: {url}")
 
 
 def _request_with_retries(
@@ -404,6 +584,7 @@ def scrape(url: str) -> list[ScrapedProduct]:
     (see the plan on #117). Snapshots of the pages fetched before the failure
     are kept.
     """
+    adapter = source_adapter_for_url(url)
     max_pages = max(1, settings.scrape_max_pages)
 
     current_url: str | None = url
@@ -444,13 +625,7 @@ def scrape(url: str) -> list[ScrapedProduct]:
                 snapshot_path,
             )
 
-        if _is_croma_product_url(current_url):
-            product = parse_croma_product(html, current_url)
-            if product is None:
-                raise RuntimeError(f"Could not parse Croma product page: {current_url}")
-            page_products = [product]
-        else:
-            page_products = parse_listing(html, current_url)
+        page_products = adapter.parse_listing(html, current_url)
 
         for product in page_products:
             if product.external_id in seen_product_ids:
@@ -470,7 +645,7 @@ def scrape(url: str) -> list[ScrapedProduct]:
         if page_number == max_pages:
             break
 
-        current_url = parse_next_page_url(html, current_url)
+        current_url = adapter.parse_next_page_url(html, current_url)
 
         if current_url is None:
             logger.info("No next listing page found; collection complete")

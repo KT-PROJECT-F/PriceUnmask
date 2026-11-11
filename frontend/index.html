@@ -38,6 +38,46 @@
       </button>
       <p id="collector-action-message" role="status" aria-live="polite"></p>
     </section>
+    <section
+      id="price-drop-notifications"
+      class="price-drop-notifications"
+      aria-labelledby="price-drop-heading"
+    >
+      <h2 id="price-drop-heading">
+        Price-Drop Notifications
+      </h2>
+
+      <p id="notification-status" role="status" aria-live="polite">
+        Checking watched products...
+      </p>
+
+      <div id="notification-list"></div>
+    </section>
+    <section
+      id="category-trends"
+      class="category-trends"
+      aria-labelledby="category-trends-heading"
+    >
+      <h2 id="category-trends-heading">Price Trends</h2>
+
+      <p id="category-trends-status" role="status">
+        Loading price trends...
+      </p>
+        <div class="category-filter">
+          <label for="trend-product-select">Select Product to Compare</label>
+          <select id="trend-product-select">
+            <option value="">All Products</option>
+          </select>
+        </div>
+      <div class="trend-chart-container">
+        <h3>Price Trends</h3>
+        <canvas
+          id="category-trend-chart"
+          role="img"
+          aria-label="Price trend comparison chart for selected products">
+        </canvas>
+      </div>
+    </section>
     <p id="product-status">Loading products...</p>
     <!-- Product grid and detail view are rendered by script.js. -->
   </main>

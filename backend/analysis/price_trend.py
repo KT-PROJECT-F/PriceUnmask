@@ -1,16 +1,14 @@
 """Calculate shopper-friendly price trends from price history."""
 
 from dataclasses import dataclass
-from typing import Literal
 
 import pandas as pd
 
-TrendDirection = Literal[
-    "increasing",
-    "decreasing",
-    "stable",
-    "insufficient_history",
-]
+from .price_history_utils import (
+    TrendDirection,
+    compare_first_and_latest_prices,
+    get_valid_price_history,
+)
 
 
 @dataclass
@@ -24,7 +22,7 @@ class PriceTrendResult:
 
 
 def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
-    """Compare the earliest and latest valid positive prices."""
+    """Compare the earliest and latest valid prices."""
 
     required_columns = {"scraped_at", "current_price_minor"}
     missing = required_columns - set(history.columns)
@@ -32,42 +30,15 @@ def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
-    valid_history = history.dropna(subset=["scraped_at", "current_price_minor"]).copy()
+    valid_history = get_valid_price_history(history)
 
-    valid_history = valid_history[valid_history["current_price_minor"] > 0]
-
-    snapshot_count = len(valid_history)
-
-    if snapshot_count < 2:
-        return PriceTrendResult(
-            direction="insufficient_history",
-            first_price_minor=None,
-            latest_price_minor=None,
-            change_amount_minor=None,
-            change_percent=None,
-            snapshot_count=snapshot_count,
-        )
-
-    valid_history = valid_history.sort_values("scraped_at")
-
-    first_price = int(valid_history.iloc[0]["current_price_minor"])
-    latest_price = int(valid_history.iloc[-1]["current_price_minor"])
-
-    change_amount = latest_price - first_price
-    change_percent = (change_amount / first_price) * 100
-
-    if change_amount > 0:
-        direction = "increasing"
-    elif change_amount < 0:
-        direction = "decreasing"
-    else:
-        direction = "stable"
+    comparison = compare_first_and_latest_prices(valid_history)
 
     return PriceTrendResult(
-        direction=direction,
-        first_price_minor=first_price,
-        latest_price_minor=latest_price,
-        change_amount_minor=change_amount,
-        change_percent=round(change_percent, 2),
-        snapshot_count=snapshot_count,
+        direction=comparison.direction,
+        first_price_minor=comparison.first_price_minor,
+        latest_price_minor=comparison.latest_price_minor,
+        change_amount_minor=comparison.change_amount_minor,
+        change_percent=comparison.change_percent,
+        snapshot_count=len(valid_history),
     )

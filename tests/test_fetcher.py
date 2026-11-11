@@ -386,7 +386,7 @@ def test_scrape_saves_raw_html(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
 
-    product_scraper.scrape("https://example.com/list")
+    product_scraper.scrape("https://books.toscrape.com/list")
 
     [snapshot] = list(tmp_path.glob("*.html"))
 
@@ -394,7 +394,7 @@ def test_scrape_saves_raw_html(monkeypatch, tmp_path) -> None:
     assert snapshot.read_text(encoding="utf-8") == html
     assert seen == {
         "html": html,
-        "url": "https://example.com/list",
+        "url": "https://books.toscrape.com/list",
     }
 
 
@@ -416,12 +416,12 @@ def test_scrape_returns_parsed_products(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(product_scraper, "parse_listing", fake_parse)
 
-    result = product_scraper.scrape("https://example.com/list")
+    result = product_scraper.scrape("https://books.toscrape.com/list")
 
     assert result == expected_products
     assert seen == {
         "html": html,
-        "url": "https://example.com/list",
+        "url": "https://books.toscrape.com/list",
     }
 
 
@@ -434,7 +434,7 @@ def test_scrape_does_not_save_when_fetch_fails(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(product_scraper, "fetch_html", fail_fetch)
 
     with pytest.raises(RuntimeError, match="fetch failed"):
-        product_scraper.scrape("https://example.com")
+        product_scraper.scrape("https://books.toscrape.com")
 
     assert list(tmp_path.iterdir()) == []
 
@@ -456,7 +456,7 @@ def test_scrape_saves_the_page_even_if_the_parser_crashes(
     monkeypatch.setattr(product_scraper, "parse_listing", broken_parse)
 
     with pytest.raises(ValueError, match="parser bug"):
-        product_scraper.scrape("https://example.com/list")
+        product_scraper.scrape("https://books.toscrape.com/list")
 
     assert len(list(tmp_path.glob("*.html"))) == 1
 
@@ -484,7 +484,7 @@ def test_scrape_returns_products_when_the_snapshot_cannot_be_saved(
         lambda html, base_url: [FakeProduct("product")],
     )
 
-    assert product_scraper.scrape("https://example.com/list") == [FakeProduct("product")]
+    assert product_scraper.scrape("https://books.toscrape.com/list") == [FakeProduct("product")]
 
 
 def test_fetch_html_logs_robots_user_agent_and_delay(
@@ -679,9 +679,9 @@ def next_link(href):
     return f'<ul class="pager"><li class="next"><a href="{href}">next</a></li></ul>'
 
 
-PAGE_1 = "https://example.com/catalogue/page-1.html"
-PAGE_2 = "https://example.com/catalogue/page-2.html"
-PAGE_3 = "https://example.com/catalogue/page-3.html"
+PAGE_1 = "https://books.toscrape.com/catalogue/page-1.html"
+PAGE_2 = "https://books.toscrape.com/catalogue/page-2.html"
+PAGE_3 = "https://books.toscrape.com/catalogue/page-3.html"
 
 
 def test_scrape_follows_next_page(monkeypatch, tmp_path):

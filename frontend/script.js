@@ -20,6 +20,18 @@ const runCollectorButton = document.getElementById("run-collector-button");
 const collectorActionMessage = document.getElementById("collector-action-message");
 let priceHistoryChart = null;
 
+const categoryTrendsStatus = document.getElementById(
+  "category-trends-status"
+);
+const categoryTrendCanvas = document.getElementById(
+  "category-trend-chart"
+);
+
+let categoryTrendChart = null;
+let categoryTrendRequestId = 0;
+let trendProducts = [];
+const trendProductSelect = document.getElementById("trend-product-select");
+
 const trustLabels = {
   genuine: "Genuine",
   uncertain: "Uncertain",
@@ -180,9 +192,17 @@ async function waitForScrapeCompletion(runId) {
       if (currentRun.status === "success") {
         collectorActionMessage.textContent =
           "Price collection completed successfully.";
+
+        window.dispatchEvent(
+          new Event("priceunmask:collection-complete")
+        );
       } else if (currentRun.status === "partial") {
         collectorActionMessage.textContent =
           "Price collection finished with partial results.";
+
+        window.dispatchEvent(
+          new Event("priceunmask:collection-complete")
+        );
       } else {
         collectorActionMessage.textContent =
           "Price collection did not complete successfully. Check the collector status.";
@@ -278,6 +298,45 @@ if (runCollectorButton) {
 }
 
 
+const WATCHLIST_STORAGE_KEY = "priceunmask-watchlist";
+
+function getWatchlist() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(WATCHLIST_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(saved) ? saved.map(String) : [];
+  } catch (error) {
+    console.error("Unable to read watchlist:", error);
+    return [];
+  }
+}
+
+function isWatchlisted(productId) {
+  return getWatchlist().includes(String(productId));
+}
+
+function toggleWatchlist(productId) {
+  const id = String(productId);
+  const watchlist = getWatchlist();
+
+  const updated = watchlist.includes(id)
+    ? watchlist.filter((item) => item !== id)
+    : [...watchlist, id];
+
+  try {
+    localStorage.setItem(
+      WATCHLIST_STORAGE_KEY,
+      JSON.stringify(updated)
+    );
+  } catch (error) {
+    console.error("Unable to save watchlist:", error);
+    return watchlist.includes(id);
+  }
+
+  return updated.includes(id);
+}
+
 function createProductCard(product, onSelect) {
   const card = document.createElement("article");
   card.className = "product-card";
@@ -314,11 +373,47 @@ function createProductCard(product, onSelect) {
     trustLabel.textContent = trustLabels.insufficient_data;
   }
 
-  card.append(name, latestPrice, lowestPrice, trustLabel);
+  const watchlistButton = document.createElement("button");
+  watchlistButton.type = "button";
+  watchlistButton.className = "watchlist-button";
+
+  function updateWatchlistButton() {
+    const saved = isWatchlisted(product.id);
+    watchlistButton.textContent = saved
+      ? "\u2665 Remove from Watchlist"
+      : "\u2661 Add to Watchlist";
+    watchlistButton.setAttribute("aria-pressed", String(saved));
+  }
+
+  updateWatchlistButton();
+
+  watchlistButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+
+    const wasWatchlisted = isWatchlisted(product.id);
+    const isNowWatchlisted = toggleWatchlist(product.id);
+
+    updateWatchlistButton();
+
+    // Notify only when the watchlist was successfully changed.
+    if (wasWatchlisted !== isNowWatchlisted) {
+      window.dispatchEvent(new Event("watchlist-changed"));
+    }
+  });
+
+  card.append(
+    name,
+    latestPrice,
+    lowestPrice,
+    trustLabel,
+    watchlistButton
+  );
 
   card.addEventListener("click", () => onSelect(product));
 
   card.addEventListener("keydown", (event) => {
+    if (event.target !== card) return;
+
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onSelect(product);
@@ -429,6 +524,224 @@ async function loadPriceHistory(productId) {
   return history.points;
 }
 
+const MIN_PRICE_DROP_PERCENTAGE = 1;
+
+function detectLatestPriceDrop(history) {
+  if (!Array.isArray(history) || history.length < 2) {
+    return null;
+  }
+
+  const sortedHistory = [...history]
+    .filter(
+      (entry) =>
+        Number.isFinite(entry.current_price_minor) &&
+        entry.current_price_minor > 0
+    )
+    .sort(
+      (a, b) =>
+        Date.parse(a.scraped_at) - Date.parse(b.scraped_at)
+    );
+
+  if (sortedHistory.length < 2) {
+    return null;
+  }
+
+  // Find the start of the latest continuous downward trend.
+  let latestIndex = sortedHistory.length - 1;
+  let startIndex = latestIndex;
+
+  // Skip repeated readings at the latest price.
+  while (
+    startIndex > 0 &&
+    sortedHistory[startIndex - 1].current_price_minor ===
+      sortedHistory[startIndex].current_price_minor
+  ) {
+    startIndex--;
+  }
+
+  // Walk backwards while prices are decreasing.
+  while (
+    startIndex > 0 &&
+    sortedHistory[startIndex - 1].current_price_minor >=
+      sortedHistory[startIndex].current_price_minor
+  ) {
+    startIndex--;
+  }
+
+  // No downward trend found.
+  if (
+    sortedHistory[startIndex].current_price_minor ===
+    sortedHistory[latestIndex].current_price_minor
+  ) {
+    return null;
+  }
+
+  const previousPrice = sortedHistory[startIndex].current_price_minor;
+  const currentPrice = sortedHistory[latestIndex].current_price_minor;
+
+  const dropPercentage =
+    ((previousPrice - currentPrice) / previousPrice) * 100;
+
+  if (dropPercentage < MIN_PRICE_DROP_PERCENTAGE) {
+    return null;
+  }
+
+  return {
+    previousPrice,
+    currentPrice,
+    dropAmount: previousPrice - currentPrice,
+    dropPercentage,
+    detectedAt: sortedHistory[latestIndex].scraped_at
+  };
+}
+
+let priceDropNotificationRequestId = 0;
+let hasLoadedPriceDropNotifications = false;
+
+async function updatePriceDropNotifications(products) {
+  const requestId = ++priceDropNotificationRequestId;
+
+  const status = document.getElementById("notification-status");
+  const list = document.getElementById("notification-list");
+
+  if (!status || !list) return;
+
+  list.replaceChildren();
+
+  const watchedIds = new Set(getWatchlist());
+  const watchedProducts = products.filter(
+    (product) => watchedIds.has(String(product.id))
+  );
+
+  if (watchedProducts.length === 0) {
+    status.textContent = "No watched products to check.";
+    return;
+  }
+
+  status.textContent = "Checking watched products...";
+
+  const results = await Promise.allSettled(
+    watchedProducts.map(async (product) => {
+      const history = await loadPriceHistory(product.id);
+      return {
+        product,
+        drop: detectLatestPriceDrop(history)
+      };
+    })
+  );
+
+  // Ignore results from an older notification request.
+  if (requestId !== priceDropNotificationRequestId) {
+    return;
+  }
+
+  let alertCount = 0;
+  let failedCount = 0;
+
+  results.forEach((result) => {
+    if (result.status === "rejected") {
+      console.error("Price history check failed:", result.reason);
+      failedCount++;
+      return;
+    }
+
+    const { product, drop } = result.value;
+    if (!drop) return;
+
+    alertCount++;
+
+    const alert = document.createElement("article");
+    alert.className = "price-drop-alert";
+
+    const title = document.createElement("strong");
+    title.textContent = product.name;
+
+    const price = document.createElement("p");
+    price.textContent =
+      `${formatPrice(drop.previousPrice, product.currency)} \u2192 ` +
+      formatPrice(drop.currentPrice, product.currency);
+
+    const percentage = document.createElement("p");
+    percentage.className = "price-drop-percentage";
+    percentage.textContent =
+      `Price dropped ${drop.dropPercentage.toFixed(1)}%`;
+
+    const detectedDate = new Date(drop.detectedAt);
+
+    const date = document.createElement("p");
+    date.className = "price-drop-date";
+    date.textContent = Number.isNaN(detectedDate.getTime())
+      ? "Drop date unavailable"
+      : `Price dropped on ${detectedDate.toLocaleString("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "short"
+        })}`;
+
+    alert.append(title, price, percentage, date);
+    list.append(alert);
+  });
+
+  if (failedCount > 0) {
+    hasLoadedPriceDropNotifications = false;
+  }
+  status.textContent = alertCount
+    ? `${alertCount} watched product(s) have a detected price drop.` +
+      (failedCount ? ` ${failedCount} could not be checked.` : "")
+    : failedCount
+      ? `No drops found. ${failedCount} product(s) could not be checked.`
+      : "No recent price drops for watched products.";
+}
+
+function resetTrendCache() {
+  trendCacheGeneration++;
+  cachedTrendProductHistories = null;
+  trendHistoriesPromise = null;
+  hasLoadedTrendData = false;
+  categoryTrendRequestId++;
+}
+
+function updateTrendProductOptions(products) {
+  const previousIds = trendProducts.map((product) => String(product.id));
+  const nextIds = products.map((product) => String(product.id));
+
+  if (
+    previousIds.length !== nextIds.length ||
+    previousIds.some((id, index) => id !== nextIds[index])
+  ) {
+    resetTrendCache();
+  }
+
+  trendProducts = products;
+
+  if (!trendProductSelect) {
+    return;
+  }
+
+  // Remember the previously selected product.
+  const previousSelection = trendProductSelect.value;
+
+  trendProductSelect.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "All Products";
+  trendProductSelect.append(placeholder);
+
+  for (const product of products) {
+    const option = document.createElement("option");
+
+    option.value = String(product.id);
+    option.textContent = product.name;
+
+    // Restore the selected product if it still exists.
+    option.selected = previousSelection === option.value;
+
+    trendProductSelect.append(option);
+  }
+
+  trendProductSelect.disabled = products.length === 0;
+}
+
 // Format history timestamps for readable chart labels.
 function formatChartDate(isoString) {
   return new Date(isoString).toLocaleDateString("en-IN", {
@@ -437,6 +750,314 @@ function formatChartDate(isoString) {
   });
 }
 
+function renderCategoryTrendChart(productHistories, selectedProductId = "") {
+  if (!categoryTrendCanvas || typeof Chart === "undefined") {
+    return;
+  }
+
+  if (categoryTrendChart) {
+    categoryTrendChart.destroy();
+    categoryTrendChart = null;
+  }
+
+
+  const styles = getComputedStyle(document.documentElement);
+  const colors = [
+    "--accent",
+    "--uncertain-color",
+    "--nodiscount-color",
+    "--inflated-color",
+    "--insufficient-color"
+  ].map((token) => styles.getPropertyValue(token).trim());
+
+  // Collect unique calendar dates across all product histories.
+  const dates = [
+    ...new Set(
+      productHistories.flatMap(({ history }) =>
+        history
+          .filter(
+            (point) =>
+              Number.isFinite(point.current_price_minor) &&
+              point.current_price_minor > 0 &&
+              !Number.isNaN(Date.parse(point.scraped_at))
+          )
+          .map((point) => point.scraped_at.slice(0, 10))
+      )
+    )
+  ].sort();
+
+  // Use a shared baseline so later-tracked products cannot
+  // change the median simply by entering at 0%.
+  const baselineDate = dates[0];
+
+  // Store percentage price changes across products for each date.
+  const changesByDate = new Map(
+    dates.map((date) => [date, []])
+  );
+
+  let fixedCohortCount = 0;
+
+  const datasets = productHistories.map(
+    ({ product, history }, index) => {
+      const points = [...history]
+        .filter(
+          (point) =>
+            Number.isFinite(point.current_price_minor) &&
+            point.current_price_minor > 0 &&
+            typeof point.scraped_at === "string" &&
+            !Number.isNaN(Date.parse(point.scraped_at))
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.scraped_at) - new Date(b.scraped_at)
+        );
+
+      const startingPrice = points[0]?.current_price_minor;
+
+      const includeInOverallTrend =
+        points[0]?.scraped_at.slice(0, 10) === baselineDate;
+      if (includeInOverallTrend) {
+        fixedCohortCount++;
+      }
+      // Use the latest valid recorded price for each date.
+      const priceByDate = new Map(
+        points.map((point) => [
+          point.scraped_at.slice(0, 10),
+          point.current_price_minor
+        ])
+      );
+
+      const isSelected = String(product.id) === selectedProductId;
+
+      return {
+        label: product.name,
+        data: dates.map((date) => {
+           const latestRecordedDate = [...priceByDate.keys()]
+            .filter((recordedDate) => recordedDate <= date)
+            .pop();
+
+          const price = latestRecordedDate
+            ? priceByDate.get(latestRecordedDate)
+            : null;
+
+          if (!price || !startingPrice) {
+            return null;
+          }
+
+          const percentageChange =
+              ((price - startingPrice) / startingPrice) * 100;
+
+          if (includeInOverallTrend) {
+            changesByDate.get(date).push(percentageChange);
+          }
+
+          return percentageChange;
+        }),
+        borderColor: isSelected ? colors[1] : colors[index % colors.length],
+        backgroundColor: isSelected ? colors[1] : colors[index % colors.length],
+        borderWidth: isSelected ? 4 : 1,
+        pointRadius: isSelected ? 3 : 0,
+        borderDash: !selectedProductId || isSelected ? [] : [4, 4],
+        tension: 0.2,
+        spanGaps: true,
+        fill: false
+      };
+    }
+  );
+
+  // Calculate the median percentage change across products.
+  const overallTrend = dates.map((date) => {
+    const changes = [...changesByDate.get(date)].sort(
+      (a, b) => a - b
+    );
+
+    if (changes.length === 0) {
+      return null;
+    }
+
+    const middle = Math.floor(changes.length / 2);
+
+    return changes.length % 2 === 0
+      ? (changes[middle - 1] + changes[middle]) / 2
+      : changes[middle];
+  });
+
+  categoryTrendChart = new Chart(categoryTrendCanvas, {
+    type: "line",
+    data: {
+      labels: dates.map((date) => formatChartDate(`${date}T12:00:00`)),
+      datasets: [
+        {
+          label: `Price Trend (Fixed-Cohort Median, ${fixedCohortCount} products)`,
+          data: overallTrend,
+          borderColor: colors[0],
+          backgroundColor: colors[0],
+          borderWidth: 3,
+          pointRadius: 2,
+          tension: 0.2,
+          spanGaps: false,
+          fill: false
+        },
+        ...datasets.filter(
+          (dataset, index) =>
+            selectedProductId &&
+            String(productHistories[index].product.id) === selectedProductId
+        )
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: {
+        mode: "index",
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          display: true
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) =>
+              `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`
+          }
+        }
+      },
+      scales: {
+        y: {
+          title: {
+            display: true,
+            text: "Price Change (%)"
+          },
+          ticks: {
+            callback: (value) => `${value}%`
+          }
+        },
+        x: {
+          ticks: {
+            maxTicksLimit: 8
+          }
+        }
+      }
+    }
+  });
+
+  return fixedCohortCount;
+}
+
+let hasLoadedTrendData = false;
+let cachedTrendProductHistories = null;
+let trendHistoriesPromise = null;
+let trendCacheGeneration = 0;
+
+async function loadCategoryTrendView() {
+
+  if (!categoryTrendCanvas || !categoryTrendsStatus) {
+    return;
+  }
+
+  // Invalidate any previous price-history request.
+  const requestId = ++categoryTrendRequestId;
+
+  // Keep all products for the overall comparison.
+  const selectedProducts = trendProducts;
+  const requestGeneration = trendCacheGeneration;
+  const selectedProductId = trendProductSelect?.value || "";
+
+  try {
+    categoryTrendsStatus.textContent =
+      "Loading price trends...";
+
+    if (!cachedTrendProductHistories && !trendHistoriesPromise) {
+      trendHistoriesPromise = Promise.allSettled(
+        selectedProducts.map(async (product) => ({
+          product,
+          history: await loadPriceHistory(product.id)
+        }))
+      );
+    }
+
+    const activePromise = trendHistoriesPromise;
+    const results =
+      cachedTrendProductHistories || (await activePromise);
+
+    if (trendHistoriesPromise === activePromise) {
+      trendHistoriesPromise = null;
+    }
+
+    if (
+      (cachedTrendProductHistories === null) &&
+      (trendHistoriesPromise === null) &&
+      requestGeneration === trendCacheGeneration &&
+      results.every((result) => result.status === "fulfilled")
+    ) {
+      cachedTrendProductHistories = results;
+    }
+    const productHistories = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value)
+      .filter(({ history }) => {
+        const validDates = new Set(
+          history
+            .filter(
+              (point) =>
+                Number.isFinite(point.current_price_minor) &&
+                point.current_price_minor > 0 &&
+                typeof point.scraped_at === "string" &&
+                !Number.isNaN(Date.parse(point.scraped_at))
+            )
+            .map((point) => point.scraped_at.slice(0, 10))
+        );
+
+        return validDates.size >= 2;
+      });
+
+    if (requestId !== categoryTrendRequestId) {
+      return;
+    }
+
+    if (productHistories.length < 2) {
+      hasLoadedTrendData = false;
+
+      if (categoryTrendChart) {
+        categoryTrendChart.destroy();
+        categoryTrendChart = null;
+      }
+
+      categoryTrendsStatus.textContent =
+        "At least two products with price history are needed for comparison.";
+      return;
+    }
+
+    const fixedCohortCount =
+      renderCategoryTrendChart(productHistories, selectedProductId);
+
+    categoryTrendsStatus.textContent =
+      `Showing ${productHistories.length} product histories. ` +
+      `The overall trend is the median percentage price change ` +
+      `of ${fixedCohortCount} products tracked from the earliest ` +
+      `available date, measured against their starting prices.` +
+      (fixedCohortCount === 1
+        ? " Only one product qualifies, so this line represents that product rather than a market-wide median."
+        : "");
+    } catch (error) {
+      if (requestId !== categoryTrendRequestId) {
+        return;
+      }
+
+    console.error("Error loading price trends:", error);
+
+    hasLoadedTrendData = false;
+
+    if (categoryTrendChart) {
+      categoryTrendChart.destroy();
+      categoryTrendChart = null;
+    }
+
+    categoryTrendsStatus.textContent =
+      "Price trends are not available right now.";
+  }
+}
 
  // Render the selected product's price history.
 function renderPriceHistoryChart(canvas, history, currency, trustScore) {
@@ -980,7 +1601,14 @@ async function loadProducts() {
   let searchTimer;
   let requestId = 0;
   let currentProducts = [];
+  let allProducts = [];
   let selectedProductId = null;
+
+
+  // Refresh notifications for all watched products, even during searches.
+  window.addEventListener("watchlist-changed", () => {
+    updatePriceDropNotifications(allProducts);
+  });
 
   const showGrid = () => {
     selectedProductId = null;
@@ -1047,7 +1675,24 @@ async function loadProducts() {
       }
 
       currentProducts = products;
+
+      if (!query) {
+        allProducts = products;
+        updateTrendProductOptions(allProducts);
+
+        if (!hasLoadedTrendData) {
+          hasLoadedTrendData = true;
+          loadCategoryTrendView();
+        }
+      }
+
       renderProducts(currentProducts, grid, showProductDetailForProduct);
+
+      // Check all watched products, not just search results.
+      if (!query && !hasLoadedPriceDropNotifications) {
+        hasLoadedPriceDropNotifications = true;
+        updatePriceDropNotifications(allProducts);
+      }
 
       if (products.length === 0) {
         productStatus.textContent = query
@@ -1077,7 +1722,21 @@ async function loadProducts() {
       }
     }, 300);
   });
+  window.addEventListener("priceunmask:collection-complete", async () => {
+    hasLoadedPriceDropNotifications = false;
+    resetTrendCache();
+
+    await fetchProducts();
+  });
+
   await fetchProducts();
+}
+
+if (trendProductSelect) {
+  trendProductSelect.addEventListener(
+    "change",
+    loadCategoryTrendView
+  );
 }
 
 loadProducts();

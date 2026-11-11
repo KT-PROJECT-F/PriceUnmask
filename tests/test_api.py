@@ -1071,7 +1071,7 @@ def test_trends_overview_uses_first_snapshot_inside_period(client):
     assert product_data["change_minor"] == -5000
 
 
-def test_trends_overview_detects_one_paisa_price_change(client):
+def test_trends_overview_treats_one_paisa_price_change_as_stable(client):
     product_id = add_product_with_prices(
         "one-paisa-change",
         [10000, 9999],
@@ -1085,7 +1085,7 @@ def test_trends_overview_detects_one_paisa_price_change(client):
         item for item in response.json()["products"] if item["product_id"] == product_id
     )
 
-    assert product_data["direction"] == "decreasing"
+    assert product_data["direction"] == "stable"
     assert product_data["first_price_minor"] == 10000
     assert product_data["latest_price_minor"] == 9999
     assert product_data["change_minor"] == -1

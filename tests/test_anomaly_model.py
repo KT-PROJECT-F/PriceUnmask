@@ -109,3 +109,12 @@ def test_detect_anomalies_sorts_rows_and_normalizes_timestamps_to_utc() -> None:
 
     assert result.anomalous_timestamps == ["2026-10-06T00:00:00Z"]
     assert result.latest_is_anomalous
+
+
+def test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline() -> None:
+    # A 30% drop passes the percentage threshold,
+    # but the volatile baseline keeps the z-score below 3.
+    result = detect_anomalies(make_history([700, 1300, 800, 1200, 1000, 700]))
+
+    assert result.anomalous_timestamps == []
+    assert not result.latest_is_anomalous

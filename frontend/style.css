@@ -525,3 +525,146 @@ h3 {
     grid-column: 1;
   }
 }
+
+
+/* Shopper Watchlist */
+
+.watchlist-button {
+  display: block;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.watchlist-button:hover {
+  background: var(--genuine-bg);
+}
+
+.watchlist-button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.watchlist-button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Shopper price-drop notifications */
+.price-drop-notifications {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.price-drop-notifications h2 {
+  margin-top: 0;
+  font-size: 20px;
+}
+
+#notification-list {
+  display: grid;
+  gap: 12px;
+}
+
+.price-drop-alert {
+  padding: 14px;
+  border: 1px solid var(--genuine-border);
+  border-radius: 8px;
+  background: var(--genuine-bg);
+}
+
+.price-drop-alert strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.price-drop-alert p {
+  margin: 4px 0;
+}
+
+.price-drop-percentage {
+  color: var(--genuine-color);
+  font-weight: 700;
+}
+
+/* Category and price trend section */
+.category-trends {
+  margin-top: 24px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+
+.category-trends h2 {
+  margin: 0 0 20px;
+  font-size: 1.5rem;
+  color: var(--ink);
+}
+
+.category-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.category-filter label {
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+#trend-product-select {
+  width: 100%;
+  max-width: 320px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+#trend-product-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#category-trends-status {
+  margin: 12px 0;
+  color: var(--ink-muted);
+}
+
+.trend-chart-container {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.trend-chart-container h3 {
+  margin: 0 0 16px;
+  color: var(--ink);
+}
+
+@media (max-width: 600px) {
+  .category-trends {
+    padding: 16px;
+  }
+
+  .trend-chart-container {
+    padding: 12px;
+  }
+}

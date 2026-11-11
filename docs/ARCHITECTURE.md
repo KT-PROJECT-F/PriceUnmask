@@ -1,4 +1,4 @@
-﻿# PriceUnmask architecture
+# PriceUnmask architecture
 
 Status: v1, agreed at kickoff. Changes to anything in sections 3 to 6 need a PR the mentor approves.
 
@@ -54,7 +54,7 @@ signature without a PR tagged `contract-change` that the affected owners review.
 | `analysis/trust_score.py` | `compute_signals(df)`, `compute_trust_score(df) -> TrustScore` | pandas only |
 | `analysis/anomaly_model.py` | `detect_anomalies(df) -> AnomalyResult` | pandas, sklearn |
 | `analysis/price_history_utils.py` | `get_valid_price_history`, `compare_first_and_latest_prices` | pandas |
-| `analysis/price_drop.py` | `calculate_price_drop` | price_history_utils |
+| `analysis/price_drop.py` | `detect_price_drop(history) -> PriceDropResult` | price_history_utils |
 | `analysis/price_trend.py` | `calculate_price_trend` | price_history_utils |
 | `schemas.py` + `main.py` | endpoints in section 5 | crud, analysis |
 | `frontend/` | consumes section 5 only | API |

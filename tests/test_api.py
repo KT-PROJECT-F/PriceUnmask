@@ -1117,6 +1117,42 @@ def test_price_drop_endpoint_detects_price_drop(client):
     assert data["drop_percent"] == 20.0
 
 
+def test_price_drop_endpoint_uses_start_of_latest_falling_stretch(client):
+    product_id = add_product_with_prices(
+        "falling-stretch-test",
+        [100000, 80000, 80000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/price-drop")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "price_dropped"
+    assert data["previous_price_minor"] == 100000
+    assert data["current_price_minor"] == 80000
+    assert data["drop_amount_minor"] == 20000
+    assert data["drop_percent"] == 20.0
+
+
+def test_price_drop_endpoint_uses_immediately_previous_after_increase(client):
+    product_id = add_product_with_prices(
+        "price-increase-after-drop-test",
+        [120000, 90000, 99000],
+    )
+
+    response = client.get(f"/api/products/{product_id}/price-drop")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "no_drop"
+    assert data["previous_price_minor"] == 90000
+    assert data["current_price_minor"] == 99000
+    assert data["drop_amount_minor"] == 0
+    assert data["drop_percent"] == 0.0
+
+
 def test_price_drop_endpoint_returns_no_drop(client):
     product_id = add_product_with_prices(
         "no-drop-test",

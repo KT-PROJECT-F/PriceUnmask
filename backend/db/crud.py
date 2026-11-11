@@ -58,11 +58,8 @@ def upsert_product_and_snapshot(
     item: ScrapedProduct,
     run: ScrapeRun,
 ) -> PriceSnapshot:
-    """Find-or-create the Product (by source + external_id).
-
-    Update name/url/last_seen_at, then append one PriceSnapshot.
-    Never updates an existing snapshot.
-    """
+    """Find-or-create the Product (by source + external_id), update name/url/last_seen_at,
+    then append one PriceSnapshot. Never updates an existing snapshot."""
 
     statement = select(Product).where(
         Product.source == source,

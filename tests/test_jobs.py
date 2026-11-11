@@ -43,6 +43,20 @@ def make_item(ext_id):
     )
 
 
+@pytest.fixture(autouse=True)
+def configured_scrape_settings(monkeypatch):
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        SimpleNamespace(
+            scrape_target_url="https://books.toscrape.com/",
+            scrape_target_urls=("https://books.toscrape.com/",),
+            scrape_interval_hours=4,
+            stale_run_minutes=30,
+        ),
+    )
+
+
 @pytest.fixture
 def session(monkeypatch):
     fake = FakeSession()

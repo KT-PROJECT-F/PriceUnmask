@@ -85,15 +85,16 @@ def _run_cycle(
         run = crud.start_scrape_run(session)
 
     run_id = run.id
-    try:
-        items = scrape(settings.scrape_target_url)
-    except Exception as exc:
-        logger.exception("Scraping failed for run %s", run_id)
-        _finish_run(session, run, run_id, "failed", 0, str(exc))
-        return 0
-
     saved = 0
     errors: list[str] = []
+    items = []
+
+    for url in settings.scrape_target_urls:
+        try:
+            items.extend(scrape(url))
+        except Exception as exc:
+            logger.exception("Scraping failed for source %s in run %s", url, run_id)
+            errors.append(f"{url}: {exc}")
     if not items:
         logger.warning("Scrape returned no products for run %s", run_id)
 

@@ -24,8 +24,11 @@ restore the 4-hour interval afterward. Never commit `.env`.
 
 ```dotenv
 SCRAPE_TARGET_URL=https://books.toscrape.com/
+SCRAPE_TARGET_URLS=https://books.toscrape.com/,https://webscraper.io/test-sites/e-commerce/static
 SCRAPE_INTERVAL_HOURS=0.25
 ```
+
+To add another source, append its URL to SCRAPE_TARGET_URLS, separated by a comma. The URL must be supported by a scraper adapter; adding an unsupported URL will record an error for that source. Keep SCRAPE_TARGET_URL set for compatibility with existing single-source setups.
 
 Start the process and leave its terminal open:
 
@@ -102,22 +105,23 @@ marked `partial`. Check the target URL, network access, and database path, then
 correct the problem. A scrape failure is recorded and does not stop the
 scheduler from attempting its next interval.
 
-If any listing page fails during a multi-page run, the entire run is marked
-`failed`, and no products from that run are saved. Raw HTML snapshots of pages
-fetched before the failure are kept in `data/snapshots/` for diagnosis. This is
-the honest result because a failed page means the collected catalogue may be
-incomplete; saving only some products could make an incomplete run appear
-successful. `partial` is different: every page was fetched, but some products
-could not be saved to the database.
+Each configured URL is attempted independently. If one source fails, the other
+sources are still scraped and their products can still be saved. The failed
+source URL and error are recorded in the scrape run's `error_message`; the run
+is marked `partial` if any products were saved, or `failed` if none were saved.
 
-To verify failure handling against the test site, first set
+If a listing page fails, that source is recorded as failed and the collector continues with the remaining configured sources. Products from the other sources can still be saved; the overall run is partial if any products were saved, or failed if none were saved. Raw HTML snapshots fetched before the failure are kept in data/snapshots/ for diagnosis. If every source completes but some products cannot be saved to the database, the run is also marked partial.
+
+To verify failure handling against the test site, set
 `SCRAPE_INTERVAL_HOURS=0.25` for this supervised drill. Stop the collector,
-change `SCRAPE_TARGET_URL` in `.env` to
-`https://books.toscrape.com/nonexistent-page`, and restart it. The immediate
-attempt should be recorded as `failed`; leave the process running for at least
-15 minutes and confirm another run appears. Stop it with **Ctrl+C**, restore
-`SCRAPE_TARGET_URL=https://books.toscrape.com/` and
-`SCRAPE_INTERVAL_HOURS=4`, then restart for routine operation.
+change `SCRAPE_TARGET_URLS` in `.env` to
+`https://books.toscrape.com/nonexistent-page` (use only this URL for the
+drill), and restart the collector. The immediate attempt should be recorded as
+`failed`; leave the process running for at least 15 minutes and confirm another
+run appears. Stop it with **Ctrl+C**, then restore
+`SCRAPE_TARGET_URL=https://books.toscrape.com/`,
+`SCRAPE_TARGET_URLS=https://books.toscrape.com/,https://webscraper.io/test-sites/e-commerce/static`,
+and `SCRAPE_INTERVAL_HOURS=4` before restarting for routine operation.
 
 ## Live collector - Automated (Nov 2026 onwards - Issue #222)
 

@@ -12,6 +12,13 @@ load_dotenv()
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///data/priceunmask.db")
     scrape_target_url: str = os.getenv("SCRAPE_TARGET_URL", "")
+    scrape_target_urls: tuple[str, ...] = tuple(
+        url.strip()
+        for url in (
+            os.getenv("SCRAPE_TARGET_URLS") or os.getenv("SCRAPE_TARGET_URL", "")
+        ).split(",")
+        if url.strip()
+    )
     scrape_interval_hours: float = float(os.getenv("SCRAPE_INTERVAL_HOURS", "4"))
     scrape_user_agent: str = os.getenv(
         "SCRAPE_USER_AGENT",

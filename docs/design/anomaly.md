@@ -46,3 +46,21 @@ For these collected products, the latest prices have enough history and are not 
 Next, collect longer histories from a source whose prices actually change, evaluate known increases and decreases, and review false positives and missed changes before adjusting the window or thresholds. Consider IsolationForest only when the amount and quality of data justify comparing it with the simpler baseline.
 
 See [Anomaly Findings](anomaly_findings.md) for the collected-data results and [Anomaly Messages](anomaly_messages.md) for the shopper-facing statuses.
+
+## IsolationForest comparison decision - 11 November 2026
+
+The exploratory comparison in [Anomaly Findings](anomaly_findings.md)
+evaluated IsolationForest and the rolling z-score detector on four
+synthetic fixtures.
+
+The rolling z-score detector matched all four expected labels, while
+IsolationForest missed both significant changes and produced one false
+alarm. IsolationForest was fitted and evaluated on the same four
+observations, so these results are not independent validation.
+
+**Decision: Keep the rolling z-score detector.** Do not change the live
+implementation based on this small synthetic experiment. Reconsider
+IsolationForest only when a sufficiently large independent dataset and
+genuine changing-price histories are available.
+
+The production detector remains unchanged.

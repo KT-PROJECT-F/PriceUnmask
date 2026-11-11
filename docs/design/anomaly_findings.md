@@ -236,3 +236,62 @@ This confirms that the report pipeline processes these controlled
 synthetic histories as expected. It does not establish real-world
 anomaly detection accuracy; validation against real price changes
 remains outstanding.
+
+## IsolationForest comparison - 11 November 2026
+
+The existing rolling z-score detector and an exploratory IsolationForest
+comparison were run against the same four synthetic fixtures.
+
+### Configuration
+
+| Setting | Value | Rationale |
+| --- | --- | --- |
+| Estimator | IsolationForest | Exploratory comparison with the existing baseline |
+| n_estimators | 100 | Fixed estimator count for this experiment |
+| contamination | 0.25 | Assumes one potentially anomalous observation among four |
+| random_state | 42 | Reproducible experiment |
+| Minimum history length | 6 snapshots | Five baseline observations plus one current observation |
+| Features | percentage_change, absolute_z_score, baseline_volatility_percent | Captures change magnitude, deviation, and baseline volatility |
+
+### Comparison results
+
+| Synthetic fixture | Expected | Rolling z-score | IsolationForest |
+| --- | --- | --- | --- |
+| Significant drop | Anomaly | Flagged | Not flagged |
+| Small increase | Normal | Not flagged | Not flagged |
+| Significant hike | Anomaly | Flagged | Not flagged |
+| Volatile baseline | Normal | Not flagged | Flagged |
+
+### Metrics
+
+| Metric | Rolling z-score | IsolationForest |
+| --- | ---: | ---: |
+| True positives | 2 | 0 |
+| Misses | 0 | 2 |
+| False alarms | 0 | 1 |
+| True negatives | 2 | 1 |
+
+### Interpretation and decision
+
+The rolling z-score detector matched all four expected fixture labels.
+IsolationForest missed both significant price changes and incorrectly
+flagged the volatile-baseline fixture.
+
+IsolationForest identifies observations that can be isolated through
+relatively few random feature-space partitions. With only four observations,
+it has too little data to learn a reliable pattern for an individual
+product's price history.
+
+The IsolationForest model was fitted and evaluated on the same four
+observations. Therefore, this is an exploratory in-sample comparison,
+not independent validation or evidence of real-world accuracy.
+
+**Recommendation: Keep the rolling z-score detector. Do not replace the
+live detector with IsolationForest based on this experiment.**
+
+The result is limited to four controlled synthetic fixtures. Evaluation
+with a larger independent dataset and genuine changing-price histories
+is still required before reconsidering the detector.
+
+The live implementation in `backend/analysis/anomaly_model.py` was not
+changed as part of this comparison.

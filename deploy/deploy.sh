@@ -8,6 +8,7 @@ if [ $# -ne 1 ]; then
   echo "Usage: $0 <commit-sha>"
   exit 1
 fi
+
 COMMIT_SHA="$1"
 
 APP_DIR="/opt/priceunmask"
@@ -18,7 +19,9 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 NEW_RELEASE="$RELEASES/$TIMESTAMP"
 PREV_RELEASE="$(readlink "$CURRENT" || echo "")"
 
-mkdir -p "$RELEASES" "$SHARED/data/exports"
+# Runs as VPS_USER via GitHub Actions SSH, NOT as priceunmask user.
+# So mkdir needs sudo, readlink works because current is world-readable symlink.
+sudo mkdir -p "$RELEASES" "$SHARED/data/exports"
 
 # 1. Clone the exact commit, not the tip of the dev branch.
 # Deploying the branch tip is unsafe: a merge during deploy
@@ -29,7 +32,11 @@ git checkout "$COMMIT_SHA"
 git rev-parse HEAD
 
 # Shared files live outside releases so pruning never deletes them.
-ln -sfn "$SHARED/.env" "$NEW_RELEASE/.env"
+ln -sfn "/etc/priceunmask/priceunmask.env" "$NEW_RELEASE/.env"
+
+# Clone brings a real data/ folder (data/snapshots/ is tracked).
+# Remove it first, otherwise ln creates NEW_RELEASE/data/data
+rm -rf "$NEW_RELEASE/data"
 ln -sfn "$SHARED/data" "$NEW_RELEASE/data"
 
 # Per-release venv
@@ -38,13 +45,18 @@ python3 -m venv "$NEW_RELEASE/.venv"
 
 # 2. DB backup.
 # export_db.py takes no arguments and has no --out flag.
-# It reads DATABASE_URL from settings (.env) and writes to ./data/exports/,
-# which is a symlink to shared/data/exports/.
-# No "|| true" here: if the backup fails, the deploy must stop.
-echo "Backing up DB..."
-cd "$NEW_RELEASE"
-"$NEW_RELEASE/.venv/bin/python" -m backend.devtools.export_db
-cd "$APP_DIR"
+# It reads DATABASE_URL from settings (.env) and writes to ./data/exports/.
+# Which is a symlink to shared/data/exports/.
+# First deploy: no .db file yet, so export_db would fail + set -e kills deploy.
+# Skip backup if no DB exists.
+if ls "$SHARED/data"/*.db >/dev/null 2>&1; then
+  echo "Backing up DB..."
+  cd "$NEW_RELEASE"
+  "$NEW_RELEASE/.venv/bin/python" -m backend.devtools.export_db
+  cd "$APP_DIR"
+else
+  echo "First deploy - no DB file yet, skipping backup"
+fi
 
 # 3. Point current at the new release.
 ln -sfn "$NEW_RELEASE" "$CURRENT"
@@ -63,12 +75,14 @@ if ! sudo systemctl restart priceunmask.service; then
   sudo systemctl restart priceunmask.service || true
   exit 1
 fi
+
 sudo systemctl reload nginx || true
 # The collector also runs from current, so restart it too.
 # Otherwise it keeps running from a release we are about to prune.
-sudo systemctl restart priceunmask-collector.service || true
+# try-restart: if collector was stopped on purpose, don't start it again.
+sudo systemctl try-restart priceunmask-collector.service || true
 
-# 5. Health-check with a per-request timeout so curl cannot hang forever.
+# 5. Health-check with a per-request timeout so curl cannot hang forever
 check_health() {
   for i in $(seq 1 30); do
     if curl --max-time 5 -f http://127.0.0.1:8000/api/health; then
@@ -91,7 +105,7 @@ else
   fi
   ln -sfn "$PREV_RELEASE" "$CURRENT"
   sudo systemctl restart priceunmask.service
-  sudo systemctl restart priceunmask-collector.service || true
+  sudo systemctl try-restart priceunmask-collector.service || true
   if check_health; then echo "Rollback PASSED"; exit 1; fi
   echo "Rollback FAILED - manual fix needed!"
   exit 1
@@ -99,5 +113,11 @@ fi
 
 # 7. Keep only the last 3 releases - venvs are large.
 # Safe now because the collector was restarted from current above.
-cd "$RELEASES" && ls -1t | tail -n +4 | xargs -r rm -rf
+# Never delete PREV_RELEASE or NEW_RELEASE even if 3 fails leave half-built folders.
+cd "$RELEASES"
+ls -1t | tail -n +4 | while read -r d; do
+  if [ "$RELEASES/$d" != "$PREV_RELEASE" ] && [ "$RELEASES/$d" != "$NEW_RELEASE" ]; then
+    rm -rf "$RELEASES/$d"
+  fi
+done
 echo "Done! Kept last 3 releases. Deployed $COMMIT_SHA"

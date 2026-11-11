@@ -37,7 +37,7 @@ def test_no_price_drop_when_price_increases():
     result = detect_price_drop(make_history([80000, 100000]))
 
     assert result.status == "no_drop"
-    assert result.previous_price_minor == 100000
+    assert result.previous_price_minor == 80000
     assert result.current_price_minor == 100000
     assert result.drop_amount_minor == 0
     assert result.drop_percent == 0.0
@@ -181,7 +181,7 @@ def test_price_drop_no_falling_stretch_when_latest_price_rises():
     result = detect_price_drop(make_history([120000, 90000, 99000]))
 
     assert result.status == "no_drop"
-    assert result.previous_price_minor == 99000
+    assert result.previous_price_minor == 90000
     assert result.current_price_minor == 99000
 
 
@@ -199,6 +199,16 @@ def test_price_drop_at_0_99_percent_is_no_drop():
     assert result.status == "no_drop"
     assert result.previous_price_minor == 100000
     assert result.drop_percent == 0.0
+
+
+def test_price_drop_at_rounded_one_percent_threshold():
+    result = detect_price_drop(make_history([100000, 99005]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 99005
+    assert result.drop_amount_minor == 995
+    assert result.drop_percent == 1.0
 
 
 def test_price_drop_after_invalid_zero_price_is_detected():
@@ -317,6 +327,13 @@ def test_stable_price_trend_at_0_99_percent_decrease():
     assert result.change_percent == -0.99
 
 
+def test_decreasing_price_trend_at_rounded_one_percent_threshold():
+    result = calculate_price_trend(make_history([100000, 99005]))
+
+    assert result.direction == "decreasing"
+    assert result.change_percent == -1.0
+
+
 def test_decreasing_price_trend_at_exactly_one_percent():
     result = calculate_price_trend(make_history([100000, 99000]))
 
@@ -386,7 +403,7 @@ def test_trend_and_drop_can_have_different_directions_when_latest_price_rises():
     assert trend.change_percent == -17.5
 
     assert drop.status == "no_drop"
-    assert drop.previous_price_minor == 99000
+    assert drop.previous_price_minor == 90000
     assert drop.current_price_minor == 99000
     assert drop.drop_amount_minor == 0
     assert drop.drop_percent == 0.0

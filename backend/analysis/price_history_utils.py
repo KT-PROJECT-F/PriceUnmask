@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 import numpy as np
@@ -73,6 +74,9 @@ def compare_first_and_latest_prices(
     """
     Compare the first and latest valid prices using a 1% threshold.
 
+    The percentage is rounded to two decimal places before
+    comparing it with the threshold.
+
     Changes below 1% are stable.
     Changes at or above 1% are increasing or decreasing.
     """
@@ -90,7 +94,12 @@ def compare_first_and_latest_prices(
     latest_price = int(valid_history.iloc[-1]["current_price_minor"])
 
     change_amount = latest_price - first_price
-    change_percent = change_amount / first_price * 100
+
+    change_percent_decimal = (
+        Decimal(change_amount) * Decimal("100") / Decimal(first_price)
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    change_percent = float(change_percent_decimal)
 
     if abs(change_percent) < STABLE_THRESHOLD_PCT:
         direction = "stable"
@@ -103,6 +112,6 @@ def compare_first_and_latest_prices(
         first_price_minor=first_price,
         latest_price_minor=latest_price,
         change_amount_minor=change_amount,
-        change_percent=round(change_percent, 2),
+        change_percent=change_percent,
         direction=direction,
     )

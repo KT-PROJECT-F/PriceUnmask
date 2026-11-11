@@ -28,8 +28,8 @@ class PriceDropResult:
 
 def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
     """
-    Compare the immediately previous and latest valid prices
-    using the shared 1% threshold.
+    Compare the latest price with the start of its latest falling stretch.
+    Equal readings are included in the falling stretch.
     """
 
     required_columns = {"scraped_at", "current_price_minor"}
@@ -49,8 +49,15 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
             drop_percent=None,
         )
 
-    previous_price = int(valid_history.iloc[-2]["current_price_minor"])
-    current_price = int(valid_history.iloc[-1]["current_price_minor"])
+    prices = valid_history["current_price_minor"].tolist()
+    current_price = int(prices[-1])
+
+    previous_index = len(prices) - 1
+
+    while previous_index > 0 and prices[previous_index - 1] >= prices[previous_index]:
+        previous_index -= 1
+
+    previous_price = int(prices[previous_index])
 
     change_amount = previous_price - current_price
     change_percent = (change_amount / previous_price) * 100
@@ -69,5 +76,5 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
         previous_price_minor=previous_price,
         current_price_minor=current_price,
         drop_amount_minor=change_amount,
-        drop_percent=change_percent,
+        drop_percent=round(change_percent, 2),
     )

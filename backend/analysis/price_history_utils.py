@@ -103,6 +103,6 @@ def compare_first_and_latest_prices(
         first_price_minor=first_price,
         latest_price_minor=latest_price,
         change_amount_minor=change_amount,
-        change_percent=round(change_percent, 3),
+        change_percent=round(change_percent, 2),
         direction=direction,
     )

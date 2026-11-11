@@ -37,7 +37,7 @@ def test_no_price_drop_when_price_increases():
     result = detect_price_drop(make_history([80000, 100000]))
 
     assert result.status == "no_drop"
-    assert result.previous_price_minor == 80000
+    assert result.previous_price_minor == 100000
     assert result.current_price_minor == 100000
     assert result.drop_amount_minor == 0
     assert result.drop_percent == 0.0
@@ -61,13 +61,13 @@ def test_price_drop_insufficient_history():
     assert result.drop_percent is None
 
 
-def test_price_drop_uses_immediately_previous_and_latest_records():
+def test_price_drop_uses_start_of_latest_falling_stretch():
     result = detect_price_drop(make_history([100000, 90000, 70000]))
 
-    assert result.previous_price_minor == 90000
+    assert result.previous_price_minor == 100000
     assert result.current_price_minor == 70000
-    assert result.drop_amount_minor == 20000
-    assert result.drop_percent == pytest.approx(22.2222222222)
+    assert result.drop_amount_minor == 30000
+    assert result.drop_percent == 30.0
     assert result.status == "price_dropped"
 
 
@@ -145,6 +145,70 @@ def test_price_drop_above_one_percent():
     assert result.status == "price_dropped"
     assert result.drop_amount_minor == 1010
     assert result.drop_percent == 1.01
+
+
+def test_price_drop_alert_stays_during_repeated_same_price():
+    result = detect_price_drop(make_history([100000, 80000, 80000]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 80000
+    assert result.drop_amount_minor == 20000
+    assert result.drop_percent == 20.0
+
+
+def test_price_drop_alert_stays_during_continued_fall():
+    result = detect_price_drop(make_history([100000, 80000, 80000, 79500]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 79500
+    assert result.drop_amount_minor == 20500
+    assert result.drop_percent == 20.5
+
+
+def test_price_drop_uses_start_of_latest_falling_stretch_after_rise():
+    result = detect_price_drop(make_history([100000, 80000, 85000, 84000]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 85000
+    assert result.current_price_minor == 84000
+    assert result.drop_amount_minor == 1000
+    assert result.drop_percent == 1.18
+
+
+def test_price_drop_no_falling_stretch_when_latest_price_rises():
+    result = detect_price_drop(make_history([120000, 90000, 99000]))
+
+    assert result.status == "no_drop"
+    assert result.previous_price_minor == 99000
+    assert result.current_price_minor == 99000
+
+
+def test_price_drop_no_drop_when_all_prices_are_equal():
+    result = detect_price_drop(make_history([100000, 100000, 100000]))
+
+    assert result.status == "no_drop"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 100000
+
+
+def test_price_drop_at_0_99_percent_is_no_drop():
+    result = detect_price_drop(make_history([100000, 99010]))
+
+    assert result.status == "no_drop"
+    assert result.previous_price_minor == 100000
+    assert result.drop_percent == 0.0
+
+
+def test_price_drop_after_invalid_zero_price_is_detected():
+    result = detect_price_drop(make_history([100000, 0, 80000]))
+
+    assert result.status == "price_dropped"
+    assert result.previous_price_minor == 100000
+    assert result.current_price_minor == 80000
+    assert result.drop_amount_minor == 20000
+    assert result.drop_percent == 20.0
 
 
 # Price trend tests
@@ -318,13 +382,11 @@ def test_trend_and_drop_can_have_different_directions_when_latest_price_rises():
     trend = calculate_price_trend(history)
     drop = detect_price_drop(history)
 
-    # Overall trend: 120000 -> 99000 (17.5% decrease)
     assert trend.direction == "decreasing"
     assert trend.change_percent == -17.5
 
-    # Latest movement: 90000 -> 99000 (10% increase)
     assert drop.status == "no_drop"
-    assert drop.previous_price_minor == 90000
+    assert drop.previous_price_minor == 99000
     assert drop.current_price_minor == 99000
     assert drop.drop_amount_minor == 0
     assert drop.drop_percent == 0.0
@@ -336,17 +398,15 @@ def test_price_drop_detected_even_when_overall_trend_is_increasing():
     trend = calculate_price_trend(history)
     drop = detect_price_drop(history)
 
-    # Overall trend: 100000 -> 110000 (10% increase)
     assert trend.direction == "increasing"
     assert trend.change_percent == 10.0
 
-    # Latest movement: 120000 -> 110000 (8.333...% decrease)
     assert drop.status == "price_dropped"
     assert drop.previous_price_minor == 120000
     assert drop.previous_price_minor != trend.first_price_minor
     assert drop.current_price_minor == 110000
     assert drop.drop_amount_minor == 10000
-    assert drop.drop_percent == pytest.approx(8.3333333333)
+    assert drop.drop_percent == 8.33
 
 
 def test_zero_price_is_filtered_consistently():
@@ -404,9 +464,10 @@ def test_unsorted_history_is_sorted_before_price_drop():
 
     result = detect_price_drop(history)
 
-    assert result.previous_price_minor == 90000
+    assert result.previous_price_minor == 100000
     assert result.current_price_minor == 70000
-    assert result.drop_amount_minor == 20000
+    assert result.drop_amount_minor == 30000
+    assert result.drop_percent == 30.0
     assert result.status == "price_dropped"
 
 

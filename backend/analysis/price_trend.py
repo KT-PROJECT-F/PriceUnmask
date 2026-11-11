@@ -1,21 +1,14 @@
 """Calculate shopper-friendly price trends from price history."""
 
 from dataclasses import dataclass
-from typing import Literal
 
 import pandas as pd
 
 from .price_history_utils import (
+    TrendDirection,
     compare_first_and_latest_prices,
     get_valid_price_history,
 )
-
-TrendDirection = Literal[
-    "increasing",
-    "decreasing",
-    "stable",
-    "insufficient_history",
-]
 
 
 @dataclass

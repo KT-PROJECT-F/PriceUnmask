@@ -159,9 +159,7 @@ def test_scrape_urls_from_settings_are_both_saved(monkeypatch, calls):
     def fake_scrape(url):
         return [items[urls.index(url)]]
 
-    monkeypatch.setattr(
-        jobs, "settings", SimpleNamespace(scrape_target_urls=urls)
-    )
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=urls))
     monkeypatch.setattr(jobs, "scrape", fake_scrape)
 
     assert jobs.run_scrape_cycle() == 2
@@ -178,9 +176,7 @@ def test_source_failure_does_not_stop_other_source(monkeypatch, calls):
             raise ValueError("source is unavailable")
         return [item]
 
-    monkeypatch.setattr(
-        jobs, "settings", SimpleNamespace(scrape_target_urls=urls)
-    )
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=urls))
     monkeypatch.setattr(jobs, "scrape", fake_scrape)
 
     assert jobs.run_scrape_cycle() == 1
@@ -192,9 +188,7 @@ def test_source_failure_does_not_stop_other_source(monkeypatch, calls):
 
 def test_unknown_source_url_is_recorded_without_crashing(monkeypatch, calls):
     url = "https://example.com/products"
-    monkeypatch.setattr(
-        jobs, "settings", SimpleNamespace(scrape_target_urls=[url])
-    )
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=[url]))
 
     assert jobs.run_scrape_cycle() == 0
     assert calls[-1][1] == "failed"
@@ -202,31 +196,21 @@ def test_unknown_source_url_is_recorded_without_crashing(monkeypatch, calls):
     assert "No source adapter supports URL" in calls[-1][3]
 
 
-def test_scrape_cycle_parses_saved_html_for_multiple_sources(
-    monkeypatch, calls, tmp_path
-):
+def test_scrape_cycle_parses_saved_html_for_multiple_sources(monkeypatch, calls, tmp_path):
     book_url = "https://books.toscrape.com/"
     demo_url = "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
     tests_dir = Path(__file__).resolve().parent
     html_by_url = {
-        book_url: (
-            tests_dir.parent / "data" / "snapshots" / "sample_books_page1.html"
-        ).read_text(encoding="utf-8"),
-        demo_url: (tests_dir / "fixtures" / "webscraper-listing.html").read_text(
+        book_url: (tests_dir.parent / "data" / "snapshots" / "sample_books_page1.html").read_text(
             encoding="utf-8"
         ),
+        demo_url: (tests_dir / "fixtures" / "webscraper-listing.html").read_text(encoding="utf-8"),
     }
 
-    monkeypatch.setattr(
-        jobs, "settings", SimpleNamespace(scrape_target_urls=[book_url, demo_url])
-    )
-    monkeypatch.setattr(
-        product_scraper, "settings", SimpleNamespace(scrape_max_pages=1)
-    )
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=[book_url, demo_url]))
+    monkeypatch.setattr(product_scraper, "settings", SimpleNamespace(scrape_max_pages=1))
     monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
-    monkeypatch.setattr(
-        product_scraper, "fetch_html", lambda url: html_by_url[url]
-    )
+    monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html_by_url[url])
     monkeypatch.setattr(jobs, "scrape", product_scraper.scrape)
 
     assert jobs.run_scrape_cycle() > 1
@@ -374,7 +358,12 @@ def test_scrape_failure_finishes_run_as_failed(monkeypatch, calls, caplog):
     monkeypatch.setattr(jobs, "scrape", scrape_boom)
 
     assert jobs.run_scrape_cycle() == 0
-    assert calls[-1] == ("finish","failed",0,f"{jobs.settings.scrape_target_urls[0]}: site down",)
+    assert calls[-1] == (
+        "finish",
+        "failed",
+        0,
+        f"{jobs.settings.scrape_target_urls[0]}: site down",
+    )
     assert any(record.exc_info for record in caplog.records)
 
 
@@ -559,7 +548,14 @@ def test_run_for_existing_run_records_failure_when_scrape_raises(monkeypatch, ca
     monkeypatch.setattr(jobs, "scrape", _broken_scrape)
 
     assert jobs.run_scrape_cycle_for_run(5) == 0
-    assert calls == [("finish","failed",0,f"{jobs.settings.scrape_target_urls[0]}: site down",)]
+    assert calls == [
+        (
+            "finish",
+            "failed",
+            0,
+            f"{jobs.settings.scrape_target_urls[0]}: site down",
+        )
+    ]
     assert "Scraping failed for source" in caplog.text
 
 

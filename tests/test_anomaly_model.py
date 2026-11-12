@@ -1,6 +1,12 @@
 import pandas as pd
 
 from backend.analysis.anomaly_model import AnomalyResult, detect_anomalies
+from backend.devtools.anomaly_fixtures import (
+    SIGNIFICANT_DROP,
+    SIGNIFICANT_HIKE,
+    SMALL_INCREASE,
+    VOLATILE_BASELINE,
+)
 
 
 def make_history(prices: list[int]) -> pd.DataFrame:
@@ -53,7 +59,7 @@ def test_detect_anomalies_flags_jump_after_flat_prices() -> None:
 
 
 def test_detect_anomalies_does_not_flag_a_3_percent_change() -> None:
-    result = detect_anomalies(make_history([1000, 1010, 990, 1000, 1000, 1030]))
+    result = detect_anomalies(make_history(SMALL_INCREASE))
 
     # Previous average is 1000; (1030 - 1000) / 1000 * 100 = 3%.
     # Because 3% is below the 10% minimum, this price is not flagged.
@@ -72,7 +78,7 @@ def test_detect_anomalies_does_not_flag_a_one_paisa_change_after_flat_prices() -
 
 def test_detect_anomalies_flags_an_obvious_high_spike() -> None:
     # The prior five average 1000; sample std is sqrt(50), so 1200 has z ~= 28.28.
-    history = make_history([1000, 1010, 990, 1000, 1000, 1200])
+    history = make_history(SIGNIFICANT_HIKE)
 
     result = detect_anomalies(history)
 
@@ -89,7 +95,7 @@ def test_detect_anomalies_does_not_flag_a_slow_steady_rise() -> None:
 
 
 def test_detect_anomalies_flags_a_sudden_big_drop() -> None:
-    result = detect_anomalies(make_history([1000, 1010, 990, 1000, 1000, 800]))
+    result = detect_anomalies(make_history(SIGNIFICANT_DROP))
 
     assert result.anomalous_timestamps == ["2026-10-06T00:00:00Z"]
     assert result.latest_is_anomalous
@@ -103,7 +109,7 @@ def test_detect_anomalies_reports_latest_status_separately() -> None:
 
 
 def test_detect_anomalies_sorts_rows_and_normalizes_timestamps_to_utc() -> None:
-    history = make_history([1000, 1010, 990, 1000, 1000, 1200]).iloc[::-1]
+    history = make_history(SIGNIFICANT_HIKE).iloc[::-1]
 
     result = detect_anomalies(history)
 
@@ -114,7 +120,7 @@ def test_detect_anomalies_sorts_rows_and_normalizes_timestamps_to_utc() -> None:
 def test_detect_anomalies_does_not_flag_large_drop_with_volatile_baseline() -> None:
     # A 30% drop passes the percentage threshold,
     # but the volatile baseline keeps the z-score below 3.
-    result = detect_anomalies(make_history([700, 1300, 800, 1200, 1000, 700]))
+    result = detect_anomalies(make_history(VOLATILE_BASELINE))
 
     assert result.anomalous_timestamps == []
     assert not result.latest_is_anomalous

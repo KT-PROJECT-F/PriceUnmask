@@ -236,3 +236,68 @@ This confirms that the report pipeline processes these controlled
 synthetic histories as expected. It does not establish real-world
 anomaly detection accuracy; validation against real price changes
 remains outstanding.
+
+## Synthetic IsolationForest comparison - 12 November 2026
+
+The rolling z-score detector and an exploratory IsolationForest comparison were evaluated using the same four synthetic fixtures. The fixture values are maintained in `backend/devtools/anomaly_fixtures.py` and shared by the comparison script and anomaly tests.
+
+### Configuration
+
+| Setting | Value | Rationale |
+| --- | --- | --- |
+| Estimator | IsolationForest | Exploratory comparison |
+| n_estimators | 100 | Fixed estimator count |
+| contamination | 0.2 | Sets the decision threshold using the training score distribution; an exploratory setting, not a tuned production default |
+| random_state | 0, 21, 42, 99 | Checks prediction sensitivity to random initialization |
+| Training data | First five prices for each product | Uses that product's own price history |
+| Prediction data | Latest sixth price | Scores the latest observation against its product baseline |
+| Minimum history length | 6 snapshots | Five baseline training observations plus one held-out latest observation; an operational split requirement, not a statistically validated minimum |
+| Features | Raw price | One feature per model |
+
+Each IsolationForest model was fitted independently on one fixture's five baseline prices. Only that fixture's latest price was passed to `predict()`.
+
+The `contamination=0.2` setting determines the model's decision threshold (`offset_`) from the training score distribution. It does not select, remove, or label a fixed number of training samples, and it does not guarantee that the latest observation will be classified as anomalous. With five training observations, the 20% contamination fraction places the threshold around the score corresponding to one training observation. This value was chosen for an exploratory comparison and has not been tuned or validated for production.
+
+The six-snapshot minimum is needed by this script's split: five observations to fit the model and one latest observation to evaluate. Five training observations are far too few to establish a robust price distribution. This is an operational minimum for the experiment, not evidence of statistical adequacy.
+
+### Comparison results
+
+| Synthetic fixture | Expected | Rolling z-score | IF seed 0 | IF seed 21 | IF seed 42 | IF seed 99 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Significant drop | Anomaly | Flagged | Not flagged | Not flagged | Flagged | Not flagged |
+| Small increase | Normal | Not flagged | Flagged | Flagged | Not flagged | Flagged |
+| Significant hike | Anomaly | Flagged | Flagged | Flagged | Not flagged | Flagged |
+| Volatile baseline | Normal | Not flagged | Not flagged | Flagged | Flagged | Not flagged |
+
+### Metrics
+
+| Metric | Rolling z-score | IF seed 0 | IF seed 21 | IF seed 42 | IF seed 99 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True positives | 2 | 1 | 1 | 1 | 1 |
+| Misses | 0 | 1 | 1 | 1 | 1 |
+| False alarms | 0 | 1 | 2 | 1 | 1 |
+| True negatives | 2 | 1 | 0 | 1 | 1 |
+
+### Score geometry check
+
+A follow-up `score_samples()` experiment used the significant-drop fixture's five-price baseline: `[1000, 1010, 990, 1000, 1000]`. It scored five values: 800, 990, 1030, 1200, and 5000.
+
+For every tested random state, 800 and 990 received identical scores. Likewise, 1030, 1200, and 5000 received identical scores. In particular, the small increase (1030), significant hike (1200), and much larger value (5000) all received the same score within each fitted model.
+
+This pattern is explained by the one-feature isolation-tree geometry observed in this experiment. The trees split only on the raw price feature. Values falling beyond the same end of the training range can follow the same outer branch and reach leaves with the same path length. Since IsolationForest scores are based on path lengths, these values can receive identical scores even when their distances from the training range differ substantially. The model therefore did not distinguish the magnitude of these out-of-range values in this experiment.
+
+This is separate from the random-state sensitivity: changing the seed changes the generated tree partitions and can change scores and predictions. The identical scores within each seed arise from the observed one-feature tree paths, not simply from having a small training set. The tiny five-observation baseline does, however, make the overall results highly limited and unstable.
+
+### Interpretation and decision
+
+The rolling z-score detector correctly classified all four synthetic fixtures: both significant price changes were flagged, and both normal cases were left unflagged.
+
+IsolationForest produced inconsistent predictions across the four random states. It flagged the significant drop in one of four runs (random_state=42) and missed it in the other three. It flagged the significant hike in three of four runs and missed it at random_state=42. It also incorrectly flagged the small increase in three runs and the volatile-baseline case in two runs.
+
+The score comparison further shows that this one-feature model did not distinguish the magnitude of values beyond the same end of the training range. Together with the seed-dependent predictions and the extremely small training baseline, this makes the experiment unsuitable as evidence for replacing the existing detector.
+
+**Recommendation: Keep the rolling z-score detector.** It performed consistently on these four controlled fixtures and remains simpler to interpret. Do not replace the production detector with IsolationForest based on this limited experiment.
+
+This is exploratory synthetic evaluation, not independent validation or evidence of real-world accuracy. A larger independent dataset containing genuine price changes is required before reconsidering the detector.
+
+The live implementation in `backend/analysis/anomaly_model.py` was not changed as part of this comparison.

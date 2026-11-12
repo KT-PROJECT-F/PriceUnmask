@@ -299,8 +299,7 @@ Run this checklist on a fresh clone before declaring v2.0 ready to ship.
 
 - [ ] Fresh-clone verification completed.
 - [ ] CI is green.
-- [ ] Deployed application is reachable.
-- [ ] Process supervision and rollback are verified.
+- [ ] VM deployment, process supervision, and rollback are verified.
 - [ ] Collector runs every approved configured source.
 - [ ] Release evidence and known limitations are documented.
 

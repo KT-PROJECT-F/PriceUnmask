@@ -12,32 +12,53 @@ Confirmed working end to end: a scraper against one site (books.toscrape.com), a
 
 Collector reliability is also still an open problem structurally, not just a one-off: two multi-day outages happened in a single pilot month (24–26 Oct, and 30 Oct–2 Nov, the second one spanning the live demo itself), both from a personal laptop sleeping, and both were only caught by cross-checking the database by hand against a written log. The second outage was initially misreported as "no gap, ran throughout demo day" before the real database record corrected it (see issue #155's full thread for that history — worth reading as a case study in verifying claims against evidence, not taking a status report at face value).
 
-
-### v1.1 — Stabilization
+## v1.1 — Stabilization
 
 Make what already exists trustworthy and self-monitoring before building anything new on top of it.
 
-- [x] #222 — scheduler: move collector off a personal laptop and automate health alerting — @Saidivya-20 — [PR #232](https://github.com/KT-PROJECT-F/PriceUnmask/pull/232)
-- [x] #223 — scraper: add a source with real price changes and discount claims — @Naveen5901 — [PR #236](https://github.com/KT-PROJECT-F/PriceUnmask/pull/236)
-- [x] #224 — api: standardize error responses and scrape-progress reporting — @rajeshkandlapudi-glitch — [PR #234](https://github.com/KT-PROJECT-F/PriceUnmask/pull/234)
-- [x] #225 — db: concurrent-write integration tests and SQLite-vs-server-DB decision — @Hemalatha1729 — [PR #235](https://github.com/KT-PROJECT-F/PriceUnmask/pull/235)
-- [x] #226 — analysis: re-validate Trust Score and anomaly detection — @sujithareddy-1324 — closure commit `739d92f` (interim validation; real-data limitation remains)
-- [x] #227 — docs: v1.1 release verification pass — @mathango — [PR #239](https://github.com/KT-PROJECT-F/PriceUnmask/pull/239)
-- [x] #228 — docs: document the real limitations found this cycle — @lakshmiprasanna45 — [PR #231](https://github.com/KT-PROJECT-F/PriceUnmask/pull/231)
+### Real discount data
 
-### v2.0 — Growth
+Add a source with changing prices and real discount claims. Books to Scrape provides a fixed catalogue and has not supplied the price changes or discount claims needed to validate the core scoring logic. The existing schema supports multiple sources through `products.source` and `external_id`, with `external_id` unique per source.
 
-Once v1.1's real data and reliability work have landed, grow the product itself.
+The implementation PR for #223 has landed, but real-price validation remains limited. Do not treat the source integration alone as proof that the Trust Score has been validated against real discounts.
 
-- [ ] #241 — scraper: multi-site source-adapter pattern — @mathango, @Naveen5901 — **Open** (PR #249 merged; second-site Terms evidence pending review)
-- [x] #242 — analysis: validate anomaly detection against synthetic price fixtures — @sujithareddy-1324 — **Merged** (PR #247)
-- [ ] #243 — frontend: shopper-facing features (watchlists, price-drop notifications, trend views) — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch — **Open** (PR #248 merged; PR #246 in review)
-- [ ] #244 — setup: production deployment (host, process supervisor, CI/CD deploy step) — @Hemalatha1729, @Saidivya-20 — **Open** (PRs #251 and #252 in review)
-- [ ] #254 — scraper: collect every configured source in one run — @Naveen5901 — **Open**
-- [ ] #255 — frontend: use analysis API instead of duplicated JavaScript rules — @Kanamarlapudip — **Open / Blocked**
-- [ ] #256 — analysis: price-position summary — @lakshmiprasanna45 — **Open**
-- [ ] #257 — analysis: compare IsolationForest with z-score — @sujithareddy-1324 — **Open**
+### Collector reliability
 
+Move scheduled collection away from a personal laptop so collection is not interrupted when a laptop sleeps or shuts down. Evaluate a reliable scheduled GitHub Actions or Linux VM environment and ensure collector failures can be detected.
+
+### Automated health alerting
+
+Replace manual health check-ins with scheduled database and collector health checks. Use `check_db` to identify collection or database problems and make failures visible rather than relying on someone to inspect the database manually.
+
+### API hardening
+
+Standardize API error responses, add scrape-progress reporting, and strengthen API contract tests. Follow the decisions documented in `docs/design/api.md`.
+
+### Database hardening
+
+Add concurrent-write integration tests and make a deliberate SQLite-versus-server-database decision. Follow the decisions documented in `docs/design/database.md`.
+
+## v2.0 — Growth
+
+Once v1.1's real-data and reliability work have landed, grow the product itself.
+
+### Multi-site scraping
+
+Split `scraper/` into per-site adapters that share the existing `ScrapedProduct` dataclass contract. Add a lightweight site registry so the scheduler can run multiple sources instead of one. The existing `products.source` field supports multiple sources without requiring a schema change.
+
+### ML anomaly detection
+
+Compare IsolationForest with the existing rolling z-score detector. Use synthetic fixtures for controlled comparison while real price-change history remains limited. Evaluate real historical data before relying on ML results in production.
+
+### Shopper-facing features
+
+Explore product watchlists, price-drop notifications, and category or price-trend views. Introduce accounts and authentication only when a feature such as watchlists actually requires them.
+
+### Production deployment
+
+Prepare the application for deployment on an Ubuntu 24.04 Linux VM using WSL2 or VirtualBox. Configure and verify systemd services for the API and collector, health checks, process restart, SQLite backup, and rollback procedures.
+
+Keep the SSH deployment workflow configured but disabled until a real production host is available. Public hosting, a public URL, and live SSH deployment are deferred under the revised scope of issue #244. VM deployment readiness must not be described as a completed public production deployment.
 
 ## Architecture changes needed
 
@@ -51,29 +72,33 @@ Once v1.1's real data and reliability work have landed, grow the product itself.
 - The core scoring logic has never seen a real discount or a real price move. v1.1 must fix this before v2.0 adds anything on top of it.
 - Collector failures have twice gone unnoticed until someone checked by hand, including on the actual demo day. v1.1's monitoring work targets this directly.
 - Don't let v2.0 start early. An unvalidated foundation stays unvalidated no matter how much is built on it.
+- A Linux VM deployment demonstrates deployment readiness but does not establish that the application is publicly hosted or available through a production URL.
+- A second site's robots.txt and Terms review must not be treated as permission to scrape or retain page fixtures unless the required approval is established.
 
 ## Tracking
 
-Issues filed 2026-11-03. Update the checkboxes as they close — this table is the source of truth for plan status, not any external tool.
+Issues filed 2026-11-03. Update this table as issues close. It is the source of truth for plan status; keep it consistent with the current GitHub issue and PR state.
 
-### Dashboard redesign (parallel track, independent of v1.1 stabilization)
-
-- [x] #220 — `docs/design/DESIGN.md` spec (merged)
-- [ ] #221 — frontend: implement the dashboard redesign — @Kanamarlapudipk
-
-### v1.1 — Stabilization
-
-- [ ] #222 — scheduler: move the collector off a personal laptop and automate health alerting — @Saidivya-20
-- [ ] #223 — scraper: add a source with real price changes and discount claims — @Naveen5901
-- [ ] #224 — api: standardize error responses and scrape-progress reporting — @rajeshkandlapalli-glitch
-- [ ] #225 — db: concurrent-write integration tests and a SQLite-vs-server-DB decision — @Hemalatha1729
-- [ ] #226 — analysis: re-validate Trust Score and anomaly detection against real data — @sujithareddy-1324 (blocked on #223)
-- [ ] #227 — docs: v1.1 release verification pass — @mathango (blocked on #222, #223, #224, #225)
-- [ ] #228 — docs: document the real limitations found this cycle — @lakshmiprasanna45
-
-### v2.0 — Growth (not started)
-
-- [ ] #229 — backlog tracker — @yaswanthtechie (blocked on all v1.1 issues above; not to be broken into separate issues until v1.1 ships)
+| Issue | Tracking |
+|---|---|
+| #220 | Dashboard redesign specification — merged |
+| #221 | Dashboard redesign implementation — open — @Kanamarlapudipk |
+| #222 | PR #232 — @Saidivya-20 |
+| #223 | PR #236 — @Naveen5901; implementation landed, but real-price validation remains limited |
+| #224 | PR #234 — @rajeshkandlapalli-glitch |
+| #225 | PR #235 — @Hemalatha1729 |
+| #226 | Interim validation recorded in closure commit `739d92f`; real-data limitation remains |
+| #227 | PR #239 — @mathango |
+| #228 | PR #231 — @lakshmiprasanna45 |
+| #229 | Backlog tracker — @yaswanthtechie; not started, blocked on v1.1 completion |
+| #241 | Open — @mathango, @Naveen5901; PR #249 merged, second-site Terms evidence pending |
+| #242 | Merged — PR #247 — @sujithareddy-1324 |
+| #243 | Open — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch; PR #248 merged and PR #246 in review |
+| #244 | Open — @Hemalatha1729, @Saidivya-20; PRs #251 and #252 in review |
+| #254 | Open — @Naveen5901 |
+| #255 | Open / blocked — @Kanamarlapudipk |
+| #256 | Open — @lakshmiprasanna45 |
+| #257 | In review — PR #258 — @sujithareddy-1324 |
 
 ## Visual reference
 

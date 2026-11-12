@@ -21,9 +21,9 @@ fi
 # /opt/priceunmask is mode 750, .env is mode 640 root:priceunmask,
 # and shared/data is owned by priceunmask. Running as any other user
 # would fail to read or write these paths.
-if [ "$(whoami)" != "priceunmask" ]; then
+if [ "$(id -un)" != "priceunmask" ]; then
   echo "Re-running as priceunmask user..."
-  exec sudo -u priceunmask "$0" "$@"
+  exec sudo -n -H -u priceunmask /usr/bin/bash "$0" "$@"
 fi
 
 COMMIT_SHA="$1"
@@ -42,10 +42,13 @@ mkdir -p "$RELEASES" "$SHARED/data/exports"
 # 1. Clone the exact commit, not the tip of the dev branch.
 # Deploying the branch tip is unsafe: a merge during deploy
 # would silently change what goes live.
-git clone --depth 50 https://github.com/KT-PROJECT-F/PriceUnmask.git "$NEW_RELEASE"
+mkdir -p "$NEW_RELEASE"
+git -C "$NEW_RELEASE" init -q
+git -C "$NEW_RELEASE" remote add origin https://github.com/KT-PROJECT-F/PriceUnmask.git
+git -C "$NEW_RELEASE" fetch -q --depth 1 origin "$COMMIT_SHA"
+git -C "$NEW_RELEASE" checkout -q --detach FETCH_HEAD
 cd "$NEW_RELEASE"
-git checkout "$COMMIT_SHA"
-git rev-parse HEAD
+echo "Checked out $(git rev-parse HEAD)"
 
 # Shared files live outside releases so pruning never deletes them.
 ln -sfn "/etc/priceunmask/priceunmask.env" "$NEW_RELEASE/.env"
@@ -65,39 +68,17 @@ python3 -m venv "$NEW_RELEASE/.venv"
 # Which is a symlink to shared/data/exports/.
 # First deploy: no .db file yet, so export_db would fail + set -e kills deploy.
 # Skip backup if no DB exists.
-if ls "$SHARED/data/"*.db >/dev/null 2>&1; then
+DB_FILE="$SHARED/data/priceunmask.db"
+if [ -f "$DB_FILE" ]; then
   echo "Backing up DB..."
-  cd "$NEW_RELEASE"
-  "$NEW_RELEASE/.venv/bin/python" -m backend.devtools.export_db
-else
+    BACKUP="$APP_DIR/backups/pre-deploy-$TIMESTAMP.db"
+  sqlite3 "$DB_FILE" ".backup '$BACKUP'"
+  # Keep the 5 newest pre-deploy backups. Manual backups (priceunmask-*.db) are left alone.
+  ls -1t "$APP_DIR"/backups/pre-deploy-*.db | tail -n +6 | xargs -r rm --
+  else
   echo "First deploy - no DB file yet, skipping backup"
 fi
 
-# 3. Point current at the new release.
-ln -sfn "$NEW_RELEASE" "$CURRENT"
-
-# 4. Restart the API.
-# Wrapped in if-! so a restart failure rolls back instead of
-# stopping the script mid-deploy with the broken release live.
-# Service name per Hemalatha PR #251: priceunmask.service
-if ! sudo systemctl restart priceunmask.service; then
-  echo "Restart FAILED - Rolling back to $PREV_RELEASE"
-  if [ -z "$PREV_RELEASE" ]; then
-    echo "ERROR: No previous release to rollback to. Manual fix needed!"
-    exit 1
-  fi
-  ln -sfn "$PREV_RELEASE" "$CURRENT"
-  sudo systemctl restart priceunmask.service || true
-  exit 1
-fi
-
-sudo systemctl reload nginx || true
-# The collector also runs from current, so restart it too.
-# Otherwise it keeps running from a release we are about to prune.
-# try-restart: if collector was stopped on purpose, don't start it again.
-sudo systemctl try-restart priceunmask-collector.service || true
-
-# 5. Health-check with a per-request timeout so curl cannot hang forever
 check_health() {
   for i in $(seq 1 30); do
     if curl --max-time 5 -f http://127.0.0.1:8000/api/health; then
@@ -108,6 +89,36 @@ check_health() {
   done
   return 1
 }
+# 3. Point current at the new release.
+ln -sfn "$NEW_RELEASE" "$CURRENT"
+
+# 4. Restart the API.
+# Wrapped in if-! so a restart failure rolls back instead of
+# stopping the script mid-deploy with the broken release live.
+# Service name per Hemalatha PR #251: priceunmask.service
+if ! sudo -n systemctl restart priceunmask.service; then
+  echo "Restart FAILED - Rolling back to $PREV_RELEASE"
+  if [ -z "$PREV_RELEASE" ]; then
+    echo "ERROR: No previous release to rollback to. Manual fix needed!"
+    exit 1
+  fi
+    ln -sfn "$PREV_RELEASE" "$CURRENT"
+  if sudo -n systemctl restart priceunmask.service && check_health; then
+    sudo -n systemctl try-restart priceunmask-collector.service || true
+    echo "Rollback PASSED"
+  else
+    echo "Rollback FAILED - manual fix needed!"
+  fi
+  exit 1
+fi
+
+sudo -n systemctl reload nginx || true
+# The collector also runs from current, so restart it too.
+# Otherwise it keeps running from a release we are about to prune.
+# try-restart: if collector was stopped on purpose, don't start it again.
+sudo -n systemctl try-restart priceunmask-collector.service || true
+
+# 5. Health-check with a per-request timeout so curl cannot hang forever
 
 if check_health; then
   echo "Deploy PASSED"
@@ -118,9 +129,12 @@ else
     echo "ERROR: No previous release to rollback to. current is broken, manual fix needed!"
     exit 1
   fi
-  ln -sfn "$PREV_RELEASE" "$CURRENT"
-  sudo systemctl restart priceunmask.service
-  sudo systemctl try-restart priceunmask-collector.service || true
+    ln -sfn "$PREV_RELEASE" "$CURRENT"
+  if ! sudo -n systemctl restart priceunmask.service; then
+    echo "Rollback FAILED - previous release would not restart, manual fix needed!"
+    exit 1
+  fi
+  sudo -n systemctl try-restart priceunmask-collector.service || true
   if check_health; then echo "Rollback PASSED"; exit 1; fi
   echo "Rollback FAILED - manual fix needed!"
   exit 1

@@ -226,5 +226,12 @@ The database health check can report `CHECK REQUIRED` when the latest
 collector run is older than 24 hours. Report this status honestly; adding
 synthetic demo products does not make the collector data fresher.
 
-Collector runs on host as priceunmask-collector.service, same DB as API.
-GitHub Actions stays collector until real host exists, never run both at once.
+## Collector on the deployed host (#244)
+
+The collector runs on the host as `priceunmask-collector.service`, against the
+same database as the API (`/opt/priceunmask/shared/data/priceunmask.db`), so
+the dashboard reads exactly what the collector writes, with no copying.
+Until a real host exists, GitHub Actions (#232) stays the collector. Never run
+both at once: the Actions collector writes to its own cached copy of the
+database, so two collectors would split the price history in two and scrape
+the site twice as often.

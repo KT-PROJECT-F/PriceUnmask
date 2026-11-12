@@ -252,3 +252,59 @@ the commit hash. Link each issue in the table. If nothing failed, write
 ## Known limitations (v1.1)
 
 - **Trust Score and anomaly detection are untested against real price movement.** Books to Scrape (the only live source) has fixed prices, so neither model has ever seen a real discount claim or a real price change. `docs/design/trust_score_findings.md` and `docs/design/anomaly_findings.md` were re-run against the latest export on 2026-11-04 and are current, but both report zero real signal. This is accepted as a known limitation of v1.1, not a release blocker — closing out when real price-change data exists is tracked in #226 if it's reopened.
+
+## Draft v2.0 release checklist
+
+**Status:** Draft — not yet verified.
+
+Run this checklist on a fresh clone before declaring v2.0 ready to ship.
+
+### 1. Fresh-clone verification
+
+- [ ] Clone the repository into a new directory.
+- [ ] Check out the intended v2.0 release commit.
+- [ ] Confirm the working tree is clean.
+- [ ] Install dependencies using the documented setup instructions.
+- [ ] Verify the application starts without relying on files from another local checkout.
+
+### 2. CI and automated checks
+
+- [ ] All required GitHub Actions CI workflows pass on the release commit.
+- [ ] `ruff check .` passes.
+- [ ] `ruff format --check .` passes.
+- [ ] `pytest -q` passes.
+- [ ] No unresolved release-blocking test failures remain.
+
+### 3. Deployment readiness (Linux VM)
+
+Under the revised scope of #244, v2.0 ships deploy-ready, not publicly hosted.
+
+- [ ] The API and collector run under systemd on an Ubuntu 24.04 Linux VM (WSL2 or VirtualBox), started from `/opt/priceunmask/current/.venv`.
+- [ ] Killing the API process with SIGKILL makes systemd restart it, shown with the PID and `NRestarts` before and after.
+- [ ] `curl --fail http://127.0.0.1:8000/api/health` succeeds on the VM, both directly and through Nginx.
+- [ ] Deploying a second release over the first switches `current` to the new release.
+- [ ] A deliberately broken release rolls back to the previous one, with the output recorded.
+- [ ] A SQLite backup is taken before each deploy and passes `PRAGMA integrity_check`.
+- [ ] The SSH deploy workflow exists and stays switched off (`if: false`) until a real host is available.
+- [ ] `docs/ROADMAP.md` says v2.0 is not publicly deployed, and why.
+
+### 4. Multi-source collector
+
+- [ ] Every configured and approved source is included in the collector registry.
+- [ ] One collection cycle attempts every configured source.
+- [ ] A failure in one source does not prevent other sources from being collected.
+- [ ] Each source's result and any failure are recorded.
+- [ ] The collector decision from #244 is followed: GitHub Actions collects until a real host exists, and the host collector and Actions never run at the same time.
+- [ ] Database snapshots are persisted for each successful source.
+- [ ] Health monitoring confirms the collector is running and reports stale or failed runs.
+- [ ] No unapproved source is enabled by default, including Croma and the Web Scraper test site while their Terms decisions are open.
+
+### 5. Final release decision
+
+- [ ] Fresh-clone verification completed.
+- [ ] CI is green.
+- [ ] VM deployment, process supervision, and rollback are verified.
+- [ ] Collector runs every approved configured source.
+- [ ] Release evidence and known limitations are documented.
+
+**Release rule:** Do not mark v2.0 ready until every required item above has been verified with actual evidence. Keep unverified items unchecked.

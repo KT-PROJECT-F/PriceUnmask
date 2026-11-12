@@ -35,7 +35,7 @@ Once v1.1's real data and reliability work have landed, grow the product itself.
 
 **Status (12 November 2026):**
 
-- Multi-site scraping: source adapters landed in #241 (PR #249). Collecting every configured source in one run is #254 (PR #260, in review). A second source is not approved yet; see `docs/shop-evaluation.md`.
+- Multi-site scraping: source adapters landed in #241 (PR #249). Collecting every configured source in one run landed in #254 (PR #260). A second source is not approved yet; see `docs/shop-evaluation.md`.
 - ML anomaly detection: #257 turned this into a comparison on synthetic fixtures. The decision (PR #258) is to keep the rolling z-score detector until real price-change data exists.
 - Shopper-facing features: watchlist, price-drop alerts and trend views landed under #243 (PRs #248, #246, #262). The price-position summary is #256 (PR #261, in review).
 - Production deployment: on 10 November #244 was rescoped, because the team has no host. v2.0 is made deploy-ready and proven on an Ubuntu 24.04 Linux VM. The SSH deploy workflow stays switched off until a real host exists (PRs #251, #252, in review). v2.0 is not publicly deployed.
@@ -83,7 +83,7 @@ Issues filed 2026-11-03. Update the checkboxes as they close — this table is t
 - [ ] #243 — frontend: shopper-facing features (watchlists, price-drop notifications, trend views) — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch — PRs #248, #246, #262 merged
 - [ ] #244 — setup: production deployment (host, process supervisor, CI/CD deploy step) — @Hemalatha1729, @Saidivya-20 — PRs #251, #252 in review
 - [x] #253 — docs: bring the v2.0 tracking up to date and record the second site's evidence — @mathango — PR #259
-- [ ] #254 — scraper: collect every configured source in one run — @Naveen5901 — PR #260 in review
+- [x] #254 — scraper: collect every configured source in one run — @Naveen5901 — PR #260
 - [x] #255 — frontend: use the price-drop and trend endpoints instead of the JS copy — @Kanamarlapudipk — PR #262
 - [ ] #256 — analysis: price-position summary (how close to the lowest price) — @lakshmiprasanna45 — PR #261 in review
 - [x] #257 — analysis: compare IsolationForest with the z-score detector on synthetic fixtures — @sujithareddy-1324 — PR #258

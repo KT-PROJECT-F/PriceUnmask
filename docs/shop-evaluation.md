@@ -66,12 +66,9 @@ The adapter's pagination URL `/test-sites/e-commerce/static/computers/laptops?pa
 
 The reviewed robots.txt does not disallow the proposed `/test-sites/e-commerce/` paths.
 
-However, the Terms do not expressly authorize automated collection or retaining real-page HTML fixtures. The training-site description alone is insufficient to establish that permission.
-
-
 **Real-page fixture: ruled out.** The Terms say "You must not: … Reproduce, duplicate or copy material from https://www.webscraper.io". Saving a listing page's HTML in this repository is a copy, so no real-page fixture is kept. Tests use hand-written HTML only.
 
-**Live collection: pending.** The Terms do not mention automated access, and the test-sites page describes the sites as training sites. Neither expressly permits PriceUnmask to collect them on a schedule. Live collection stays disabled until the reviewer decides on #241.
+**Live collection: pending.** The Terms do not mention automated access, and the test-sites page describes the sites as training sites. Neither expressly permits PriceUnmask to collect them on a schedule. Live collection stays disabled until a second source is explicitly approved by the reviewer.
 
 **Last checked:** 11 November 2026.
 

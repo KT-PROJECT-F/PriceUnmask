@@ -576,6 +576,7 @@ async function updatePriceDropNotifications(products) {
     })
   );
 
+  // Ignore stale results if a newer notification request has started.
   if (requestId !== priceDropNotificationRequestId) {
     return;
   }
@@ -625,7 +626,7 @@ async function updatePriceDropNotifications(products) {
     const percentage = document.createElement("p");
     percentage.className = "price-drop-percentage";
     percentage.textContent =
-      `Price dropped ${drop.drop_percent.toFixed(1)}%`;
+      `Price dropped ${drop.drop_percent.toFixed(2)}%`;
 
     alert.append(title, price, percentage);
     list.append(alert);
@@ -641,8 +642,16 @@ async function updatePriceDropNotifications(products) {
     messages.push(
       `${alertCount} watched product(s) have a detected price drop.`
     );
-  } else {
+  } else if (failedCount === results.length) {
+    messages.push(
+      "Unable to check price drops right now. Please try again later."
+    );
+  } else if (failedCount === 0 && insufficientCount === 0) {
     messages.push("No recent price drops for watched products.");
+  } else if (failedCount > 0) {
+    messages.push(
+      "No price drops detected among successfully checked products."
+    );
   }
 
   if (insufficientCount > 0) {
@@ -692,7 +701,7 @@ function updateTrendProductOptions(products) {
 
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "All Products";
+  placeholder.textContent = "Select a product";
   trendProductSelect.append(placeholder);
 
   for (const product of products) {
@@ -754,17 +763,6 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
     )
   ].sort();
 
-  // Use a shared baseline so later-tracked products cannot
-  // change the median simply by entering at 0%.
-  const baselineDate = dates[0];
-
-  // Store percentage price changes across products for each date.
-  const changesByDate = new Map(
-    dates.map((date) => [date, []])
-  );
-
-  let fixedCohortCount = 0;
-
   const datasets = productHistories.map(
     ({ product, history }, index) => {
       const points = [...history]
@@ -782,11 +780,6 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
 
       const startingPrice = points[0]?.current_price_minor;
 
-      const includeInOverallTrend =
-        points[0]?.scraped_at.slice(0, 10) === baselineDate;
-      if (includeInOverallTrend) {
-        fixedCohortCount++;
-      }
       // Use the latest valid recorded price for each date.
       const priceByDate = new Map(
         points.map((point) => [
@@ -815,10 +808,6 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
           const percentageChange =
               ((price - startingPrice) / startingPrice) * 100;
 
-          if (includeInOverallTrend) {
-            changesByDate.get(date).push(percentageChange);
-          }
-
           return percentageChange;
         }),
         borderColor: isSelected ? colors[1] : colors[index % colors.length],
@@ -833,45 +822,14 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
     }
   );
 
-  // Calculate the median percentage change across products.
-  const overallTrend = dates.map((date) => {
-    const changes = [...changesByDate.get(date)].sort(
-      (a, b) => a - b
-    );
-
-    if (changes.length === 0) {
-      return null;
-    }
-
-    const middle = Math.floor(changes.length / 2);
-
-    return changes.length % 2 === 0
-      ? (changes[middle - 1] + changes[middle]) / 2
-      : changes[middle];
-  });
-
   categoryTrendChart = new Chart(categoryTrendCanvas, {
     type: "line",
     data: {
       labels: dates.map((date) => formatChartDate(`${date}T12:00:00`)),
-      datasets: [
-        {
-          label: `Price Trend (Fixed-Cohort Median, ${fixedCohortCount} products)`,
-          data: overallTrend,
-          borderColor: colors[0],
-          backgroundColor: colors[0],
-          borderWidth: 3,
-          pointRadius: 2,
-          tension: 0.2,
-          spanGaps: false,
-          fill: false
-        },
-        ...datasets.filter(
-          (dataset, index) =>
-            selectedProductId &&
-            String(productHistories[index].product.id) === selectedProductId
-        )
-      ]
+      datasets: datasets.filter(
+        (dataset, index) =>
+          String(productHistories[index].product.id) === selectedProductId
+      )
     },
     options: {
       responsive: true,
@@ -909,8 +867,6 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
       }
     }
   });
-
-  return fixedCohortCount;
 }
 
 async function loadTrendOverview() {
@@ -992,13 +948,17 @@ async function loadCategoryTrendView() {
     return;
   }
 
-  // Invalidate any previous price-history request.
+  // Invalidate previous history requests before tracking this request.
+  resetTrendCache();
   const requestId = ++categoryTrendRequestId;
 
-  // Keep all products for the overall comparison.
-  const selectedProducts = trendProducts;
-  const requestGeneration = trendCacheGeneration;
+  // Load history only for the selected product.
   const selectedProductId = trendProductSelect?.value || "";
+  const selectedProducts = trendProducts.filter(
+    (product) => String(product.id) === selectedProductId
+  );
+
+  const requestGeneration = trendCacheGeneration;
 
   try {
     categoryTrendsStatus.textContent =
@@ -1052,7 +1012,7 @@ async function loadCategoryTrendView() {
       return;
     }
 
-    if (productHistories.length < 2) {
+    if (productHistories.length === 0) {
       hasLoadedTrendData = false;
 
       if (categoryTrendChart) {
@@ -1061,21 +1021,17 @@ async function loadCategoryTrendView() {
       }
 
       categoryTrendsStatus.textContent =
-        "At least two products with price history are needed for comparison.";
+        selectedProductId
+          ? "This product needs price history from at least two dates."
+          : "Select a product to view its price trend.";
       return;
     }
 
-    const fixedCohortCount =
-      renderCategoryTrendChart(productHistories, selectedProductId);
+    renderCategoryTrendChart(productHistories, selectedProductId);
 
     categoryTrendsStatus.textContent =
-      `Showing ${productHistories.length} product histories. ` +
-      `The overall trend is the median percentage price change ` +
-      `of ${fixedCohortCount} products tracked from the earliest ` +
-      `available date, measured against their starting prices.` +
-      (fixedCohortCount === 1
-        ? " Only one product qualifies, so this line represents that product rather than a market-wide median."
-        : "");
+      `Showing price history for ${productHistories[0].product.name}. ` +
+      `The chart shows percentage price change from its starting price.`;
     } catch (error) {
       if (requestId !== categoryTrendRequestId) {
         return;
@@ -1718,7 +1674,6 @@ async function loadProducts() {
 
         if (!hasLoadedTrendData) {
           hasLoadedTrendData = true;
-          loadCategoryTrendView();
           loadTrendOverview();
         }
       }
@@ -1776,5 +1731,7 @@ if (trendProductSelect) {
   );
 }
 
-loadProducts();
-loadCollectorStatus();
+if (!globalThis.PRICEUNMASK_DISABLE_AUTO_START) {
+  loadProducts();
+  loadCollectorStatus();
+}

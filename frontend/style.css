@@ -645,6 +645,35 @@ h3 {
   color: var(--ink-muted);
 }
 
+.trend-overview {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.trend-overview h3 {
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+
+#trend-overview-status {
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+}
+
+#trend-overview-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 16px;
+}
+
+#trend-overview-summary p {
+  margin: 4px 0;
+  color: var(--ink-muted);
+}
+
 .trend-chart-container {
   position: relative;
   width: 100%;

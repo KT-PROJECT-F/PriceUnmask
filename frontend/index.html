@@ -60,30 +60,30 @@
     >
       <h2 id="category-trends-heading">Price Trends</h2>
 
-      <p id="category-trends-status" role="status">
-        Loading price trends...
+      <p id="category-trends-status" role="status" aria-live="polite" aria-atomic="true">
+        Select a product to view its price trend.
       </p>
 
       <div class="trend-overview" aria-labelledby="trend-overview-heading">
         <h3 id="trend-overview-heading">30-Day Trend Overview</h3>
-        <p id="trend-overview-status" role="status">
+        <p id="trend-overview-status">
           Loading trend overview...
         </p>
         <div id="trend-overview-summary"></div>
       </div>
 
         <div class="category-filter">
-          <label for="trend-product-select">Select Product to Compare</label>
+          <label for="trend-product-select">Select Product to View Price History</label>
           <select id="trend-product-select">
-            <option value="">All Products</option>
+            <option value="">Select a product</option>
           </select>
         </div>
       <div class="trend-chart-container">
-        <h3>Price Trends</h3>
+        <h3>Selected Product Price Trend</h3>
         <canvas
           id="category-trend-chart"
           role="img"
-          aria-label="Price trend comparison chart for selected products">
+          aria-label="Price history chart for the selected product">
         </canvas>
       </div>
     </section>

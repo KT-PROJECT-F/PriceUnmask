@@ -18,17 +18,43 @@ function createElement(tagName = "div") {
     textContent: "",
     className: "",
     children: [],
+    style: {},
     append(...elements) {
       this.children.push(...elements);
     },
     replaceChildren(...elements) {
       this.children = [...elements];
-    }
+    },
+    addEventListener() {},
+    querySelector() {
+      return null;
+    },
+    focus() {}
   };
 }
 
 function createFrontend(watchlist = []) {
   const elements = new Map();
+
+  elements.set("app", createElement());
+  elements.set("product-status", createElement());
+  elements.set("product-search", {
+    value: "",
+    addEventListener() {}
+  });
+  elements.set("search-box", createElement());
+  elements.set("collector-status-message", createElement());
+  elements.set("run-collector-button", createElement());
+  elements.set("collector-action-message", createElement());
+  elements.set("category-trends-status", createElement());
+  elements.set("category-trend-chart", createElement());
+  elements.set("trend-product-select", {
+    value: "",
+    disabled: false,
+    addEventListener() {},
+    replaceChildren() {},
+    append() {}
+  });
 
   for (const id of [
     "notification-status",
@@ -45,6 +71,9 @@ function createFrontend(watchlist = []) {
   };
 
   const context = vm.createContext({
+    window: {
+      addEventListener() {}
+    },
     console,
     Intl,
     Date,
@@ -64,6 +93,9 @@ function createFrontend(watchlist = []) {
       getElementById(id) {
         return elements.get(id) || null;
       },
+      querySelector() {
+        return null;
+      },
       createElement
     },
     fetch(url) {
@@ -72,12 +104,8 @@ function createFrontend(watchlist = []) {
     }
   });
 
-  // Prevent the dashboard startup code from running in tests.
-  const startupIndex = script.lastIndexOf("\nloadProducts();");
-
-  assert.notEqual(startupIndex, -1);
-
-  vm.runInContext(script.slice(0, startupIndex), context);
+  context.PRICEUNMASK_DISABLE_AUTO_START = true;
+  vm.runInContext(script, context);
 
   return {
     elements,
@@ -112,7 +140,7 @@ test("price-drop notifications use the backend API", async () => {
       previous_price_minor: 299900,
       current_price_minor: 104900,
       drop_amount_minor: 195000,
-      drop_percent: 65
+      drop_percent: 0.96
     });
   });
 
@@ -143,7 +171,10 @@ test("price-drop notifications use the backend API", async () => {
 
   assert.equal(alert.children[0].textContent, "Demo Air Fryer");
   assert.match(alert.children[1].textContent, /₹2,999/);
-  assert.match(alert.children[2].textContent, /65\.0%/);
+  assert.equal(
+  alert.children[2].textContent,
+  "Price dropped 0.96%"
+);
 });
 
 
@@ -270,8 +301,79 @@ test("price-drop API failure shows an error message", async () => {
     frontend.elements.get("notification-status").textContent,
     /1 product\(s\) could not be checked/
   );
+
+  assert.match(
+  frontend.elements.get("notification-status").textContent,
+  /Unable to check price drops right now/
+  );
+
+  assert.doesNotMatch(
+    frontend.elements.get("notification-status").textContent,
+    /No recent price drops/
+  );
 });
 
+test("price-drop network failure shows an error message", async () => {
+  const frontend = createFrontend(["1"]);
+
+  frontend.setFetch(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+
+  const products = [
+    { id: 1, name: "Demo Product", currency: "INR" }
+  ];
+
+  await vm.runInContext(
+    "updatePriceDropNotifications",
+    frontend.context
+  )(products);
+
+  assert.equal(frontend.requests.length, 1);
+
+  assert.equal(
+    frontend.elements.get("notification-list").children.length,
+    0
+  );
+
+  const status =
+    frontend.elements.get("notification-status").textContent;
+
+  assert.ok(status.includes("Unable to check price drops right now."));
+  assert.ok(status.includes("1 product(s) could not be checked."));
+  assert.ok(!status.includes("No recent price drops"));
+});
+
+test("loadProducts handles network failure", async () => {
+  const frontend = createFrontend();
+
+  const networkError = vm.runInContext(
+    'new TypeError("Failed to fetch")',
+    frontend.context
+  );
+
+  frontend.setFetch(async (url) => {
+    assert.equal(url, "/api/products");
+    throw networkError;
+  });
+
+  await vm.runInContext(
+    "loadProducts()",
+    frontend.context
+  );
+
+  assert.deepEqual(frontend.requests, ["/api/products"]);
+
+  assert.equal(
+    frontend.elements.get("product-status").textContent,
+    "Cannot connect to the server. Please check that the API is running."
+  );
+
+  const app = frontend.elements.get("app");
+
+  assert.equal(app.children.length, 1);
+  assert.equal(app.children[0].children.length, 0);
+});
 
 test("trend overview displays backend API statistics", async () => {
   const frontend = createFrontend();

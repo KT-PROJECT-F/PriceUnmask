@@ -2,11 +2,28 @@
 # #244 PR 2 - Called by GitHub Actions via SSH, runs on VM
 # Usage: ./deploy.sh <commit-sha>
 # Example: ./deploy.sh abc123def456...
+
 set -euo pipefail
 
+# 0. Validate SHA first to prevent shell injection.
+# SHA must be exactly 40 hex characters.
 if [ $# -ne 1 ]; then
   echo "Usage: $0 <commit-sha>"
   exit 1
+fi
+
+if ! [[ "$1" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: Invalid SHA. Must be 40 hex chars."
+  exit 1
+fi
+
+# 1. Run everything as the priceunmask user.
+# /opt/priceunmask is mode 750, .env is mode 640 root:priceunmask,
+# and shared/data is owned by priceunmask. Running as any other user
+# would fail to read or write these paths.
+if [ "$(whoami)" != "priceunmask" ]; then
+  echo "Re-running as priceunmask user..."
+  exec sudo -u priceunmask "$0" "$@"
 fi
 
 COMMIT_SHA="$1"
@@ -19,9 +36,8 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 NEW_RELEASE="$RELEASES/$TIMESTAMP"
 PREV_RELEASE="$(readlink "$CURRENT" || echo "")"
 
-# Runs as VPS_USER via GitHub Actions SSH, NOT as priceunmask user.
-# So mkdir needs sudo, readlink works because current is world-readable symlink.
-sudo mkdir -p "$RELEASES" "$SHARED/data/exports"
+# Runs as priceunmask user (re-exec above). All files owned by priceunmask.
+mkdir -p "$RELEASES" "$SHARED/data/exports"
 
 # 1. Clone the exact commit, not the tip of the dev branch.
 # Deploying the branch tip is unsafe: a merge during deploy
@@ -49,11 +65,10 @@ python3 -m venv "$NEW_RELEASE/.venv"
 # Which is a symlink to shared/data/exports/.
 # First deploy: no .db file yet, so export_db would fail + set -e kills deploy.
 # Skip backup if no DB exists.
-if ls "$SHARED/data"/*.db >/dev/null 2>&1; then
+if ls "$SHARED/data/"*.db >/dev/null 2>&1; then
   echo "Backing up DB..."
   cd "$NEW_RELEASE"
   "$NEW_RELEASE/.venv/bin/python" -m backend.devtools.export_db
-  cd "$APP_DIR"
 else
   echo "First deploy - no DB file yet, skipping backup"
 fi
@@ -113,11 +128,12 @@ fi
 
 # 7. Keep only the last 3 releases - venvs are large.
 # Safe now because the collector was restarted from current above.
-# Never delete PREV_RELEASE or NEW_RELEASE even if 3 fails leave half-built folders.
+# Never delete PREV_RELEASE or NEW_RELEASE even if it fails leave half-built folders.
 cd "$RELEASES"
-ls -1t | tail -n +4 | while read -r d; do
+ls -t | tail -n +4 | while read -r d; do
   if [ "$RELEASES/$d" != "$PREV_RELEASE" ] && [ "$RELEASES/$d" != "$NEW_RELEASE" ]; then
     rm -rf "$RELEASES/$d"
   fi
 done
+
 echo "Done! Kept last 3 releases. Deployed $COMMIT_SHA"

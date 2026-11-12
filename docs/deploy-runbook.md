@@ -66,9 +66,59 @@ sudo install -d -o priceunmask -g priceunmask -m 750 /opt/priceunmask/backups
 sudo install -d -o root -g priceunmask -m 750 /etc/priceunmask
 ```
 
-The `current` path must be a symbolic link to a directory inside `releases`, not a normal application directory.
+The `/opt/priceunmask/current` path must be a symbolic link to a valid directory inside `/opt/priceunmask/releases`, not a normal application directory.
 
-If `/opt/priceunmask/current` already exists as a real directory, do not overwrite it. Preserve and migrate the existing installation deliberately before continuing.
+### Migrating an existing installation
+
+If `/opt/priceunmask/current` already exists as a real directory, do not overwrite it or deploy a release on top of it. Preserve the existing installation before continuing.
+
+Before migrating:
+
+1. Inspect the existing application directory and identify its database, snapshot files, environment configuration, and other persistent data.
+2. Identify the active API and collector service units.
+3. Stop the active API and collector services.
+4. Confirm that no application processes are still using the old installation.
+5. Back up or plan the migration of existing database and snapshot files. Renaming the application directory does not migrate these files to the shared data locations.
+
+After completing those checks, preserve the existing application directory using:
+
+```bash
+set -euo pipefail
+
+APP_ROOT="/opt/priceunmask"
+CURRENT="$APP_ROOT/current"
+LEGACY="$APP_ROOT/legacy-current-$(date -u +%Y%m%d-%H%M%S)"
+
+if sudo test -L "$CURRENT"; then
+    echo "STOP: current is already a symbolic link. Do not migrate it as a real directory."
+    exit 1
+fi
+
+if ! sudo test -d "$CURRENT"; then
+    echo "No existing real current directory found."
+    echo "Continue with the normal deployment procedure."
+    exit 0
+fi
+
+if sudo test -e "$LEGACY" || sudo test -L "$LEGACY"; then
+    echo "STOP: Legacy destination already exists: $LEGACY"
+    exit 1
+fi
+
+sudo mv -- "$CURRENT" "$LEGACY"
+
+if ! sudo test -d "$LEGACY"; then
+    echo "STOP: Legacy directory verification failed."
+    exit 1
+fi
+
+echo "Existing installation preserved at: $LEGACY"
+sudo ls -ld "$LEGACY"
+```
+
+Verify the preserved directory before continuing. Keep it until the new release, database, configuration, and persistent data have been verified.
+
+**Important:** This operation only renames the existing application directory. It does not migrate the database, snapshots, environment file, or other persistent data. Migrate or preserve those separately before switching the application to the new shared locations.
 
 **Important:** Do not paste the commands in Sections 5–8 directly into an interactive Bash shell. They use `set -euo pipefail` and `exit 1` for failure handling.
 
@@ -79,6 +129,7 @@ Run the temporary script using:
 ```bash
 bash /tmp/priceunmask-deploy-manual.sh
 ```
+
 
 ## 5. Copy the application and install Python dependencies
 Set the source repository path. Replace the example with the location of your own repository:

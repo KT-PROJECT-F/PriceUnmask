@@ -18,7 +18,6 @@ The procedures assume a dedicated `priceunmask` Linux service account and a rele
 - Environment file: `/etc/priceunmask/priceunmask.env`
 - Release directories: `/opt/priceunmask/releases/<release-id>`
 - Active release: `/opt/priceunmask/current` (symbolic link)
-- Previous release record: `/opt/priceunmask/previous-release`
 - Python virtual environment: `/opt/priceunmask/current/.venv`
 
 The API and collector run as separate systemd services. Both use the same environment file and database. Each release has its own Python virtual environment. The shared database and configuration remain outside the release directories.
@@ -70,6 +69,8 @@ The `/opt/priceunmask/current` path must be a symbolic link to a valid directory
 
 ### Migrating an existing installation
 
+This procedure is only for installations that still use a real application directory or have persistent data stored inside a release directory. If `/opt/priceunmask/current` is already a symbolic link and the shared database and persistent directories are configured, do not run this migration procedure. Verify the existing configuration and continue with the normal deployment procedure.
+
 If `/opt/priceunmask/current` already exists as a real directory, do not overwrite it or deploy a release on top of it. Preserve the existing installation before continuing.
 
 Before migrating:
@@ -77,17 +78,95 @@ Before migrating:
 1. Inspect the existing application directory and identify its database, snapshot files, environment configuration, and other persistent data.
 2. Identify the active API and collector service units.
 3. Stop the active API and collector services.
-4. Confirm that no application processes are still using the old installation.
-5. Back up or plan the migration of existing database and snapshot files. Renaming the application directory does not migrate these files to the shared data locations.
+4. Confirm that nothing is still running from the old installation:
+
+```bash
+pgrep -af '[/]opt/priceunmask/' || echo "nothing running"
+```
+
+The output must be `nothing running`. If application processes are listed, stop and investigate before continuing.
+
+5. Copy the existing database into the shared location. Run these commands while the old services are stopped.
+
+**Important:** Save this database migration block into `/tmp/priceunmask-db-migrate.sh` and run it with `bash /tmp/priceunmask-db-migrate.sh`. Do not paste it into an interactive shell.
+
+```bash
+set -euo pipefail
+
+# Set OLD_DB to the actual existing database path.
+# Identify and inspect the database separately before running this script.
+# Do not use the example path without verifying that it exists.
+OLD_DB="/path/to/verified-existing-database.db"
+
+NEW_DB="/opt/priceunmask/shared/data/priceunmask.db"
+
+if [ "$OLD_DB" = "$NEW_DB" ]; then
+    echo "STOP: Source and destination database paths are identical."
+    exit 1
+fi
+
+sudo test -s "$OLD_DB"
+
+# Do not overwrite an existing shared database.
+if sudo test -e "$NEW_DB" || sudo test -L "$NEW_DB"; then
+    echo "STOP: Shared database destination already exists."
+    exit 1
+fi
+
+# Ensure the shared database directory exists.
+sudo install -d -o priceunmask -g priceunmask -m 750 \
+    /opt/priceunmask/shared/data
+
+# Create a consistent SQLite backup.
+sudo sqlite3 "$OLD_DB" ".backup '$NEW_DB'"
+sudo test -s "$NEW_DB"
+
+sudo chown priceunmask:priceunmask "$NEW_DB"
+sudo chmod 640 "$NEW_DB"
+
+# Verify the copied database.
+INTEGRITY=$(sudo -u priceunmask sqlite3 "$NEW_DB" 'PRAGMA integrity_check;')
+echo "Database integrity: $INTEGRITY"
+
+if [ "$INTEGRITY" != "ok" ]; then
+    echo "STOP: Database integrity check failed."
+    exit 1
+fi
+
+# Compare the old and new table row counts.
+for T in products price_snapshots scrape_runs; do
+    OLD_COUNT=$(sudo sqlite3 "$OLD_DB" "SELECT count(*) FROM $T;")
+    NEW_COUNT=$(sudo -u priceunmask sqlite3 "$NEW_DB" "SELECT count(*) FROM $T;")
+
+    echo "$T old=$OLD_COUNT new=$NEW_COUNT"
+
+    if [ "$OLD_COUNT" != "$NEW_COUNT" ]; then
+        echo "STOP: Row count mismatch in $T."
+        exit 1
+    fi
+done
+```
+
+**Important:** If the backup command fails and leaves a destination file, do not rerun the script immediately. Inspect the destination and remove it only after confirming that it is an incomplete migration file and not an existing database.
+
+The integrity check must print `ok`, and the old and new row counts must match for all three tables. If a count differs or a command fails, stop and investigate. Do not continue with the migration.
+
+**Important:** If `NEW_DB` already exists, stop and inspect it before proceeding. Do not overwrite an existing shared database.
+
+The `.backup` command is used to create a consistent SQLite backup. Do not manually copy an active SQLite database or its `-wal` and `-shm` files.
+
+Identify and separately preserve or migrate snapshot files, environment configuration, and other persistent data. Renaming the application directory does not migrate these files to the shared data locations.
 
 After completing those checks, preserve the existing application directory using:
+
+**Important:** Save this directory preservation block into `/tmp/priceunmask-migrate.sh` and run it with `bash /tmp/priceunmask-migrate.sh`. Do not paste it into an interactive shell.
 
 ```bash
 set -euo pipefail
 
 APP_ROOT="/opt/priceunmask"
 CURRENT="$APP_ROOT/current"
-LEGACY="$APP_ROOT/legacy-current-$(date -u +%Y%m%d-%H%M%S)"
+LEGACY="$APP_ROOT/legacy-current-$(date -u +%Y%m%d-%H%M%S)-$$"
 
 if sudo test -L "$CURRENT"; then
     echo "STOP: current is already a symbolic link. Do not migrate it as a real directory."
@@ -130,57 +209,53 @@ Run the temporary script using:
 bash /tmp/priceunmask-deploy-manual.sh
 ```
 
-
 ## 5. Copy the application and install Python dependencies
-Set the source repository path. Replace the example with the location of your own repository:
 
 ```bash
 set -euo pipefail
 
 SOURCE_DIR="/path/to/priceunmask-release-check"
-```
 
-Verify the repository before selecting the commit:
-
-```bash
+# Verify the repository before selecting the commit.
 if ! git -C "$SOURCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "STOP: SOURCE_DIR is not a Git repository"
+    echo "STOP: SOURCE_DIR is not a Git repository."
     exit 1
 fi
 
 COMMIT="$(git -C "$SOURCE_DIR" rev-parse HEAD)"
+
 if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT^{commit}"; then
     echo "STOP: Selected commit is invalid."
     exit 1
 fi
 
 if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:backend"; then
-    echo "STOP: Selected commit does not contain backend"
+    echo "STOP: Selected commit does not contain backend."
     exit 1
 fi
 
 if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:requirements.txt"; then
-    echo "STOP: Selected commit does not contain requirements.txt"
+    echo "STOP: Selected commit does not contain requirements.txt."
     exit 1
 fi
 
 if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:deploy/systemd/priceunmask.service"; then
-    echo "STOP: API systemd service file is missing from the selected commit"
+    echo "STOP: API systemd service file is missing from the selected commit."
     exit 1
 fi
 
 if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:deploy/systemd/priceunmask-collector.service"; then
-    echo "STOP: Collector systemd service file is missing from the selected commit"
+    echo "STOP: Collector systemd service file is missing from the selected commit."
     exit 1
 fi
 
 if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:deploy/nginx/priceunmask.conf"; then
-    echo "STOP: Nginx configuration is missing from the selected commit"
+    echo "STOP: Nginx configuration is missing from the selected commit."
     exit 1
 fi
 
 echo "Deploying commit: $COMMIT"
-# Set the application root and validate the existing release.
+
 APP_ROOT="/opt/priceunmask"
 PREVIOUS_RELEASE=""
 
@@ -210,14 +285,15 @@ if sudo test -L "$APP_ROOT/current"; then
     fi
 fi
 ```
+
 This procedure deliberately deploys the selected committed revision. Uncommitted working-tree changes are not included.
 
 Create a unique release directory:
 
 ```bash
-
 RELEASE_NAME="$(date -u +%Y%m%d-%H%M%S)-$(git -C "$SOURCE_DIR" rev-parse --short "$COMMIT")"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_NAME"
+
 if sudo test -e "$RELEASE_DIR"; then
     echo "STOP: Release directory already exists: $RELEASE_DIR"
     exit 1
@@ -265,8 +341,10 @@ Expected output:
 ```text
 No broken requirements found.
 ```
+
+Activate the new release:
+
 ```bash
-# Activate the new release.
 if sudo test -e "$APP_ROOT/current.new" || sudo test -L "$APP_ROOT/current.new"; then
     echo "STOP: Temporary current.new path already exists."
     exit 1
@@ -278,13 +356,6 @@ if ! sudo mv -Tf "$APP_ROOT/current.new" "$APP_ROOT/current"; then
     sudo rm -f "$APP_ROOT/current.new"
     echo "STOP: Release activation failed."
     exit 1
-fi
-
-if [ -n "$PREVIOUS_RELEASE" ]; then
-    printf '%s\n' "$PREVIOUS_RELEASE" |
-        sudo tee "$APP_ROOT/previous-release" >/dev/null
-else
-    sudo rm -f "$APP_ROOT/previous-release"
 fi
 ```
 
@@ -352,7 +423,7 @@ sudo systemctl restart priceunmask.service
 HEALTHY=0
 
 for attempt in $(seq 1 30); do
-    if curl --fail --silent \
+    if curl --fail --silent --max-time 5 \
         http://127.0.0.1:8000/api/health >/dev/null; then
         echo "API is healthy."
         HEALTHY=1
@@ -422,8 +493,9 @@ Check Nginx:
 sudo systemctl is-active nginx
 ```
 
-
 ## 9. Collector execution decision
+
+The GitHub Actions database is kept in the Actions cache (`data/priceunmask.db` in `collector.yml`). It is not directly downloadable as an artifact. If no existing host database is migrated, the host starts with an empty database and the collector fills it every 4 hours. Data collected by Actions before the switch stays in the old cache and is not moved. If that history is needed, add an `actions/upload-artifact` step for `data/priceunmask.db` to `collector.yml`, run the workflow once, download the file with `gh run download`, and restore it with Section 13.
 
 GitHub Actions and the host collector must never collect simultaneously. Running both can cause overlapping scrape jobs and duplicate collection activity.
 
@@ -454,7 +526,7 @@ else
     HEALTHY=0
 
     for attempt in $(seq 1 30); do
-        if curl --fail --silent \
+        if curl --fail --silent --max-time 5 \
             http://127.0.0.1:8000/api/health >/dev/null; then
             echo "API is healthy."
             HEALTHY=1
@@ -477,25 +549,24 @@ fi
 
 The collector starts scraping when the service starts. Avoid restarting it unnecessarily.
 
-
 ## 10. Health checks
 
 Check the API directly:
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:8000/api/health
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8000/api/health
 ```
 
 Check the API through Nginx:
 
 ```bash
-curl -i http://127.0.0.1/api/health
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1/api/health
 ```
 
 Check collector history through the API:
 
 ```bash
-curl -i http://127.0.0.1/api/scrape-runs
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1/api/scrape-runs
 ```
 
 Check database integrity:
@@ -561,6 +632,7 @@ sudo systemctl is-active nginx
 ```
 
 ## 12. SQLite backup
+
 **Important:** Do not paste the backup commands directly into an interactive Bash shell. The integrity check uses `exit 1`. Until a dedicated backup script is provided, place the commands in this section, in order, into a temporary script such as `/tmp/priceunmask-backup.sh` and run it using `bash /tmp/priceunmask-backup.sh`. This ensures a failed check stops the script without closing your original terminal.
 
 Create the backup directory if it does not already exist:
@@ -611,7 +683,8 @@ ok
 Do not manually delete or copy SQLite `-wal` or `-shm` files while the database is active.
 
 ## 13. Restore a database backup
-**Important:** Do not paste the restore commands directly into an interactive Bash shell. First list the available backups and select the backup you intend to restore. Then place the remaining commands in this section, starting with the `BACKUP_FILE` assignment, in order, into a temporary script such as `/tmp/priceunmask-restore.sh`. Replace the backup filename before running it using `bash /tmp/priceunmask-restore.sh`.
+
+**Important:** Do not paste the restore commands directly into an interactive Bash shell. First list the available backups and select the backup you intend to restore. Then place the remaining commands in this section, starting with the `set -euo pipefail` line of the next block, in order, into a temporary script such as `/tmp/priceunmask-restore.sh`. Replace the backup filename before running it using `bash /tmp/priceunmask-restore.sh`.
 
 **Warning:** Restoring a backup replaces the active database and causes temporary downtime. Only perform this procedure when necessary.
 
@@ -745,7 +818,7 @@ Verify API health:
 HEALTHY=0
 
 for attempt in $(seq 1 30); do
-    if curl --fail --silent \
+    if curl --fail --silent --max-time 5 \
         http://127.0.0.1:8000/api/health >/dev/null; then
         echo "API is healthy."
         HEALTHY=1
@@ -780,19 +853,19 @@ If you cannot verify that GitHub Actions collection is disabled and idle, leave 
 
 **Deferred:** A safe, tested application rollback procedure is out of scope for this PR and will be implemented in a follow-up PR together with `deploy.sh`.
 
-**Do not use this section to perform a production rollback.**
+**Do not use this section to roll back the existing release on the VM.**
 
-The release-based layout may retain previous application versions under `/opt/priceunmask/releases`, and the deployment process may record a previous release in `/opt/priceunmask/previous-release`. However, these records alone do not establish that a rollback is safe.
+The release-based layout may retain previous application versions under `/opt/priceunmask/releases`. However, keeping them does not establish that a rollback is safe.
 
 The follow-up implementation must address:
 
 - Release directory ownership and permissions.
-- Safe validation of the previous-release record and symbolic links.
+- Safe detection of the previous release from the current symbolic link.
 - API service restart and health verification, including a bounded startup wait.
 - Compatibility between the previous application version and the current shared database.
 - Failure handling that does not leave the application pointing to an invalid release.
 
-No application rollback test is claimed for this PR. A rollback procedure must be implemented and safely tested before it is used in production.
+No application rollback test is claimed for this PR. A rollback procedure must be implemented and safely tested before it is used to replace or restore the existing release on the VM.
 
 ## 15. Deployment limitations
 

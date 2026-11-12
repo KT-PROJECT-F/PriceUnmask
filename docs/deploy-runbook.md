@@ -64,6 +64,20 @@ sudo install -d -o priceunmask -g priceunmask -m 750 /opt/priceunmask/backups
 
 sudo install -d -o root -g priceunmask -m 750 /etc/priceunmask
 ```
+Allow the deploy script to run as `priceunmask`, and allow `priceunmask` to restart only its own services. Replace `<deploy-user>` with the Linux user that runs `deploy.sh` (on the WSL2 VM, your own user):
+
+```bash
+sudo tee /tmp/priceunmask-deploy >/dev/null <<'EOF'
+<deploy-user> ALL=(priceunmask) NOPASSWD: /usr/bin/bash /tmp/deploy/deploy.sh *
+priceunmask ALL=(root) NOPASSWD: /usr/bin/systemctl restart priceunmask.service, /usr/bin/systemctl try-restart priceunmask-collector.service, /usr/bin/systemctl reload nginx
+EOF
+
+sudo visudo -cf /tmp/priceunmask-deploy
+sudo install -m 0440 -o root -g root /tmp/priceunmask-deploy /etc/sudoers.d/priceunmask-deploy
+sudo rm -f /tmp/priceunmask-deploy
+```
+
+`visudo -cf` must print `parsed OK`. If it reports an error, stop and do not install the file.
 
 The `/opt/priceunmask/current` path must be a symbolic link to a valid directory inside `/opt/priceunmask/releases`, not a normal application directory.
 
@@ -83,21 +97,27 @@ Before migrating:
 ```bash
 pgrep -af '[/]opt/priceunmask/' || echo "nothing running"
 ```
-
 The output must be `nothing running`. If application processes are listed, stop and investigate before continuing.
 
 5. Copy the existing database into the shared location. Run these commands while the old services are stopped.
 
+Inspect the current installation layout before migrating:
+
+```bash
+sudo readlink /opt/priceunmask/current || true
+sudo find /opt/priceunmask/current -maxdepth 3 \
+    -type f -name '*.db' -not -path '*/exports/*' \
+    -printf '%s bytes  %p\n'
+sudo find /opt/priceunmask/shared/data -maxdepth 1 \
+    -type f -name '*.db' -printf '%s bytes  %p\n'
+```
 **Important:** Save this database migration block into `/tmp/priceunmask-db-migrate.sh` and run it with `bash /tmp/priceunmask-db-migrate.sh`. Do not paste it into an interactive shell.
 
 ```bash
 set -euo pipefail
 
-# Set OLD_DB to the actual existing database path.
-# Identify and inspect the database separately before running this script.
-# Do not use the example path without verifying that it exists.
-OLD_DB="/path/to/verified-existing-database.db"
-
+# Paste the path printed by the find command above.
+OLD_DB="/opt/priceunmask/current/data/priceunmask.db"
 NEW_DB="/opt/priceunmask/shared/data/priceunmask.db"
 
 if [ "$OLD_DB" = "$NEW_DB" ]; then
@@ -229,30 +249,18 @@ if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT^{commit}"; then
     exit 1
 fi
 
-if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:backend"; then
-    echo "STOP: Selected commit does not contain backend."
-    exit 1
-fi
-
-if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:requirements.txt"; then
-    echo "STOP: Selected commit does not contain requirements.txt."
-    exit 1
-fi
-
-if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:deploy/systemd/priceunmask.service"; then
-    echo "STOP: API systemd service file is missing from the selected commit."
-    exit 1
-fi
-
-if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:deploy/systemd/priceunmask-collector.service"; then
-    echo "STOP: Collector systemd service file is missing from the selected commit."
-    exit 1
-fi
-
-if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:deploy/nginx/priceunmask.conf"; then
-    echo "STOP: Nginx configuration is missing from the selected commit."
-    exit 1
-fi
+for REQUIRED_PATH in \
+    backend \
+    requirements.txt \
+    deploy/systemd/priceunmask.service \
+    deploy/systemd/priceunmask-collector.service \
+    deploy/nginx/priceunmask.conf
+do
+    if ! git -C "$SOURCE_DIR" cat-file -e "$COMMIT:$REQUIRED_PATH"; then
+        echo "STOP: Selected commit is missing $REQUIRED_PATH."
+        exit 1
+    fi
+done
 
 echo "Deploying commit: $COMMIT"
 
@@ -288,7 +296,78 @@ fi
 
 This procedure deliberately deploys the selected committed revision. Uncommitted working-tree changes are not included.
 
-Create a unique release directory:
+### Check the existing database configuration
+
+Before deployment, identify whether the installation already uses the shared database or still needs migration.
+
+```bash
+sudo readlink "$APP_ROOT/current" || true
+
+sudo find -L "$APP_ROOT/current" -maxdepth 3 \
+    -type f -name '*.db' -not -path '*/exports/*' \
+    -printf '%s bytes  %p\n'
+
+sudo find "$APP_ROOT/shared/data" -maxdepth 1 \
+    -type f -name '*.db' \
+    -printf '%s bytes  %p\n'
+```
+
+If `current` is already a symbolic link and the shared database exists, do not run the legacy database migration procedure. Verify the existing environment configuration:
+
+```bash
+sudo systemctl cat priceunmask.service
+sudo systemctl cat priceunmask-collector.service
+```
+
+Inspect the `EnvironmentFile` setting shown by the service units. Check only the `DATABASE_URL` entry in that environment file. Do not display the entire file because it may contain secrets.
+
+For the standard shared-layout installation, the expected database URL is:
+
+```text
+DATABASE_URL=sqlite:////opt/priceunmask/shared/data/priceunmask.db
+```
+
+If `current` is a real directory, follow the legacy migration procedure in Section 4 before continuing. Identify the old database from the discovery output and the old service configuration. Do not guess the database path.
+
+Do not proceed if the database location is uncertain, the shared database already exists when a migration is required, or the existing configuration is unexpected.
+
+### Stop the existing services
+
+For an existing installation, confirm that GitHub Actions collection is disabled and no collector workflow run is queued or in progress before stopping the host collector.
+
+Stop the existing collector and API services so no process continues executing code through the old `current` symlink during release activation.
+
+```bash
+if sudo systemctl is-active --quiet priceunmask-collector.service; then
+    sudo systemctl stop priceunmask-collector.service
+fi
+
+if sudo systemctl is-active --quiet priceunmask.service; then
+    sudo systemctl stop priceunmask.service
+fi
+
+if sudo systemctl is-active --quiet priceunmask-collector.service; then
+    echo "STOP: Collector service is still active."
+    exit 1
+fi
+
+if sudo systemctl is-active --quiet priceunmask.service; then
+    echo "STOP: API service is still active."
+    exit 1
+fi
+```
+
+Do not proceed if either service fails to stop. Investigate the service state before continuing.
+
+Confirm that no application process remains:
+
+```bash
+pgrep -af '[/]opt/priceunmask/' || echo "nothing running"
+```
+
+The output must be `nothing running`. If application processes are listed, stop and investigate before continuing.
+
+### Create the new release
 
 ```bash
 RELEASE_NAME="$(date -u +%Y%m%d-%H%M%S)-$(git -C "$SOURCE_DIR" rev-parse --short "$COMMIT")"
@@ -342,7 +421,7 @@ Expected output:
 No broken requirements found.
 ```
 
-Activate the new release:
+### Activate the new release
 
 ```bash
 if sudo test -e "$APP_ROOT/current.new" || sudo test -L "$APP_ROOT/current.new"; then
@@ -359,34 +438,70 @@ if ! sudo mv -Tf "$APP_ROOT/current.new" "$APP_ROOT/current"; then
 fi
 ```
 
-## 6. Configure the environment file
+### Roll back if the new API is unhealthy
 
-Create the environment file:
+If the API fails to start or become healthy after activation, restore the previous release before attempting another deployment.
 
 ```bash
-sudo install -o root -g priceunmask -m 640 /dev/null /etc/priceunmask/priceunmask.env
-sudoedit /etc/priceunmask/priceunmask.env
+if [ -z "$PREVIOUS_RELEASE" ] || ! sudo test -d "$PREVIOUS_RELEASE"; then
+    echo "STOP: No valid previous release is available for rollback."
+    exit 1
+fi
+
+if sudo test -e "$APP_ROOT/current.rollback" || sudo test -L "$APP_ROOT/current.rollback"; then
+    echo "STOP: Temporary current.rollback path already exists."
+    exit 1
+fi
+
+sudo ln -s "$PREVIOUS_RELEASE" "$APP_ROOT/current.rollback"
+
+if ! sudo mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current"; then
+    sudo rm -f "$APP_ROOT/current.rollback"
+    echo "STOP: Rollback symlink activation failed."
+    exit 1
+fi
+
+sudo systemctl restart priceunmask.service
+
+if ! curl --fail --silent --show-error --max-time 5 \
+    http://127.0.0.1:8000/api/health >/dev/null; then
+    echo "STOP: Previous release did not become healthy."
+    sudo journalctl -u priceunmask.service -n 50 --no-pager
+    exit 1
+fi
+
+echo "Previous release restored and API is healthy."
 ```
 
-Add the following configuration. Replace `YOUR_CONTACT_EMAIL` with a valid contact address:
+Restart the collector only after confirming that the API is healthy and GitHub Actions collection remains disabled. Do not start a second collector process.
 
-```dotenv
+## 6. Preserve the existing environment file
+
+For an existing installation, preserve `/etc/priceunmask/priceunmask.env`. Do not recreate, truncate, or overwrite it during deployment.
+
+Verify that the environment file exists, has the expected ownership and permissions, and is readable by the application service account:
+
+```bash
+sudo test -s /etc/priceunmask/priceunmask.env
+sudo stat -c '%U:%G %a %n' /etc/priceunmask/priceunmask.env
+sudo -u priceunmask test -r /etc/priceunmask/priceunmask.env
+```
+
+Verify that the existing database configuration points to the shared database without displaying other environment variables:
+
+```bash
+sudo grep '^DATABASE_URL=' /etc/priceunmask/priceunmask.env
+```
+
+Expected database URL:
+
+```text
 DATABASE_URL=sqlite:////opt/priceunmask/shared/data/priceunmask.db
-SCRAPE_TARGET_URL=https://books.toscrape.com/
-SCRAPE_INTERVAL_HOURS=4
-SCRAPE_USER_AGENT=PriceUnmaskBot/0.1 (learning project; contact: YOUR_CONTACT_EMAIL)
-SCRAPE_DELAY_SECONDS=3
-SCRAPE_MAX_PAGES=3
-STALE_RUN_MINUTES=30
 ```
 
-Save the file and verify its permissions:
+If the environment file is missing, empty, unreadable, or points to an unexpected database, stop and investigate before proceeding. Do not overwrite an existing environment file to resolve the problem.
 
-```bash
-sudo chown root:priceunmask /etc/priceunmask/priceunmask.env
-sudo chmod 640 /etc/priceunmask/priceunmask.env
-sudo test -r /etc/priceunmask/priceunmask.env
-```
+For a genuinely new installation only, create and configure the environment file using the deployment-specific values. Never replace an existing environment file without first backing it up and reviewing its contents.
 
 Do not commit this environment file or put secrets in the repository.
 
@@ -443,6 +558,53 @@ else
     exit 1
 fi
 ```
+### Verify automatic restart after a crash
+
+`Restart=on-failure` restarts the API only after an unclean exit. A plain `kill` sends SIGTERM, which is a clean shutdown, so systemd does not restart it. Use SIGKILL to simulate a crash.
+
+Save this block into `/tmp/priceunmask-restart-test.sh` and run it with `bash /tmp/priceunmask-restart-test.sh`:
+
+```bash
+set -euo pipefail
+
+OLD_PID="$(systemctl show -p MainPID --value priceunmask.service)"
+OLD_RESTARTS="$(systemctl show -p NRestarts --value priceunmask.service)"
+echo "Before: PID=$OLD_PID NRestarts=$OLD_RESTARTS"
+
+sudo kill -9 "$OLD_PID"
+
+# RestartSec=5, so give systemd time to start a new process.
+NEW_PID="$OLD_PID"
+for attempt in $(seq 1 30); do
+    NEW_PID="$(systemctl show -p MainPID --value priceunmask.service)"
+    if [ "$NEW_PID" != "0" ] && [ "$NEW_PID" != "$OLD_PID" ]; then
+        break
+    fi
+    sleep 1
+done
+
+NEW_RESTARTS="$(systemctl show -p NRestarts --value priceunmask.service)"
+echo "After:  PID=$NEW_PID NRestarts=$NEW_RESTARTS"
+
+if [ "$NEW_PID" = "0" ] || [ "$NEW_PID" = "$OLD_PID" ]; then
+    echo "STOP: systemd did not restart the API."
+    exit 1
+fi
+
+for attempt in $(seq 1 30); do
+    if curl --fail --silent --max-time 5 http://127.0.0.1:8000/api/health; then
+        echo
+        echo "API restarted and is healthy."
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "STOP: API restarted but the health check failed."
+exit 1
+```
+
+The output must show a new PID, `NRestarts` one higher than before, and `API restarted and is healthy.`
 
 ## 8. Configure the Nginx reverse proxy
 

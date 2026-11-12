@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from backend.db.crud import list_products, list_scrape_runs
 from backend.db.database import Base, make_engine
 from backend.db.models import PriceSnapshot, ScrapeRun
 from backend.scheduler import jobs
+from backend.scraper import product_scraper
 from backend.scraper.product_scraper import ScrapedProduct
 
 
@@ -38,6 +40,19 @@ def make_item(ext_id):
         in_stock=True,
         currency="INR",
         scraped_at=datetime.now(UTC),
+    )
+
+
+@pytest.fixture(autouse=True)
+def configured_scrape_settings(monkeypatch):
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        SimpleNamespace(
+            scrape_target_urls=("https://books.toscrape.com/",),
+            scrape_interval_hours=4,
+            stale_run_minutes=30,
+        ),
     )
 
 
@@ -147,20 +162,94 @@ def test_empty_scrape_finishes_with_zero_and_warns(monkeypatch, calls, caplog):
     assert "Scrape returned no products" in caplog.text
 
 
-def test_scrape_url_comes_from_settings(monkeypatch, calls):
-    seen = {}
+def test_empty_target_list_finishes_as_failed(monkeypatch, calls, caplog):
+    monkeypatch.setattr(jobs.settings, "scrape_target_urls", ())
+    monkeypatch.setattr(
+        jobs,
+        "scrape",
+        lambda _url: pytest.fail("scrape must not run with no configured URLs"),
+    )
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls[-1] == (
+        "finish",
+        "failed",
+        0,
+        "No scrape target URLs are configured",
+    )
+    assert "No scrape target URLs are configured" in caplog.text
+
+
+def test_scrape_urls_from_settings_are_both_saved(monkeypatch, calls):
+    urls = ["https://example.com/one", "https://example.com/two"]
+    items = [
+        make_item("first"),
+        replace(make_item("second"), source="webscraper-demo"),
+    ]
 
     def fake_scrape(url):
-        seen["url"] = url
-        return []
+        return [items[urls.index(url)]]
 
-    monkeypatch.setattr(
-        jobs, "settings", SimpleNamespace(scrape_target_url="https://example.com/list")
-    )
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=urls))
     monkeypatch.setattr(jobs, "scrape", fake_scrape)
 
-    jobs.run_scrape_cycle()
-    assert seen["url"] == "https://example.com/list"
+    assert jobs.run_scrape_cycle() == 2
+    assert [call[0] for call in calls] == ["start", "upsert", "upsert", "finish"]
+    assert [call[2].external_id for call in calls[1:3]] == ["first", "second"]
+
+
+def test_source_failure_does_not_stop_other_source(monkeypatch, calls):
+    urls = ["https://example.com/fails", "https://example.com/works"]
+    item = make_item("saved-item")
+
+    def fake_scrape(url):
+        if url == urls[0]:
+            raise ValueError("source is unavailable")
+        return [item]
+
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=urls))
+    monkeypatch.setattr(jobs, "scrape", fake_scrape)
+
+    assert jobs.run_scrape_cycle() == 1
+    assert [call[0] for call in calls] == ["start", "upsert", "finish"]
+    assert calls[-1][1] == "partial"
+    assert calls[-1][2] == 1
+    assert f"{urls[0]}: source is unavailable" in calls[-1][3]
+
+
+def test_unknown_source_url_is_recorded_without_crashing(monkeypatch, calls):
+    url = "https://example.com/products"
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=[url]))
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls[-1][1] == "failed"
+    assert url in calls[-1][3]
+    assert "No source adapter supports URL" in calls[-1][3]
+
+
+def test_scrape_cycle_parses_saved_html_for_multiple_sources(monkeypatch, calls, tmp_path):
+    book_url = "https://books.toscrape.com/"
+    demo_url = "https://webscraper.io/test-sites/e-commerce/static/computers/laptops"
+    tests_dir = Path(__file__).resolve().parent
+    html_by_url = {
+        book_url: (tests_dir.parent / "data" / "snapshots" / "sample_books_page1.html").read_text(
+            encoding="utf-8"
+        ),
+        demo_url: (tests_dir / "fixtures" / "webscraper-listing.html").read_text(encoding="utf-8"),
+    }
+
+    monkeypatch.setattr(jobs, "settings", SimpleNamespace(scrape_target_urls=[book_url, demo_url]))
+    monkeypatch.setattr(product_scraper, "settings", SimpleNamespace(scrape_max_pages=1))
+    monkeypatch.setattr(product_scraper, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html_by_url[url])
+    monkeypatch.setattr(jobs, "scrape", product_scraper.scrape)
+
+    assert jobs.run_scrape_cycle() == 21
+    saved_sources = [call[1] for call in calls if call[0] == "upsert"]
+    assert saved_sources.count("books-toscrape") == 20
+    assert saved_sources.count("webscraper-demo") == 1
+    assert "books-toscrape" in saved_sources
+    assert "webscraper-demo" in saved_sources
 
 
 def test_build_scheduler_configures_immediate_interval_job(monkeypatch):
@@ -302,7 +391,12 @@ def test_scrape_failure_finishes_run_as_failed(monkeypatch, calls, caplog):
     monkeypatch.setattr(jobs, "scrape", scrape_boom)
 
     assert jobs.run_scrape_cycle() == 0
-    assert calls[-1] == ("finish", "failed", 0, "site down")
+    assert calls[-1] == (
+        "finish",
+        "failed",
+        0,
+        f"{jobs.settings.scrape_target_urls[0]}: site down",
+    )
     assert any(record.exc_info for record in caplog.records)
 
 
@@ -329,7 +423,7 @@ def test_failed_cycle_does_not_prevent_next_cycle(monkeypatch, real_database):
         runs = sorted(list_scrape_runs(session), key=lambda run: run.id)
 
     assert [run.status for run in runs] == ["failed", "success"]
-    assert runs[0].error_message == "site down"
+    assert runs[0].error_message == f"{jobs.settings.scrape_target_urls[0]}: site down"
     assert runs[1].products_seen == 1
 
 
@@ -365,6 +459,22 @@ def test_scrape_cycle_persists_rows_with_real_crud(monkeypatch, real_database):
     assert len(snapshots) == 2
     assert {snapshot.scrape_run_id for snapshot in snapshots} == {runs[0].id}
     assert {snapshot.current_price_minor for snapshot in snapshots} == {129900}
+
+
+def test_duplicate_product_from_multiple_urls_gets_one_snapshot(monkeypatch, real_database):
+    duplicate_urls = ["https://example.com/category/a", "https://example.com/category/b"]
+    monkeypatch.setattr(jobs.settings, "scrape_target_urls", duplicate_urls)
+    monkeypatch.setattr(jobs, "scrape", lambda _url: [make_item("same-product")])
+
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        run = list_scrape_runs(session)[0]
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert run.status == "success"
+    assert run.products_seen == 1
+    assert len(snapshots) == 1
 
 
 def test_scrape_cycle_records_partial_run_when_one_real_save_fails(
@@ -487,8 +597,15 @@ def test_run_for_existing_run_records_failure_when_scrape_raises(monkeypatch, ca
     monkeypatch.setattr(jobs, "scrape", _broken_scrape)
 
     assert jobs.run_scrape_cycle_for_run(5) == 0
-    assert calls == [("finish", "failed", 0, "site down")]
-    assert "Scraping failed for run 5" in caplog.text
+    assert calls == [
+        (
+            "finish",
+            "failed",
+            0,
+            f"{jobs.settings.scrape_target_urls[0]}: site down",
+        )
+    ]
+    assert "Scraping failed for source" in caplog.text
 
 
 def test_run_for_existing_run_never_raises(monkeypatch, session, caplog):

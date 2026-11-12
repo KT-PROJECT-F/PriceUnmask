@@ -39,7 +39,7 @@ stores every observation, and scores each "discount" for how real it is.
 
 - **products**: id, source, external_id (unique per source), name, url, currency, is_active, created_at, last_seen_at
 - **price_snapshots**: id, product_id (FK), scrape_run_id (FK), scraped_at (indexed with product_id), current_price_minor, original_price_minor (nullable), in_stock (nullable)
-- **scrape_runs**: id, started_at, finished_at, status (running | success | partial | failed), products_seen, error_message
+- **scrape_runs**: id, started_at, finished_at, status (`running` | `success` | `partial` | `failed`), products_seen, error_message. `partial` means errors occurred but at least one product was saved; `failed` means errors occurred and no products were saved.
 
 ## 4. Module contracts
 

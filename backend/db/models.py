@@ -85,6 +85,8 @@ class ScrapeRun(Base):
     started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     status: Mapped[str] = mapped_column(String(20), default="running")
+    # partial means errors occurred but at least one product was saved.
+    # failed means errors occurred and no products were saved.
     # status is one of: running, success, partial, failed
     products_seen: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)

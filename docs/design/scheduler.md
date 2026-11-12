@@ -10,8 +10,7 @@ The scheduler runs a scrape cycle immediately at startup and then every `scrape_
 4. **Every cycle writes a scrape_runs row** - `_run_cycle` starts a run via `start_scrape_run()` - `backend/scheduler/jobs.py:88`. Why: observability for #155 morning line and gap detection.
 
 ## How it fails, and what happens then
-- Scrape throws: run marked `failed` via `_finish_run`.
-- Upsert of one product fails: rollback that product, add to errors list, continue others. At end, if some saved + errors -> `partial`, if zero saved -> `failed`.
+- A source scrape or product upsert fails: record the error and continue with other sources or products. Errors with at least one saved product produce `partial`; errors with no saved products produce `failed`. The API exposes this status, and the dashboard displays `partial` as "Completed with partial results".
 - DB locked on stale cleanup: exception logged, session rollback, cycle continues.
 - Laptop sleeps mid-run: run stays `running`, next cycle marks it `failed` after `STALE_RUN_MINUTES`.
 

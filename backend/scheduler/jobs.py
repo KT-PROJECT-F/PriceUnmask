@@ -85,21 +85,31 @@ def _run_cycle(
         run = crud.start_scrape_run(session)
 
     run_id = run.id
-    try:
-        items = scrape(settings.scrape_target_url)
-    except Exception as exc:
-        logger.exception("Scraping failed for run %s", run_id)
-        _finish_run(session, run, run_id, "failed", 0, str(exc))
-        return 0
-
     saved = 0
     errors: list[str] = []
+    items = []
+
+    if not settings.scrape_target_urls:
+        message = "No scrape target URLs are configured"
+        logger.error("%s for run %s", message, run_id)
+        errors.append(message)
+
+    for url in settings.scrape_target_urls:
+        try:
+            items.extend(scrape(url))
+        except Exception as exc:
+            logger.exception("Scraping failed for source %s in run %s", url, run_id)
+            errors.append(f"{url}: {exc}")
     if not items:
         logger.warning("Scrape returned no products for run %s", run_id)
 
+    saved_product_keys: set[tuple[str, str]] = set()
     for item in items:
         try:
             source = item.source or SOURCE_KEY
+            product_key = (source, item.external_id)
+            if product_key in saved_product_keys:
+                continue
             crud.upsert_product_and_snapshot(session, source, item, run)
         except Exception as exc:
             external_id = item.external_id
@@ -112,6 +122,7 @@ def _run_cycle(
                 errors.append(f"Rollback failed: {rollback_exc}")
                 break
         else:
+            saved_product_keys.add(product_key)
             saved += 1
 
     if not errors:

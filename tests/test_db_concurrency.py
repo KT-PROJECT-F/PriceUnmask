@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime
 from threading import Event
 
@@ -18,6 +19,15 @@ def test_api_can_read_while_collector_write_is_uncommitted(
 ):
     """The API sees committed data while the collector has an open write."""
     from backend.main import app
+
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        replace(
+            jobs.settings,
+            scrape_target_urls=("https://books.toscrape.com/",),
+        ),
+    )
 
     db_path = tmp_path / "concurrency.db"
     engine = make_engine(f"sqlite:///{db_path.as_posix()}")

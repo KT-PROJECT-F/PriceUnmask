@@ -48,7 +48,7 @@ The seed command creates three synthetic demo products for local development. It
 
 ## Running with real data
 
-The collector fetches the listing pages set by `SCRAPE_TARGET_URL` in `.env`, saves a price snapshot for every product, and records each run in `scrape_runs`. It runs once at startup, then every `SCRAPE_INTERVAL_HOURS` (default 4).
+The collector fetches the listing pages set by `SCRAPE_TARGET_URLS` in `.env`, saves a price snapshot for each product per run, and records each run in `scrape_runs`. Separate multiple URLs with commas. The legacy `SCRAPE_TARGET_URL` setting remains supported when `SCRAPE_TARGET_URLS` is unset or empty. It runs once at startup, then every `SCRAPE_INTERVAL_HOURS` (default 4).
 
 Keep real data apart from the three demo products by giving it its own database file. In the same terminal:
 

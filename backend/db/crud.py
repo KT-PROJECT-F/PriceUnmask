@@ -86,8 +86,8 @@ def upsert_product_and_snapshot(
 
     # A product seen again by the scraper is considered active.
     product.is_active = True
-    product.last_seen_at = item.scraped_at
 
+    product.last_seen_at = item.scraped_at
     snapshot = PriceSnapshot(
         product_id=product.id,
         scrape_run_id=run.id,
@@ -232,7 +232,6 @@ def list_products_not_seen_in_run(
         )
         .order_by(Product.name)
     )
-
     return session.scalars(statement).all()
 
 

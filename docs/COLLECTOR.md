@@ -23,19 +23,19 @@ integration check only, use a 15-minute interval to observe multiple cycles;
 restore the 4-hour interval afterward. Never commit `.env`.
 
 ```dotenv
-SCRAPE_TARGET_URL=https://books.toscrape.com/
 SCRAPE_TARGET_URLS=https://books.toscrape.com/
 SCRAPE_INTERVAL_HOURS=0.25
 ```
 
 To add a site, add its URL to `SCRAPE_TARGET_URLS`. Separate multiple URLs
-with commas. If `SCRAPE_TARGET_URLS` has a value, the collector uses that list
-and ignores `SCRAPE_TARGET_URL`. It uses `SCRAPE_TARGET_URL` only when
-`SCRAPE_TARGET_URLS` is missing or empty. The site must have a supported
-scraper adapter. GitHub Actions sets `SCRAPE_TARGET_URLS` (not
-`SCRAPE_TARGET_URL`) and currently collects Books to Scrape only. Keep other
-sites, including Web Scraper, out of the default list until their use is
-approved; see #241 and [the shop evaluation](shop-evaluation.md).
+with commas. Duplicate URLs are ignored in their first-seen order. If different
+URLs list the same product, the collector saves only one price snapshot for
+that product per run, using the first successfully saved result. The legacy
+`SCRAPE_TARGET_URL` setting is used only when `SCRAPE_TARGET_URLS` is unset or
+empty; do not set both. The site must have a supported scraper adapter. GitHub
+Actions sets `SCRAPE_TARGET_URLS` and currently collects Books to Scrape only.
+Keep other sites, including Web Scraper, out of the default list until their
+use is approved; see #241 and [the shop evaluation](shop-evaluation.md).
 
 Start the process and leave its terminal open:
 
@@ -107,18 +107,17 @@ cycle to finish before exiting.
 ## When a run fails
 
 Check the terminal traceback and the run's `error_message` in `scrape_runs`.
-For a failed run, `status` is `failed`; an incomplete set of saved products is
-marked `partial`. Check the target URL, network access, and database path, then
-correct the problem. A scrape failure is recorded and does not stop the
-scheduler from attempting its next interval.
+Errors with at least one product saved produce status `partial`; errors with
+no products saved produce status `failed`. This applies to both source
+failures and database save failures. The API exposes the status, and the
+dashboard displays `partial` as "Completed with partial results". Check the
+target URL, network access, and database path to correct the problem. A
+scrape failure does not stop the scheduler from attempting its next interval.
 
 Each configured URL is attempted independently. If a listing page fails, its
 URL and error are recorded in the scrape run's `error_message`, and the
-collector continues with the remaining sources. If any products were saved,
-the run is marked `partial`; if none were saved, it is marked `failed`. Raw
-HTML snapshots fetched before a failure are kept in `data/snapshots/`. If all
-sources complete but some products cannot be saved to the database, the run is
-also marked `partial`.
+collector continues with the remaining sources. Raw HTML snapshots fetched
+before a failure are kept in `data/snapshots/`.
 
 To verify failure handling against the test site, set
 `SCRAPE_INTERVAL_HOURS=0.25` for this supervised drill. Stop the collector,
@@ -127,7 +126,6 @@ change `SCRAPE_TARGET_URLS` in `.env` to
 drill), and restart the collector. The immediate attempt should be recorded as
 `failed`; leave the process running for at least 15 minutes and confirm another
 run appears. Stop it with **Ctrl+C**, then restore
-`SCRAPE_TARGET_URL=https://books.toscrape.com/`,
 `SCRAPE_TARGET_URLS=https://books.toscrape.com/`,
 and `SCRAPE_INTERVAL_HOURS=4` before restarting for routine operation.
 

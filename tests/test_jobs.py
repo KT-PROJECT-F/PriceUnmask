@@ -49,7 +49,6 @@ def configured_scrape_settings(monkeypatch):
         jobs,
         "settings",
         SimpleNamespace(
-            scrape_target_url="https://books.toscrape.com/",
             scrape_target_urls=("https://books.toscrape.com/",),
             scrape_interval_hours=4,
             stale_run_minutes=30,
@@ -245,8 +244,10 @@ def test_scrape_cycle_parses_saved_html_for_multiple_sources(monkeypatch, calls,
     monkeypatch.setattr(product_scraper, "fetch_html", lambda url: html_by_url[url])
     monkeypatch.setattr(jobs, "scrape", product_scraper.scrape)
 
-    assert jobs.run_scrape_cycle() > 1
+    assert jobs.run_scrape_cycle() == 21
     saved_sources = [call[1] for call in calls if call[0] == "upsert"]
+    assert saved_sources.count("books-toscrape") == 20
+    assert saved_sources.count("webscraper-demo") == 1
     assert "books-toscrape" in saved_sources
     assert "webscraper-demo" in saved_sources
 
@@ -458,6 +459,22 @@ def test_scrape_cycle_persists_rows_with_real_crud(monkeypatch, real_database):
     assert len(snapshots) == 2
     assert {snapshot.scrape_run_id for snapshot in snapshots} == {runs[0].id}
     assert {snapshot.current_price_minor for snapshot in snapshots} == {129900}
+
+
+def test_duplicate_product_from_multiple_urls_gets_one_snapshot(monkeypatch, real_database):
+    duplicate_urls = ["https://example.com/category/a", "https://example.com/category/b"]
+    monkeypatch.setattr(jobs.settings, "scrape_target_urls", duplicate_urls)
+    monkeypatch.setattr(jobs, "scrape", lambda _url: [make_item("same-product")])
+
+    assert jobs.run_scrape_cycle() == 1
+
+    with real_database() as session:
+        run = list_scrape_runs(session)[0]
+        snapshots = session.scalars(select(PriceSnapshot)).all()
+
+    assert run.status == "success"
+    assert run.products_seen == 1
+    assert len(snapshots) == 1
 
 
 def test_scrape_cycle_records_partial_run_when_one_real_save_fails(

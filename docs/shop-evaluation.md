@@ -88,4 +88,4 @@ decision.
 
 **Why not Reliance Digital:** Section 12 of its Terms of Use says not to use “any bots or scrape Reliance Digital Platform for any information,” so it is ruled out.
 
-**To enable a supervised Croma collection after permission is established:** Set `SCRAPE_TARGET_URL` to the individual product URL above, not the category URL. The collector stores Croma products under source `croma`; each scrape goes through the configured User-Agent, robots.txt check, and polite delay. The category URL is not supported because its static source contains no product links or prices. Store the displayed selling price, not bank, exchange, EMI, or conditional-offer amounts.
+**To enable a supervised Croma collection after permission is established:** Set `SCRAPE_TARGET_URLS` to the individual product URL above, not the category URL. The collector stores Croma products under source `croma`; each scrape goes through the configured User-Agent, robots.txt check, and polite delay. The category URL is not supported because its static source contains no product links or prices. Store the displayed selling price, not bank, exchange, EMI, or conditional-offer amounts.

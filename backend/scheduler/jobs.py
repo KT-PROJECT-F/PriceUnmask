@@ -103,9 +103,13 @@ def _run_cycle(
     if not items:
         logger.warning("Scrape returned no products for run %s", run_id)
 
+    saved_product_keys: set[tuple[str, str]] = set()
     for item in items:
         try:
             source = item.source or SOURCE_KEY
+            product_key = (source, item.external_id)
+            if product_key in saved_product_keys:
+                continue
             crud.upsert_product_and_snapshot(session, source, item, run)
         except Exception as exc:
             external_id = item.external_id
@@ -118,6 +122,7 @@ def _run_cycle(
                 errors.append(f"Rollback failed: {rollback_exc}")
                 break
         else:
+            saved_product_keys.add(product_key)
             saved += 1
 
     if not errors:

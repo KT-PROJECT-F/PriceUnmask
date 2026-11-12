@@ -25,7 +25,6 @@ def test_api_can_read_while_collector_write_is_uncommitted(
         "settings",
         replace(
             jobs.settings,
-            scrape_target_url="https://books.toscrape.com/",
             scrape_target_urls=("https://books.toscrape.com/",),
         ),
     )

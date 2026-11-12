@@ -1,4 +1,4 @@
-﻿# Anomaly findings on collected prices
+# Anomaly findings on collected prices
 
 ## Dataset and method
 
@@ -239,65 +239,6 @@ remains outstanding.
 
 ## IsolationForest comparison - 11 November 2026
 
-The existing rolling z-score detector and an exploratory IsolationForest
-comparison were run against the same four synthetic fixtures.
-
-### Configuration
-
-| Setting | Value | Rationale |
-| --- | --- | --- |
-| Estimator | IsolationForest | Exploratory comparison with the existing baseline |
-| n_estimators | 100 | Fixed estimator count for this experiment |
-| contamination | 0.25 | Assumes one potentially anomalous observation among four |
-| random_state | 42 | Reproducible experiment |
-| Minimum history length | 6 snapshots | Five baseline observations plus one current observation |
-| Features | percentage_change, absolute_z_score, baseline_volatility_percent | Captures change magnitude, deviation, and baseline volatility |
-
-### Comparison results
-
-| Synthetic fixture | Expected | Rolling z-score | IsolationForest |
-| --- | --- | --- | --- |
-| Significant drop | Anomaly | Flagged | Not flagged |
-| Small increase | Normal | Not flagged | Not flagged |
-| Significant hike | Anomaly | Flagged | Not flagged |
-| Volatile baseline | Normal | Not flagged | Flagged |
-
-### Metrics
-
-| Metric | Rolling z-score | IsolationForest |
-| --- | ---: | ---: |
-| True positives | 2 | 0 |
-| Misses | 0 | 2 |
-| False alarms | 0 | 1 |
-| True negatives | 2 | 1 |
-
-### Interpretation and decision
-
-The rolling z-score detector matched all four expected fixture labels.
-IsolationForest missed both significant price changes and incorrectly
-flagged the volatile-baseline fixture.
-
-IsolationForest identifies observations that can be isolated through
-relatively few random feature-space partitions. With only four observations,
-it has too little data to learn a reliable pattern for an individual
-product's price history.
-
-The IsolationForest model was fitted and evaluated on the same four
-observations. Therefore, this is an exploratory in-sample comparison,
-not independent validation or evidence of real-world accuracy.
-
-**Recommendation: Keep the rolling z-score detector. Do not replace the
-live detector with IsolationForest based on this experiment.**
-
-The result is limited to four controlled synthetic fixtures. Evaluation
-with a larger independent dataset and genuine changing-price histories
-is still required before reconsidering the detector.
-
-The live implementation in `backend/analysis/anomaly_model.py` was not
-changed as part of this comparison.
-
-## IsolationForest comparison - 11 November 2026
-
 The rolling z-score detector and an exploratory IsolationForest comparison were evaluated using the same four synthetic fixtures.
 
 ### Configuration
@@ -338,7 +279,7 @@ The contamination value of 0.2 sets the decision threshold based on the training
 
 The rolling z-score detector correctly classified all four synthetic fixtures: both significant price changes were flagged, and both normal cases were left unflagged.
 
-IsolationForest produced inconsistent predictions across the four random states. Every run missed the significant price drop and detected the significant hike in three of the four runs. It also incorrectly flagged the small increase in three runs and the volatile-baseline case in two runs.
+IsolationForest produced inconsistent predictions across the four random states. IsolationForest flagged the significant drop in one of four runs (random_state=42) and missed it in the other three. It flagged the significant hike in three of four runs and missed it at random_state=42. It also incorrectly flagged the small increase in three runs and the volatile-baseline case in two runs. A follow-up score_samples check on the significant-drop baseline returned identical scores for prices 1200 and 5000 at every tested random state; each pair also received the same prediction, showing that this small one-feature experiment did not distinguish the two out-of-range values.
 
 Fitting a separate model for each product avoids mixing unrelated product prices. However, each model still has only five baseline observations, which is too little data to establish a reliable anomaly pattern. The changes across random states also show that predictions are sensitive to model initialization in this small-data setting.
 

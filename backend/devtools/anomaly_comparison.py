@@ -70,6 +70,35 @@ def predict_latest_with_isolation_forest(
     return bool(model.predict(latest_price)[0] == -1)
 
 
+def compare_extreme_price_scores() -> None:
+    """Compare IsolationForest scores for two prices outside the baseline."""
+    baseline = np.asarray([1000, 1010, 990, 1000, 1000], dtype=float).reshape(-1, 1)
+    test_prices = np.asarray([[1200.0], [5000.0]])
+
+    print("\nExtreme-price score comparison")
+    print("-" * 65)
+
+    for random_state in RANDOM_STATES:
+        model = IsolationForest(
+            **ISOLATION_FOREST_SETTINGS,
+            random_state=random_state,
+        )
+        model.fit(baseline)
+
+        scores = model.score_samples(test_prices)
+        predictions = model.predict(test_prices)
+
+        print(f"\nrandom_state={random_state}")
+        for price, score, prediction in zip(
+            [1200, 5000],
+            scores,
+            predictions,
+            strict=True,
+        ):
+            label = "Anomaly" if prediction == -1 else "Normal"
+            print(f"  Price {price}: score={score:.8f}, prediction={label}")
+
+
 def calculate_metrics(
     expected: list[bool],
     predicted: list[bool],
@@ -161,6 +190,8 @@ def main() -> None:
         zscore_predictions,
     ).items():
         print(f"  {metric.replace('_', ' ')}: {count}")
+
+    compare_extreme_price_scores()
 
     print("\nIMPORTANT: Each IsolationForest model was fitted on only five")
     print("baseline prices from one product and scored on that product's")

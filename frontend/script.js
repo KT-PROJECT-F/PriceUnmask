@@ -524,77 +524,6 @@ async function loadPriceHistory(productId) {
   return history.points;
 }
 
-const MIN_PRICE_DROP_PERCENTAGE = 1;
-
-function detectLatestPriceDrop(history) {
-  if (!Array.isArray(history) || history.length < 2) {
-    return null;
-  }
-
-  const sortedHistory = [...history]
-    .filter(
-      (entry) =>
-        Number.isFinite(entry.current_price_minor) &&
-        entry.current_price_minor > 0
-    )
-    .sort(
-      (a, b) =>
-        Date.parse(a.scraped_at) - Date.parse(b.scraped_at)
-    );
-
-  if (sortedHistory.length < 2) {
-    return null;
-  }
-
-  // Find the start of the latest continuous downward trend.
-  let latestIndex = sortedHistory.length - 1;
-  let startIndex = latestIndex;
-
-  // Skip repeated readings at the latest price.
-  while (
-    startIndex > 0 &&
-    sortedHistory[startIndex - 1].current_price_minor ===
-      sortedHistory[startIndex].current_price_minor
-  ) {
-    startIndex--;
-  }
-
-  // Walk backwards while prices are decreasing.
-  while (
-    startIndex > 0 &&
-    sortedHistory[startIndex - 1].current_price_minor >=
-      sortedHistory[startIndex].current_price_minor
-  ) {
-    startIndex--;
-  }
-
-  // No downward trend found.
-  if (
-    sortedHistory[startIndex].current_price_minor ===
-    sortedHistory[latestIndex].current_price_minor
-  ) {
-    return null;
-  }
-
-  const previousPrice = sortedHistory[startIndex].current_price_minor;
-  const currentPrice = sortedHistory[latestIndex].current_price_minor;
-
-  const dropPercentage =
-    ((previousPrice - currentPrice) / previousPrice) * 100;
-
-  if (dropPercentage < MIN_PRICE_DROP_PERCENTAGE) {
-    return null;
-  }
-
-  return {
-    previousPrice,
-    currentPrice,
-    dropAmount: previousPrice - currentPrice,
-    dropPercentage,
-    detectedAt: sortedHistory[latestIndex].scraped_at
-  };
-}
-
 let priceDropNotificationRequestId = 0;
 let hasLoadedPriceDropNotifications = false;
 
@@ -622,31 +551,63 @@ async function updatePriceDropNotifications(products) {
 
   const results = await Promise.allSettled(
     watchedProducts.map(async (product) => {
-      const history = await loadPriceHistory(product.id);
-      return {
-        product,
-        drop: detectLatestPriceDrop(history)
-      };
+      const response = await fetch(
+        `/api/products/${encodeURIComponent(product.id)}/price-drop`
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Price-drop API failed for product ${product.id}: ${response.status}`
+        );
+      }
+
+      const drop = await response.json();
+
+      if (
+        !drop ||
+        !["price_dropped", "no_drop", "insufficient_history"].includes(
+          drop.status
+        )
+      ) {
+        throw new Error("Invalid price-drop API response");
+      }
+
+      return { product, drop };
     })
   );
 
-  // Ignore results from an older notification request.
   if (requestId !== priceDropNotificationRequestId) {
     return;
   }
 
   let alertCount = 0;
   let failedCount = 0;
+  let insufficientCount = 0;
 
   results.forEach((result) => {
     if (result.status === "rejected") {
-      console.error("Price history check failed:", result.reason);
+      console.error("Price-drop API request failed:", result.reason);
       failedCount++;
       return;
     }
 
     const { product, drop } = result.value;
-    if (!drop) return;
+
+    if (drop.status === "insufficient_history") {
+      insufficientCount++;
+      return;
+    }
+
+    if (drop.status !== "price_dropped") return;
+
+    if (
+      !Number.isFinite(drop.previous_price_minor) ||
+      !Number.isFinite(drop.current_price_minor) ||
+      !Number.isFinite(drop.drop_percent)
+    ) {
+      failedCount++;
+      return;
+    }
 
     alertCount++;
 
@@ -658,38 +619,45 @@ async function updatePriceDropNotifications(products) {
 
     const price = document.createElement("p");
     price.textContent =
-      `${formatPrice(drop.previousPrice, product.currency)} \u2192 ` +
-      formatPrice(drop.currentPrice, product.currency);
+      `${formatPrice(drop.previous_price_minor, product.currency)} → ` +
+      formatPrice(drop.current_price_minor, product.currency);
 
     const percentage = document.createElement("p");
     percentage.className = "price-drop-percentage";
     percentage.textContent =
-      `Price dropped ${drop.dropPercentage.toFixed(1)}%`;
+      `Price dropped ${drop.drop_percent.toFixed(1)}%`;
 
-    const detectedDate = new Date(drop.detectedAt);
-
-    const date = document.createElement("p");
-    date.className = "price-drop-date";
-    date.textContent = Number.isNaN(detectedDate.getTime())
-      ? "Drop date unavailable"
-      : `Price dropped on ${detectedDate.toLocaleString("en-IN", {
-          dateStyle: "medium",
-          timeStyle: "short"
-        })}`;
-
-    alert.append(title, price, percentage, date);
+    alert.append(title, price, percentage);
     list.append(alert);
   });
 
   if (failedCount > 0) {
     hasLoadedPriceDropNotifications = false;
   }
-  status.textContent = alertCount
-    ? `${alertCount} watched product(s) have a detected price drop.` +
-      (failedCount ? ` ${failedCount} could not be checked.` : "")
-    : failedCount
-      ? `No drops found. ${failedCount} product(s) could not be checked.`
-      : "No recent price drops for watched products.";
+
+  const messages = [];
+
+  if (alertCount > 0) {
+    messages.push(
+      `${alertCount} watched product(s) have a detected price drop.`
+    );
+  } else {
+    messages.push("No recent price drops for watched products.");
+  }
+
+  if (insufficientCount > 0) {
+    messages.push(
+      `${insufficientCount} product(s) have insufficient price history.`
+    );
+  }
+
+  if (failedCount > 0) {
+    messages.push(
+      `${failedCount} product(s) could not be checked.`
+    );
+  }
+
+  status.textContent = messages.join(" ");
 }
 
 function resetTrendCache() {
@@ -943,6 +911,74 @@ function renderCategoryTrendChart(productHistories, selectedProductId = "") {
   });
 
   return fixedCohortCount;
+}
+
+async function loadTrendOverview() {
+  const status = document.getElementById("trend-overview-status");
+  const summary = document.getElementById("trend-overview-summary");
+
+  if (!status || !summary) return;
+
+  status.textContent = "Loading trend overview...";
+  summary.replaceChildren();
+
+  try {
+    const response = await fetch("/api/trends/overview?period_days=30");
+
+    if (!response.ok) {
+      throw new Error(`Trends API failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (
+      !data ||
+      !Number.isFinite(data.products_analyzed) ||
+      !Number.isFinite(data.products_decreasing) ||
+      !Number.isFinite(data.products_increasing) ||
+      !Number.isFinite(data.products_stable) ||
+      !Number.isFinite(data.products_insufficient_history)
+    ) {
+      throw new Error("Invalid trends API response");
+    }
+
+    const metrics = [
+      ["Products Analyzed", data.products_analyzed],
+      ["Prices Decreasing", data.products_decreasing],
+      ["Prices Increasing", data.products_increasing],
+      ["Stable Prices", data.products_stable],
+      ["Insufficient History", data.products_insufficient_history]
+    ];
+
+    metrics.forEach(([label, value]) => {
+      const item = document.createElement("p");
+
+      const heading = document.createElement("strong");
+      heading.textContent = `${label}: `;
+
+      const count = document.createElement("span");
+      count.textContent = String(value);
+
+      item.append(heading, count);
+      summary.append(item);
+    });
+
+    if (Number.isFinite(data.average_change_percent)) {
+      const average = document.createElement("p");
+      average.textContent =
+        `Average Price Change: ${data.average_change_percent.toFixed(1)}%`;
+      summary.append(average);
+    }
+
+    status.textContent =
+      data.products_analyzed === 0
+        ? "No products available for trend analysis."
+        : "30-day trend overview loaded.";
+  } catch (error) {
+    console.error("Error loading trend overview:", error);
+    summary.replaceChildren();
+    status.textContent = "Trend overview is not available right now.";
+  }
 }
 
 let hasLoadedTrendData = false;
@@ -1683,6 +1719,7 @@ async function loadProducts() {
         if (!hasLoadedTrendData) {
           hasLoadedTrendData = true;
           loadCategoryTrendView();
+          loadTrendOverview();
         }
       }
 

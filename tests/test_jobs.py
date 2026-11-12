@@ -163,6 +163,24 @@ def test_empty_scrape_finishes_with_zero_and_warns(monkeypatch, calls, caplog):
     assert "Scrape returned no products" in caplog.text
 
 
+def test_empty_target_list_finishes_as_failed(monkeypatch, calls, caplog):
+    monkeypatch.setattr(jobs.settings, "scrape_target_urls", ())
+    monkeypatch.setattr(
+        jobs,
+        "scrape",
+        lambda _url: pytest.fail("scrape must not run with no configured URLs"),
+    )
+
+    assert jobs.run_scrape_cycle() == 0
+    assert calls[-1] == (
+        "finish",
+        "failed",
+        0,
+        "No scrape target URLs are configured",
+    )
+    assert "No scrape target URLs are configured" in caplog.text
+
+
 def test_scrape_urls_from_settings_are_both_saved(monkeypatch, calls):
     urls = ["https://example.com/one", "https://example.com/two"]
     items = [

@@ -89,6 +89,11 @@ def _run_cycle(
     errors: list[str] = []
     items = []
 
+    if not settings.scrape_target_urls:
+        message = "No scrape target URLs are configured"
+        logger.error("%s for run %s", message, run_id)
+        errors.append(message)
+
     for url in settings.scrape_target_urls:
         try:
             items.extend(scrape(url))

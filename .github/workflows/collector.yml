@@ -31,4 +31,5 @@ jobs:
 env:
   DATABASE_URL: "sqlite:///data/priceunmask.db"
   SCRAPE_MAX_PAGES: "3"
+  SCRAPE_TARGET_URLS: "https://books.toscrape.com/"
   SCRAPE_INTERVAL_HOURS: "4"

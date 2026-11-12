@@ -275,14 +275,18 @@ Run this checklist on a fresh clone before declaring v2.0 ready to ship.
 - [ ] `pytest -q` passes.
 - [ ] No unresolved release-blocking test failures remain.
 
-### 3. Production deployment
+### 3. Deployment readiness (Linux VM)
 
-- [ ] The application is deployed to the intended production host.
-- [ ] The deployed application is reachable through its public URL.
-- [ ] The health endpoint returns a successful response.
-- [ ] The dashboard and API are reachable from outside the deployment host.
-- [ ] A process supervisor restarts the application after a process failure.
-- [ ] Deployment and rollback procedures are documented and verified.
+Under the revised scope of #244, v2.0 ships deploy-ready, not publicly hosted.
+
+- [ ] The API and collector run under systemd on an Ubuntu 24.04 Linux VM (WSL2 or VirtualBox), started from `/opt/priceunmask/current/.venv`.
+- [ ] Killing the API process with SIGKILL makes systemd restart it, shown with the PID and `NRestarts` before and after.
+- [ ] `curl --fail http://127.0.0.1:8000/api/health` succeeds on the VM, both directly and through Nginx.
+- [ ] Deploying a second release over the first switches `current` to the new release.
+- [ ] A deliberately broken release rolls back to the previous one, with the output recorded.
+- [ ] A SQLite backup is taken before each deploy and passes `PRAGMA integrity_check`.
+- [ ] The SSH deploy workflow exists and stays switched off (`if: false`) until a real host is available.
+- [ ] `docs/ROADMAP.md` says v2.0 is not publicly deployed, and why.
 
 ### 4. Multi-source collector
 
@@ -290,10 +294,10 @@ Run this checklist on a fresh clone before declaring v2.0 ready to ship.
 - [ ] One collection cycle attempts every configured source.
 - [ ] A failure in one source does not prevent other sources from being collected.
 - [ ] Each source's result and any failure are recorded.
-- [ ] The scheduled collector runs on the deployed environment.
+- [ ] The collector decision from #244 is followed: GitHub Actions collects until a real host exists, and the host collector and Actions never run at the same time.
 - [ ] Database snapshots are persisted for each successful source.
 - [ ] Health monitoring confirms the collector is running and reports stale or failed runs.
-- [ ] No unapproved source, including Croma while its Terms decision remains unresolved, is enabled by default.
+- [ ] No unapproved source is enabled by default, including Croma and the Web Scraper test site while their Terms decisions are open.
 
 ### 5. Final release decision
 

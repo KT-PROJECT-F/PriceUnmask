@@ -1,4 +1,4 @@
-# Anomaly findings on collected prices
+﻿# Anomaly findings on collected prices
 
 ## Dataset and method
 
@@ -295,3 +295,57 @@ is still required before reconsidering the detector.
 
 The live implementation in `backend/analysis/anomaly_model.py` was not
 changed as part of this comparison.
+
+## IsolationForest comparison - 11 November 2026
+
+The rolling z-score detector and an exploratory IsolationForest comparison were evaluated using the same four synthetic fixtures.
+
+### Configuration
+
+| Setting | Value | Rationale |
+| --- | --- | --- |
+| Estimator | IsolationForest | Exploratory comparison |
+| n_estimators | 100 | Fixed estimator count |
+| contamination | 0.2 | Sets the expected outlier proportion in the five training baseline observations |
+| random_state | 0, 21, 42, 99 | Checks prediction sensitivity to random initialization |
+| Training data | First five prices for each product | Uses that product's own price history |
+| Prediction data | Latest sixth price | Scores the latest observation against its product baseline |
+| Features | Raw price | One feature per model |
+
+Each IsolationForest model was fitted independently on one fixture's five baseline prices. Only that fixture's latest price was passed to predict().
+
+The contamination value of 0.2 sets the decision threshold based on the training data. It does not force a fixed number of the four latest test observations to be classified as anomalies.
+
+### Comparison results
+
+| Synthetic fixture | Expected | Rolling z-score | IF seed 0 | IF seed 21 | IF seed 42 | IF seed 99 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Significant drop | Anomaly | Flagged | Not flagged | Not flagged | Flagged | Not flagged |
+| Small increase | Normal | Not flagged | Flagged | Flagged | Not flagged | Flagged |
+| Significant hike | Anomaly | Flagged | Flagged | Flagged | Not flagged | Flagged |
+| Volatile baseline | Normal | Not flagged | Not flagged | Flagged | Flagged | Not flagged |
+
+### Metrics
+
+| Metric | Rolling z-score | IF seed 0 | IF seed 21 | IF seed 42 | IF seed 99 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True positives | 2 | 1 | 1 | 1 | 1 |
+| Misses | 0 | 1 | 1 | 1 | 1 |
+| False alarms | 0 | 1 | 2 | 1 | 1 |
+| True negatives | 2 | 1 | 0 | 1 | 1 |
+
+### Interpretation and decision
+
+The rolling z-score detector correctly classified all four synthetic fixtures: both significant price changes were flagged, and both normal cases were left unflagged.
+
+IsolationForest produced inconsistent predictions across the four random states. Every run missed the significant price drop and detected the significant hike in three of the four runs. It also incorrectly flagged the small increase in three runs and the volatile-baseline case in two runs.
+
+Fitting a separate model for each product avoids mixing unrelated product prices. However, each model still has only five baseline observations, which is too little data to establish a reliable anomaly pattern. The changes across random states also show that predictions are sensitive to model initialization in this small-data setting.
+
+The contamination parameter controls the decision threshold relative to the training baseline. It does not guarantee that the latest price will be classified correctly.
+
+**Recommendation: Keep the rolling z-score detector.** It performed consistently on these four controlled fixtures and remains simpler to interpret. Do not replace the production detector with IsolationForest based on this limited experiment.
+
+This is exploratory synthetic evaluation, not independent validation or evidence of real-world accuracy. A larger independent dataset containing genuine price changes is required before reconsidering the detector.
+
+The live implementation in `backend/analysis/anomaly_model.py` was not changed as part of this comparison.

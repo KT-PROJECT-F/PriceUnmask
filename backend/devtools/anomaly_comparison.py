@@ -1,9 +1,4 @@
-"""Exploratory comparison of z-score and IsolationForest anomaly detection.
-
-Uses the four labelled synthetic fixtures documented for issue #242.
-IsolationForest is fitted and scored on the same four cases, so its results
-are exploratory only and must not be treated as independent validation.
-"""
+"""Exploratory per-product comparison of rolling z-score and IsolationForest."""
 
 import numpy as np
 import pandas as pd
@@ -35,11 +30,11 @@ FIXTURES = [
 ]
 
 MIN_HISTORY_LENGTH = 6
+RANDOM_STATES = [0, 21, 42, 99]
 
 ISOLATION_FOREST_SETTINGS = {
     "n_estimators": 100,
-    "contamination": 0.25,
-    "random_state": 42,
+    "contamination": 0.2,
 }
 
 
@@ -58,30 +53,21 @@ def make_history(prices: list[int]) -> pd.DataFrame:
     )
 
 
-def extract_features(prices: list[int]) -> list[float]:
-    """Extract features from the first five prices and the latest price."""
-    baseline = np.asarray(prices[:-1], dtype=float)
-    latest_price = float(prices[-1])
+def predict_latest_with_isolation_forest(
+    prices: list[int],
+    random_state: int,
+) -> bool:
+    """Fit on one product's baseline and score only its latest price."""
+    baseline = np.asarray(prices[:-1], dtype=float).reshape(-1, 1)
+    latest_price = np.asarray([[prices[-1]]], dtype=float)
 
-    baseline_mean = float(np.mean(baseline))
-    baseline_std = float(np.std(baseline, ddof=1))
-
-    if baseline_mean == 0:
-        raise ValueError("Baseline mean must not be zero.")
-
-    percent_change = ((latest_price - baseline_mean) / abs(baseline_mean)) * 100
-
-    absolute_z_score = (
-        abs((latest_price - baseline_mean) / baseline_std) if baseline_std > 0 else 0.0
+    model = IsolationForest(
+        **ISOLATION_FOREST_SETTINGS,
+        random_state=random_state,
     )
+    model.fit(baseline)
 
-    baseline_volatility = (baseline_std / abs(baseline_mean)) * 100
-
-    return [
-        percent_change,
-        absolute_z_score,
-        baseline_volatility,
-    ]
+    return bool(model.predict(latest_price)[0] == -1)
 
 
 def calculate_metrics(
@@ -92,15 +78,12 @@ def calculate_metrics(
     true_positives = sum(
         actual and prediction for actual, prediction in zip(expected, predicted, strict=True)
     )
-
     misses = sum(
         actual and not prediction for actual, prediction in zip(expected, predicted, strict=True)
     )
-
     false_alarms = sum(
         not actual and prediction for actual, prediction in zip(expected, predicted, strict=True)
     )
-
     true_negatives = sum(
         not actual and not prediction
         for actual, prediction in zip(expected, predicted, strict=True)
@@ -116,12 +99,10 @@ def calculate_metrics(
 
 def main() -> None:
     expected_labels = [fixture["expected_anomaly"] for fixture in FIXTURES]
-
     zscore_predictions = []
-    feature_rows = []
 
-    print("Synthetic anomaly detector comparison")
-    print("=" * 55)
+    print("Per-product synthetic anomaly detector comparison")
+    print("=" * 65)
 
     for fixture in FIXTURES:
         prices = fixture["prices"]
@@ -131,83 +112,61 @@ def main() -> None:
 
         history = make_history(prices)
         result = detect_anomalies(history)
-
-        # Convert the latest timestamp into the same UTC ISO format
-        # returned by detect_anomalies().
         latest_timestamp = history["scraped_at"].iloc[-1].isoformat().replace("+00:00", "Z")
-
         zscore_flagged = latest_timestamp in result.anomalous_timestamps
-
         zscore_predictions.append(zscore_flagged)
-        feature_rows.append(extract_features(prices))
 
         print(f"\n{fixture['name']}")
+        print(f"  Baseline prices: {prices[:-1]}")
+        print(f"  Latest price: {prices[-1]}")
         print(f"  Expected anomaly: {fixture['expected_anomaly']}")
-        print(f"  Z-score flagged:  {zscore_flagged}")
-
-    feature_names = [
-        "percentage_change",
-        "absolute_z_score",
-        "baseline_volatility_percent",
-    ]
-
-    features = pd.DataFrame(
-        feature_rows,
-        columns=feature_names,
-    )
-
-    isolation_forest = IsolationForest(
-        **ISOLATION_FOREST_SETTINGS,
-    )
-
-    # IsolationForest returns -1 for an outlier and +1 for an inlier.
-    # This is an in-sample exploratory run on only four observations.
-    isolation_predictions = isolation_forest.fit_predict(features)
-
-    isolation_flags = [prediction == -1 for prediction in isolation_predictions]
+        print(f"  Rolling z-score flagged: {zscore_flagged}")
 
     print("\nIsolationForest settings")
-    print("-" * 55)
+    print("-" * 65)
+    print(f"  n_estimators: {ISOLATION_FOREST_SETTINGS['n_estimators']}")
+    print(f"  contamination: {ISOLATION_FOREST_SETTINGS['contamination']}")
+    print(f"  random_state values: {RANDOM_STATES}")
+    print("  training: each product's first five prices")
+    print("  prediction: that product's latest price only")
+    print("  evaluation: four independent, small synthetic fixtures")
 
-    for setting, value in ISOLATION_FOREST_SETTINGS.items():
-        print(f"  {setting}: {value}")
+    all_predictions = {}
 
-    print(f"  minimum history length: {MIN_HISTORY_LENGTH} snapshots")
-    print(f"  features: {', '.join(feature_names)}")
-    print(f"  observations used: {len(FIXTURES)}")
-    print("  evaluation: in-sample; exploratory only")
+    for random_state in RANDOM_STATES:
+        predictions = []
 
-    print("\nFeature values and predictions")
-    print("-" * 55)
+        print(f"\nIsolationForest predictions (random_state={random_state})")
+        print("-" * 65)
 
-    for index, fixture in enumerate(FIXTURES):
-        print(f"\n{fixture['name']}")
+        for fixture in FIXTURES:
+            flagged = predict_latest_with_isolation_forest(
+                fixture["prices"],
+                random_state,
+            )
+            predictions.append(flagged)
+            print(f"  {fixture['name']}: {'Flagged' if flagged else 'Not flagged'}")
 
-        for feature_name in feature_names:
-            print(f"  {feature_name}: {features.iloc[index][feature_name]:.3f}")
+        all_predictions[random_state] = predictions
 
-        print(f"  IsolationForest flagged: {isolation_flags[index]}")
-
-    print("\nComparison metrics")
-    print("-" * 55)
-
-    for detector_name, predictions in [
-        ("Rolling z-score", zscore_predictions),
-        ("IsolationForest", isolation_flags),
-    ]:
-        metrics = calculate_metrics(
-            expected_labels,
-            predictions,
-        )
-
-        print(f"\n{detector_name}")
-
+        metrics = calculate_metrics(expected_labels, predictions)
+        print("  Metrics:")
         for metric, count in metrics.items():
-            print(f"  {metric.replace('_', ' ')}: {count}")
+            print(f"    {metric.replace('_', ' ')}: {count}")
 
-    print("\nIMPORTANT: IsolationForest was fitted and evaluated on the")
-    print("same four synthetic cases. These results are not independent")
-    print("validation and do not justify replacing the current detector.")
+    print("\nRolling z-score metrics")
+    print("-" * 65)
+    for metric, count in calculate_metrics(
+        expected_labels,
+        zscore_predictions,
+    ).items():
+        print(f"  {metric.replace('_', ' ')}: {count}")
+
+    print("\nIMPORTANT: Each IsolationForest model was fitted on only five")
+    print("baseline prices from one product and scored on that product's")
+    print("latest price. These four synthetic fixtures are exploratory only.")
+    print("They do not establish real-world accuracy or justify replacing")
+    print("the current production detector.")
 
 
 if __name__ == "__main__":

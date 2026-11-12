@@ -1,13 +1,13 @@
 """Detect price drops from a product's price history."""
 
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 import pandas as pd
 
 from .price_history_utils import (
     STABLE_THRESHOLD_PCT,
+    calculate_percentage,
     get_valid_price_history,
 )
 
@@ -70,11 +70,7 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
 
     change_amount = previous_price - current_price
 
-    change_percent = float(
-        (Decimal(change_amount) * Decimal("100") / Decimal(previous_price)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-    )
+    change_percent = calculate_percentage(change_amount, previous_price)
 
     if change_percent < STABLE_THRESHOLD_PCT:
         return PriceDropResult(

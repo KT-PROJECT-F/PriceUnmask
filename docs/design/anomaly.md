@@ -47,11 +47,26 @@ Next, collect longer histories from a source whose prices actually change, evalu
 
 See [Anomaly Findings](anomaly_findings.md) for the collected-data results and [Anomaly Messages](anomaly_messages.md) for the shopper-facing statuses.
 
-## IsolationForest comparison decision - 12 November 2026
+## Synthetic IsolationForest comparison decision - 12 November 2026
 
 The exploratory comparison used four synthetic product-price fixtures.
+The shared fixture values are maintained in
+`backend/devtools/anomaly_fixtures.py` and reused by the comparison
+script and anomaly tests.
+
 For each fixture, IsolationForest was fitted on five baseline observations
-and evaluated on the latest price, using random states 0, 21, 42, and 99.
+and evaluated on the latest sixth observation, using random states
+0, 21, 42, and 99. The six-snapshot minimum is an operational requirement
+for this five-point training and one-point evaluation split. It is not a
+statistically validated minimum; five training observations are too few
+to establish a robust price distribution.
+
+The exploratory `contamination=0.2` setting determines the decision
+threshold from the training score distribution. It does not select or
+remove training samples, nor does it guarantee that the latest price
+will be classified as anomalous. With five training observations, the
+20% fraction places the threshold around one training observation's score.
+This setting has not been tuned or validated for production.
 
 The rolling z-score detector classified all four fixtures correctly.
 IsolationForest predictions varied across random states: it flagged the
@@ -59,16 +74,28 @@ significant price drop in only one of four runs and the significant hike
 in three of four runs. It also produced false positives for the small
 increase and volatile-baseline fixtures.
 
-A follow-up score_samples experiment fitted on the significant-drop
-baseline returned identical scores for prices 1200 and 5000 at every
-tested random state. Each pair received the same prediction, indicating
-that this small one-feature experiment did not distinguish these two
-out-of-range values.
+A follow-up `score_samples()` experiment used the significant-drop
+baseline `[1000, 1010, 990, 1000, 1000]`. For every tested random state,
+prices 800 and 990 received identical scores, while 1030, 1200, and
+5000 also received identical scores.
+
+In this one-feature experiment, the isolation trees split only on raw
+price. Values beyond the same end of the training range can follow the
+same outer branch and have the same path length, resulting in identical
+scores despite different distances from the training range. This explains
+why the small increase (1030) and significant hike (1200) received the
+same score in each fitted model. It is an observed property of these
+fitted trees, not a universal rule for every IsolationForest model.
+
+The identical scores within each seed are distinct from random-state
+sensitivity. Changing the seed changes tree partitions and can change
+scores and predictions. The five-observation training baseline makes
+the experiment too limited to establish reliable behaviour.
 
 **Decision:** Retain the rolling z-score detector. This limited synthetic
 experiment does not justify replacing the existing detector with
-IsolationForest. More data and validation against genuine price changes
-would be needed before reconsidering this decision.
+IsolationForest. Validation against genuine price changes and a larger
+independent dataset would be needed before reconsidering this decision.
 
 The production implementation in `backend/analysis/anomaly_model.py`
 remains unchanged.

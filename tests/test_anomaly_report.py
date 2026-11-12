@@ -8,6 +8,7 @@ import backend.devtools.anomaly_report as anomaly_report
 from backend.analysis.anomaly_model import AnomalyResult, detect_anomalies
 from backend.db.database import Base, make_engine
 from backend.db.models import PriceSnapshot, Product
+from backend.devtools.anomaly_fixtures import ANOMALY_REPORT_HISTORIES
 from backend.devtools.anomaly_report import ProductAnalysis, _print_worked_row
 
 
@@ -68,11 +69,7 @@ def test_report_processes_synthetic_histories_from_sqlite(
     engine = make_engine(f"sqlite:///{database_path.as_posix()}")
     Base.metadata.create_all(engine)
 
-    histories = {
-        "Significant drop": [1000, 1010, 990, 1000, 1000, 800],
-        "Significant hike": [1000, 1010, 990, 1000, 1000, 1200],
-        "Volatile baseline": [700, 1300, 800, 1200, 1000, 700],
-    }
+    histories = ANOMALY_REPORT_HISTORIES
 
     start = datetime(2026, 1, 1, tzinfo=UTC)
 

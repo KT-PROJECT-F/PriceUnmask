@@ -5,29 +5,11 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 from backend.analysis.anomaly_model import detect_anomalies
-
-FIXTURES = [
-    {
-        "name": "Significant drop",
-        "prices": [1000, 1010, 990, 1000, 1000, 800],
-        "expected_anomaly": True,
-    },
-    {
-        "name": "Small increase",
-        "prices": [1000, 1010, 990, 1000, 1000, 1030],
-        "expected_anomaly": False,
-    },
-    {
-        "name": "Significant hike",
-        "prices": [1000, 1010, 990, 1000, 1000, 1200],
-        "expected_anomaly": True,
-    },
-    {
-        "name": "Volatile baseline",
-        "prices": [700, 1300, 800, 1200, 1000, 700],
-        "expected_anomaly": False,
-    },
-]
+from backend.devtools.anomaly_fixtures import (
+    ANOMALY_COMPARISON_FIXTURES,
+    SCORE_COMPARISON_BASELINE,
+    SCORE_COMPARISON_PRICES,
+)
 
 MIN_HISTORY_LENGTH = 6
 RANDOM_STATES = [0, 21, 42, 99]
@@ -71,9 +53,9 @@ def predict_latest_with_isolation_forest(
 
 
 def compare_extreme_price_scores() -> None:
-    """Compare IsolationForest scores for two prices outside the baseline."""
-    baseline = np.asarray([1000, 1010, 990, 1000, 1000], dtype=float).reshape(-1, 1)
-    test_prices = np.asarray([[1200.0], [5000.0]])
+    """Compare scores for prices inside and outside the baseline range."""
+    baseline = np.asarray(SCORE_COMPARISON_BASELINE, dtype=float).reshape(-1, 1)
+    test_prices = np.asarray(SCORE_COMPARISON_PRICES, dtype=float).reshape(-1, 1)
 
     print("\nExtreme-price score comparison")
     print("-" * 65)
@@ -90,7 +72,7 @@ def compare_extreme_price_scores() -> None:
 
         print(f"\nrandom_state={random_state}")
         for price, score, prediction in zip(
-            [1200, 5000],
+            SCORE_COMPARISON_PRICES,
             scores,
             predictions,
             strict=True,
@@ -127,13 +109,13 @@ def calculate_metrics(
 
 
 def main() -> None:
-    expected_labels = [fixture["expected_anomaly"] for fixture in FIXTURES]
+    expected_labels = [fixture["expected_anomaly"] for fixture in ANOMALY_COMPARISON_FIXTURES]
     zscore_predictions = []
 
     print("Per-product synthetic anomaly detector comparison")
     print("=" * 65)
 
-    for fixture in FIXTURES:
+    for fixture in ANOMALY_COMPARISON_FIXTURES:
         prices = fixture["prices"]
 
         if len(prices) < MIN_HISTORY_LENGTH:
@@ -168,7 +150,7 @@ def main() -> None:
         print(f"\nIsolationForest predictions (random_state={random_state})")
         print("-" * 65)
 
-        for fixture in FIXTURES:
+        for fixture in ANOMALY_COMPARISON_FIXTURES:
             flagged = predict_latest_with_isolation_forest(
                 fixture["prices"],
                 random_state,

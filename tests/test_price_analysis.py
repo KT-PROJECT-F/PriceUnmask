@@ -2,7 +2,10 @@ import pandas as pd
 import pytest
 
 from backend.analysis.price_drop import detect_price_drop
-from backend.analysis.price_history_utils import get_valid_price_history
+from backend.analysis.price_history_utils import (
+    calculate_percentage,
+    get_valid_price_history,
+)
 from backend.analysis.price_position import summarize_price_position
 from backend.analysis.price_trend import calculate_price_trend
 
@@ -707,7 +710,49 @@ def test_price_position_insufficient_history():
     assert result.status == "insufficient_history"
     assert result.lowest_price_minor is None
     assert result.highest_price_minor is None
-    assert result.current_price_minor is None
+    assert result.current_price_minor == 100
     assert result.percent_above_lowest is None
     assert result.is_at_lowest is None
     assert result.valid_reading_count == 1
+
+
+@pytest.mark.parametrize("prices", [[100, 0], [None, 100]])
+def test_price_position_insufficient_after_filtering(prices):
+    result = summarize_price_position(make_history(prices))
+
+    assert result.status == "insufficient_history"
+    assert result.current_price_minor == 100
+    assert result.lowest_price_minor is None
+    assert result.highest_price_minor is None
+    assert result.percent_above_lowest is None
+    assert result.is_at_lowest is None
+    assert result.valid_reading_count == 1
+
+
+def test_price_position_empty_history():
+    history = pd.DataFrame(columns=["scraped_at", "current_price_minor"])
+
+    result = summarize_price_position(history)
+
+    assert result.status == "insufficient_history"
+    assert result.current_price_minor is None
+    assert result.valid_reading_count == 0
+    assert result.lowest_price_minor is None
+    assert result.highest_price_minor is None
+
+
+def test_price_position_missing_required_column():
+    history = pd.DataFrame({"current_price_minor": [100, 120]})
+
+    with pytest.raises(ValueError, match="scraped_at"):
+        summarize_price_position(history)
+
+
+def test_calculate_percentage_uses_half_up_rounding():
+    assert calculate_percentage(1, 32) == 3.13
+
+
+@pytest.mark.parametrize("base_price", [0, -1])
+def test_calculate_percentage_rejects_non_positive_base_price(base_price):
+    with pytest.raises(ValueError, match="Base price must be greater than zero"):
+        calculate_percentage(10, base_price)

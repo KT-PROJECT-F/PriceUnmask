@@ -39,6 +39,15 @@ def calculate_percentage(
     return float(percentage)
 
 
+def validate_price_history_columns(history: pd.DataFrame) -> None:
+    """Raise ValueError when required price-history columns are missing."""
+    required_columns = {"scraped_at", "current_price_minor"}
+    missing = required_columns - set(history.columns)
+
+    if missing:
+        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+
+
 def get_valid_price_history(history: pd.DataFrame) -> pd.DataFrame:
     """
     Return price history containing only valid price records.

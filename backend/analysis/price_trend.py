@@ -8,6 +8,7 @@ from .price_history_utils import (
     TrendDirection,
     compare_first_and_latest_prices,
     get_valid_price_history,
+    validate_price_history_columns,
 )
 
 
@@ -24,11 +25,7 @@ class PriceTrendResult:
 def calculate_price_trend(history: pd.DataFrame) -> PriceTrendResult:
     """Compare the earliest and latest valid prices."""
 
-    required_columns = {"scraped_at", "current_price_minor"}
-    missing = required_columns - set(history.columns)
-
-    if missing:
-        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+    validate_price_history_columns(history)
 
     valid_history = get_valid_price_history(history)
 

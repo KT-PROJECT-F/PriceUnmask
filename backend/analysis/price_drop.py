@@ -9,6 +9,7 @@ from .price_history_utils import (
     STABLE_THRESHOLD_PCT,
     calculate_percentage,
     get_valid_price_history,
+    validate_price_history_columns,
 )
 
 PriceDropStatus = Literal[
@@ -38,11 +39,7 @@ def detect_price_drop(history: pd.DataFrame) -> PriceDropResult:
     Percentages are rounded to two decimals before threshold comparison.
     """
 
-    required_columns = {"scraped_at", "current_price_minor"}
-    missing = required_columns - set(history.columns)
-
-    if missing:
-        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+    validate_price_history_columns(history)
 
     valid_history = get_valid_price_history(history)
 

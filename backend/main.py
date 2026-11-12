@@ -11,6 +11,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, status
 from fastapi import Path as FastAPIPath
 from fastapi.encoders import jsonable_encoder
@@ -22,6 +23,8 @@ from starlette.responses import JSONResponse
 
 from backend import converters
 from backend.analysis.anomaly_service import summarize_anomalies
+from backend.analysis.price_drop import detect_price_drop
+from backend.analysis.price_trend import calculate_price_trend
 from backend.config import settings
 from backend.db import crud
 from backend.db.database import get_session, init_db
@@ -29,8 +32,11 @@ from backend.scheduler.jobs import run_scrape_cycle_for_run
 from backend.schemas import (
     ErrorOut,
     HistoryOut,
+    PriceDropOut,
     ProductOut,
+    ProductTrendOut,
     ScrapeRunOut,
+    TrendOverviewOut,
     TrustScoreOut,
 )
 
@@ -191,6 +197,39 @@ def get_product_history(
 
 
 @app.get(
+    "/api/products/{product_id}/price-drop",
+    response_model=PriceDropOut,
+)
+def get_product_price_drop(
+    product_id: int = FastAPIPath(
+        ge=1,
+        le=MAX_PRODUCT_ID,
+    ),
+    session: Session = Depends(get_session),  # noqa: B008
+) -> PriceDropOut:
+    product = crud.get_product(session, product_id)
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
+
+    snapshots = crud.get_history(session, product_id)
+    history_df = converters.snapshots_to_dataframe(snapshots)
+    result = detect_price_drop(history_df)
+
+    return PriceDropOut(
+        product_id=product_id,
+        status=result.status,
+        previous_price_minor=result.previous_price_minor,
+        current_price_minor=result.current_price_minor,
+        drop_amount_minor=result.drop_amount_minor,
+        drop_percent=result.drop_percent,
+    )
+
+
+@app.get(
     "/api/products/{product_id}/trust-score",
     response_model=TrustScoreOut,
 )
@@ -270,6 +309,89 @@ def start_scrape_run(
     background_tasks.add_task(run_scrape_cycle_for_run, run.id)
 
     return run
+
+
+@app.get(
+    "/api/trends/overview",
+    response_model=TrendOverviewOut,
+)
+def get_trends_overview(
+    period_days: int = Query(
+        default=30,
+        ge=1,
+        le=MAX_HISTORY_DAYS,
+    ),
+    session: Session = Depends(get_session),  # noqa: B008
+) -> TrendOverviewOut:
+    since = datetime.now(UTC) - timedelta(days=period_days)
+
+    trend_rows = crud.get_product_trends(session, since)
+
+    trends = []
+
+    for row in trend_rows:
+        first_snapshot_id = row["first_snapshot_id"]
+        latest_snapshot_id = row["latest_snapshot_id"]
+
+        history_records = []
+
+        if first_snapshot_id is not None:
+            history_records.append(
+                {
+                    "scraped_at": row["first_scraped_at"],
+                    "current_price_minor": row["first_price_minor"],
+                }
+            )
+
+        if latest_snapshot_id is not None and latest_snapshot_id != first_snapshot_id:
+            history_records.append(
+                {
+                    "scraped_at": row["latest_scraped_at"],
+                    "current_price_minor": row["latest_price_minor"],
+                }
+            )
+
+        history_df = pd.DataFrame(
+            history_records,
+            columns=["scraped_at", "current_price_minor"],
+        )
+
+        result = calculate_price_trend(history_df)
+
+        trends.append(
+            {
+                "product_id": row["product_id"],
+                "product_name": row["product_name"],
+                "currency": row["currency"],
+                "first_price_minor": result.first_price_minor,
+                "latest_price_minor": result.latest_price_minor,
+                "change_minor": result.change_amount_minor,
+                "change_percent": result.change_percent,
+                "direction": result.direction,
+            }
+        )
+
+    decreasing = sum(item["direction"] == "decreasing" for item in trends)
+    increasing = sum(item["direction"] == "increasing" for item in trends)
+    stable = sum(item["direction"] == "stable" for item in trends)
+    insufficient = sum(item["direction"] == "insufficient_history" for item in trends)
+
+    valid_changes = [
+        item["change_percent"] for item in trends if item["change_percent"] is not None
+    ]
+
+    average_change = round(sum(valid_changes) / len(valid_changes), 2) if valid_changes else None
+
+    return TrendOverviewOut(
+        period_days=period_days,
+        products_analyzed=len(trends),
+        products_decreasing=decreasing,
+        products_increasing=increasing,
+        products_stable=stable,
+        products_insufficient_history=insufficient,
+        average_change_percent=average_change,
+        products=[ProductTrendOut(**item) for item in trends],
+    )
 
 
 # Mount the dashboard LAST so it does not shadow /api routes.

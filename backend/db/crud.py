@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from backend.db.models import PriceSnapshot, Product, ScrapeRun
 from backend.scraper.product_scraper import ScrapedProduct
@@ -279,3 +279,92 @@ def mark_stale_runs_failed(
 
     session.commit()
     return len(stale_runs)
+
+
+def get_product_trends(
+    session: Session,
+    since: datetime,
+) -> list[dict]:
+    """Return trend snapshots for all active products, including products without valid history."""
+
+    if since.tzinfo is None or since.utcoffset() is None:
+        raise ValueError("since must be a timezone-aware datetime")
+
+    since = since.astimezone(UTC)
+
+    first_snapshot_id = (
+        select(PriceSnapshot.id)
+        .where(
+            PriceSnapshot.product_id == Product.id,
+            PriceSnapshot.scraped_at >= since,
+            PriceSnapshot.current_price_minor > 0,
+        )
+        .order_by(
+            PriceSnapshot.scraped_at.asc(),
+            PriceSnapshot.id.asc(),
+        )
+        .limit(1)
+        .correlate(Product)
+        .scalar_subquery()
+    )
+
+    latest_snapshot_id = (
+        select(PriceSnapshot.id)
+        .where(
+            PriceSnapshot.product_id == Product.id,
+            PriceSnapshot.scraped_at >= since,
+            PriceSnapshot.current_price_minor > 0,
+        )
+        .order_by(
+            PriceSnapshot.scraped_at.desc(),
+            PriceSnapshot.id.desc(),
+        )
+        .limit(1)
+        .correlate(Product)
+        .scalar_subquery()
+    )
+
+    FirstSnapshot = aliased(PriceSnapshot)
+    LatestSnapshot = aliased(PriceSnapshot)
+
+    statement = (
+        select(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Product.currency.label("currency"),
+            FirstSnapshot.id.label("first_snapshot_id"),
+            FirstSnapshot.scraped_at.label("first_scraped_at"),
+            FirstSnapshot.current_price_minor.label("first_price_minor"),
+            LatestSnapshot.id.label("latest_snapshot_id"),
+            LatestSnapshot.scraped_at.label("latest_scraped_at"),
+            LatestSnapshot.current_price_minor.label("latest_price_minor"),
+        )
+        .select_from(Product)
+        .outerjoin(
+            FirstSnapshot,
+            FirstSnapshot.id == first_snapshot_id,
+        )
+        .outerjoin(
+            LatestSnapshot,
+            LatestSnapshot.id == latest_snapshot_id,
+        )
+        .where(Product.is_active.is_(True))
+        .order_by(Product.id)
+    )
+
+    rows = session.execute(statement).all()
+
+    return [
+        {
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "currency": row.currency,
+            "first_snapshot_id": row.first_snapshot_id,
+            "first_scraped_at": row.first_scraped_at,
+            "first_price_minor": row.first_price_minor,
+            "latest_snapshot_id": row.latest_snapshot_id,
+            "latest_scraped_at": row.latest_scraped_at,
+            "latest_price_minor": row.latest_price_minor,
+        }
+        for row in rows
+    ]

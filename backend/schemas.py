@@ -6,7 +6,7 @@ Prices go over the wire as minor units (int); the frontend formats them.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -69,3 +69,39 @@ class ErrorDetail(BaseModel):
 
 class ErrorOut(BaseModel):
     error: ErrorDetail
+
+
+class ProductTrendOut(BaseModel):
+    product_id: int
+    product_name: str
+    currency: str
+    first_price_minor: int | None
+    latest_price_minor: int | None
+    change_minor: int | None
+    change_percent: float | None
+    direction: Literal[
+        "decreasing",
+        "increasing",
+        "stable",
+        "insufficient_history",
+    ]
+
+
+class TrendOverviewOut(BaseModel):
+    period_days: int
+    products_analyzed: int
+    products_decreasing: int
+    products_increasing: int
+    products_stable: int
+    products_insufficient_history: int
+    average_change_percent: float | None
+    products: list[ProductTrendOut]
+
+
+class PriceDropOut(BaseModel):
+    product_id: int
+    status: Literal["insufficient_history", "price_dropped", "no_drop"]
+    previous_price_minor: int | None
+    current_price_minor: int | None
+    drop_amount_minor: int | None
+    drop_percent: float | None

@@ -49,10 +49,13 @@ signature without a PR tagged `contract-change` that the affected owners review.
 | Module | Public contract | Depends on |
 |---|---|---|
 | `scraper/product_scraper.py` | `ScrapedProduct`, `SourceAdapter`, `parse_price_to_minor`, `parse_listing`, `fetch_html`, `scrape` | nothing |
-| `db/crud.py` | `start_scrape_run`, `finish_scrape_run`, `upsert_product_and_snapshot`, `list_products`, `get_product`, `get_history`, `list_scrape_runs` | models |
+| `db/crud.py` | `start_scrape_run`, `finish_scrape_run`, `upsert_product_and_snapshot`, `list_products`, `get_product`, `get_history`, `list_scrape_runs`, `get_product_trends` | models |
 | `scheduler/jobs.py` | `run_scrape_cycle() -> int`, `build_scheduler()` | scraper, crud |
 | `analysis/trust_score.py` | `compute_signals(df)`, `compute_trust_score(df) -> TrustScore` | pandas only |
 | `analysis/anomaly_model.py` | `detect_anomalies(df) -> AnomalyResult` | pandas, sklearn |
+| `analysis/price_history_utils.py` | `get_valid_price_history`, `compare_first_and_latest_prices` | pandas |
+| `analysis/price_drop.py` | `detect_price_drop(history) -> PriceDropResult` | price_history_utils |
+| `analysis/price_trend.py` | `calculate_price_trend` | price_history_utils |
 | `schemas.py` + `main.py` | endpoints in section 5 | crud, analysis |
 | `frontend/` | consumes section 5 only | API |
 
@@ -79,6 +82,8 @@ scheduler or database code.
 | GET | `/api/products/{id}` | `ProductOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/products/{id}/history?days=` | `HistoryOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
 | GET | `/api/products/{id}/trust-score` | `TrustScoreOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/products/{id}/price-drop` | `PriceDropOut` | 404 `PRODUCT_NOT_FOUND`; 422 `VALIDATION_ERROR` |
+| GET | `/api/trends/overview?period_days=` | `TrendOverviewOut` | 422 `VALIDATION_ERROR` |
 | GET | `/api/scrape-runs` | `list[ScrapeRunOut]` | - |
 | POST | `/api/scrape/run` | `ScrapeRunOut` (202 Accepted) | 409 `SCRAPE_ALREADY_RUNNING`; 500 `INTERNAL_SERVER_ERROR` |
 
@@ -96,6 +101,73 @@ All API errors use this response envelope:
 Product list responses include active products only. Product detail requests can return inactive products when requested by ID.
 
 `ProductOut` includes `trust_label`, calculated using the same trust-score logic as the trust-score endpoint and the product's loaded price snapshots.
+
+`GET /api/trends/overview?period_days=` returns trend information for all active
+products, including products without sufficient price history.
+
+Trend overview rules:
+
+- `period_days` selects the lookback window beginning at the current UTC time minus
+  the requested number of days.
+- Only snapshots with a positive `current_price_minor` in the lookback window are
+  used for trend calculations.
+- The first and latest valid snapshots determine the price change.
+- The percentage change is rounded to two decimal places before applying the
+  stability threshold.
+- Absolute percentage changes below 1% are classified as `stable`.
+- Changes at or above 1% are classified as `increasing` or `decreasing`.
+- Products with fewer than two valid snapshots are returned with
+  `insufficient_history`; their price and change fields are `null`.
+- Inactive products are excluded.
+
+Trend directions:
+
+| Direction | Meaning |
+|---|---|
+| `decreasing` | The latest price is lower than the first price by at least 1%. |
+| `increasing` | The latest price is higher than the first price by at least 1%. |
+| `stable` | The percentage change is below the 1% stability threshold. |
+| `insufficient_history` | Fewer than two valid snapshots are available. |
+
+`products_analyzed` counts all active products included in the overview,
+including products with `insufficient_history`.
+
+`products_decreasing`, `products_increasing`, `products_stable`, and
+`products_insufficient_history` count products in each direction/status.
+These counts add up to `products_analyzed`.
+
+`average_change_percent` is the arithmetic mean of percentage changes for
+products with sufficient history. Products with `insufficient_history` are
+excluded. It is `null` when no products have sufficient history.
+
+`GET /api/products/{product_id}/price-drop` checks whether the product's latest valid positive price represents a qualifying decrease.
+
+Price-drop calculation rules:
+
+- The latest valid positive price is compared with the reference price at the start of the latest falling stretch.
+- Equal consecutive prices remain part of the falling stretch.
+- If the latest price has increased, it is compared with the immediately previous valid positive price.
+- The drop percentage is rounded to two decimal places.
+- A decrease of less than 1% is treated as no qualifying drop. A decrease of at least 1% is treated as a price drop.
+
+Price-drop status meanings:
+
+| Status | Meaning |
+|---|---|
+| `insufficient_history` | Fewer than two valid positive price snapshots are available. All price and drop fields are `null`. |
+| `price_dropped` | The calculated decrease is at least 1%. Drop amount and percentage are calculated using the reference price and latest price. |
+| `no_drop` | No qualifying decrease is detected. Drop amount and percentage are `0` and `0.0`, respectively. |
+
+The `PriceDropOut` response includes:
+
+- `product_id`: Product identifier.
+- `status`: Price-drop status.
+- `previous_price_minor`: Reference price used for the price-drop calculation, in minor units (paise). This is the price at the start of the latest falling stretch, or the immediately previous valid price when the latest price has increased.
+- `current_price_minor`: Latest valid price in minor units (paise).
+- `drop_amount_minor`: Difference between previous and current prices in minor units.
+- `drop_percent`: Percentage decrease, rounded to two decimal places.
+
+A product that does not exist returns 404 `PRODUCT_NOT_FOUND`. Invalid product IDs return 422 `VALIDATION_ERROR`.
 
 `TrustScoreOut` includes the trust score and label. When the result is `no_discount`, the score is `null`.
 

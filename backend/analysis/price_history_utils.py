@@ -24,6 +24,30 @@ class PriceComparisonResult:
     direction: TrendDirection
 
 
+def calculate_percentage(
+    amount: int,
+    base_price: int,
+) -> float:
+    """Calculate a percentage rounded to two decimal places."""
+    if base_price <= 0:
+        raise ValueError("Base price must be greater than zero")
+
+    percentage = (Decimal(amount) * Decimal("100") / Decimal(base_price)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    return float(percentage)
+
+
+def validate_price_history_columns(history: pd.DataFrame) -> None:
+    """Raise ValueError when required price-history columns are missing."""
+    required_columns = {"scraped_at", "current_price_minor"}
+    missing = required_columns - set(history.columns)
+
+    if missing:
+        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+
+
 def get_valid_price_history(history: pd.DataFrame) -> pd.DataFrame:
     """
     Return price history containing only valid price records.
@@ -95,11 +119,7 @@ def compare_first_and_latest_prices(
 
     change_amount = latest_price - first_price
 
-    change_percent_decimal = (
-        Decimal(change_amount) * Decimal("100") / Decimal(first_price)
-    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    change_percent = float(change_percent_decimal)
+    change_percent = calculate_percentage(change_amount, first_price)
 
     if abs(change_percent) < STABLE_THRESHOLD_PCT:
         direction = "stable"

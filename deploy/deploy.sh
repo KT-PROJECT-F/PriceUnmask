@@ -32,12 +32,12 @@ APP_DIR="/opt/priceunmask"
 CURRENT="$APP_DIR/current"
 RELEASES="$APP_DIR/releases"
 SHARED="$APP_DIR/shared"
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
+TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
 NEW_RELEASE="$RELEASES/$TIMESTAMP"
 PREV_RELEASE="$(readlink "$CURRENT" || echo "")"
 
 # Runs as priceunmask user (re-exec above). All files owned by priceunmask.
-mkdir -p "$RELEASES" "$SHARED/data/exports"
+mkdir -p "$RELEASES"
 
 # 1. Clone the exact commit, not the tip of the dev branch.
 # Deploying the branch tip is unsafe: a merge during deploy
@@ -51,6 +51,7 @@ cd "$NEW_RELEASE"
 echo "Checked out $(git rev-parse HEAD)"
 
 # Shared files live outside releases so pruning never deletes them.
+# App reads .env via this link at startup.
 ln -sfn "/etc/priceunmask/priceunmask.env" "$NEW_RELEASE/.env"
 
 # Clone brings a real data/ folder (data/snapshots/ is tracked).
@@ -62,11 +63,7 @@ ln -sfn "$SHARED/data" "$NEW_RELEASE/data"
 python3 -m venv "$NEW_RELEASE/.venv"
 "$NEW_RELEASE/.venv/bin/pip" install -r "$NEW_RELEASE/requirements.txt"
 
-# 2. DB backup.
-# export_db.py takes no arguments and has no --out flag.
-# It reads DATABASE_URL from settings (.env) and writes to ./data/exports/.
-# Which is a symlink to shared/data/exports/.
-# First deploy: no .db file yet, so export_db would fail + set -e kills deploy.
+# 2. DB backup. - copy live DB file, no export script used.
 # Skip backup if no DB exists.
 DB_FILE="$SHARED/data/priceunmask.db"
 if [ -f "$DB_FILE" ]; then
@@ -90,7 +87,8 @@ check_health() {
   return 1
 }
 # 3. Point current at the new release.
-ln -sfn "$NEW_RELEASE" "$CURRENT"
+ln -sfn "$NEW_RELEASE" "$CURRENT.new"
+mv -Tf "$CURRENT.new" "$CURRENT"
 
 # 4. Restart the API.
 # Wrapped in if-! so a restart failure rolls back instead of
@@ -113,15 +111,15 @@ if ! sudo -n systemctl restart priceunmask.service; then
 fi
 
 sudo -n systemctl reload nginx || true
-# The collector also runs from current, so restart it too.
+
+
+# 5. Health-check with a per-request timeout so curl cannot hang forever
+if check_health; then
+  echo "Deploy PASSED"
+  # The collector also runs from current, so restart it too.
 # Otherwise it keeps running from a release we are about to prune.
 # try-restart: if collector was stopped on purpose, don't start it again.
 sudo -n systemctl try-restart priceunmask-collector.service || true
-
-# 5. Health-check with a per-request timeout so curl cannot hang forever
-
-if check_health; then
-  echo "Deploy PASSED"
 else
   echo "FAILED - Rolling back to $PREV_RELEASE"
   # 6. On the very first deploy there is no previous release to roll back to.
@@ -134,7 +132,7 @@ else
     echo "Rollback FAILED - previous release would not restart, manual fix needed!"
     exit 1
   fi
-  sudo -n systemctl try-restart priceunmask-collector.service || true
+  sudo -n systemctl restart priceunmask-collector.service || true
   if check_health; then echo "Rollback PASSED"; exit 1; fi
   echo "Rollback FAILED - manual fix needed!"
   exit 1

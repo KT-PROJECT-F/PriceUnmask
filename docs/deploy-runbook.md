@@ -1042,28 +1042,40 @@ If you cannot verify that GitHub Actions collection is disabled and idle, leave 
 
 ## 14. Application rollback
 
-**Deferred:** A safe, tested application rollback procedure is out of scope for this PR and will be implemented in a follow-up PR together with `deploy.sh`.
+`deploy/deploy.sh` rolls back automatically when a new release fails its health check: it points `current` back at the previous release, restarts the API and checks health again.
 
-**Do not use this section to roll back the existing release on the VM.**
+To roll back by hand, for example when a release passed the health check but turns out to be wrong:
 
-The release-based layout may retain previous application versions under `/opt/priceunmask/releases`. However, keeping them does not establish that a rollback is safe.
+1. Find the commit to go back to. Each release folder is a Git checkout:
 
-The follow-up implementation must address:
+   ```bash
+   sudo ls -lt /opt/priceunmask/releases/
+   sudo -u priceunmask git -C /opt/priceunmask/releases/<release> rev-parse HEAD
+   ```
 
-- Release directory ownership and permissions.
-- Safe detection of the previous release from the current symbolic link.
-- API service restart and health verification, including a bounded startup wait.
-- Compatibility between the previous application version and the current shared database.
-- Failure handling that does not leave the application pointing to an invalid release.
+2. Deploy that commit again. Once the workflow is switched on: **Actions → Deploy to VPS → Run workflow**, and paste the 40-character SHA. Until then, on the host:
 
-No application rollback test is claimed for this PR. A rollback procedure must be implemented and safely tested before it is used to replace or restore the existing release on the VM.
+   ```bash
+   bash /tmp/deploy/deploy.sh <40-character-sha>
+   ```
+
+   This builds a new release from the old commit, health-checks it and switches `current`. If that release fails too, the script rolls back to the release that was live before it.
+
+3. Check the result:
+
+   ```bash
+   sudo readlink /opt/priceunmask/current
+   curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8000/api/health
+   ```
+
+The database is not rolled back. If the bad release changed data, restore the matching `/opt/priceunmask/backups/pre-deploy-<timestamp>.db` with Section 13.
 
 ## 15. Deployment limitations
 
 - Tested on Ubuntu 24.04 under WSL2, not on a public VPS.
 - WSL2 services depend on the local Windows machine and WSL instance being available.
 - No public-domain, TLS, firewall, or external VPS deployment test has been completed.
-- `deploy/deploy.sh` is not yet available in this working tree; its automated deployment flow remains untested and is deferred to a follow-up PR.
+- `deploy/deploy.sh` implements the automated release deployment flow, but it has not yet been tested on the WSL2 VM.
 - Backup creation and integrity verification were tested. A full restore drill remains to be performed.
-- Application rollback is deferred to a follow-up PR and has not been implemented or tested.
+- Automatic rollback is implemented in `deploy/deploy.sh`; the manual rollback procedure has not yet been tested on the WSL2 VM with a deliberately broken release.
 - The runbook describes the intended release-based deployment procedure. Do not treat every documented step as tested merely because the API and collector were previously run successfully on WSL2.

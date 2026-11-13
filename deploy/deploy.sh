@@ -33,7 +33,7 @@ CURRENT="$APP_DIR/current"
 RELEASES="$APP_DIR/releases"
 SHARED="$APP_DIR/shared"
 TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
-NEW_RELEASE="$RELEASES/$TIMESTAMP"
+NEW_RELEASE="$RELEASES/$TIMESTAMP-${COMMIT_SHA:0:7}"
 PREV_RELEASE="$(readlink "$CURRENT" || echo "")"
 
 # Runs as priceunmask user (re-exec above). All files owned by priceunmask.
@@ -63,16 +63,16 @@ ln -sfn "$SHARED/data" "$NEW_RELEASE/data"
 python3 -m venv "$NEW_RELEASE/.venv"
 "$NEW_RELEASE/.venv/bin/pip" install -r "$NEW_RELEASE/requirements.txt"
 
-# 2. DB backup. - copy live DB file, no export script used.
+# 2. DB backup with sqlite3 .backup: a consistent snapshot, safe while the collector writes.
 # Skip backup if no DB exists.
 DB_FILE="$SHARED/data/priceunmask.db"
 if [ -f "$DB_FILE" ]; then
   echo "Backing up DB..."
-    BACKUP="$APP_DIR/backups/pre-deploy-$TIMESTAMP.db"
+  BACKUP="$APP_DIR/backups/pre-deploy-$TIMESTAMP.db"
   sqlite3 "$DB_FILE" ".backup '$BACKUP'"
   # Keep the 5 newest pre-deploy backups. Manual backups (priceunmask-*.db) are left alone.
   ls -1t "$APP_DIR"/backups/pre-deploy-*.db | tail -n +6 | xargs -r rm --
-  else
+else
   echo "First deploy - no DB file yet, skipping backup"
 fi
 
@@ -100,9 +100,9 @@ if ! sudo -n systemctl restart priceunmask.service; then
     echo "ERROR: No previous release to rollback to. Manual fix needed!"
     exit 1
   fi
-    ln -sfn "$PREV_RELEASE" "$CURRENT"
+  ln -sfn "$PREV_RELEASE" "$CURRENT.new"
+  mv -Tf "$CURRENT.new" "$CURRENT"
   if sudo -n systemctl restart priceunmask.service && check_health; then
-    sudo -n systemctl try-restart priceunmask-collector.service || true
     echo "Rollback PASSED"
   else
     echo "Rollback FAILED - manual fix needed!"
@@ -116,10 +116,9 @@ sudo -n systemctl reload nginx || true
 # 5. Health-check with a per-request timeout so curl cannot hang forever
 if check_health; then
   echo "Deploy PASSED"
-  # The collector also runs from current, so restart it too.
-# Otherwise it keeps running from a release we are about to prune.
-# try-restart: if collector was stopped on purpose, don't start it again.
-sudo -n systemctl try-restart priceunmask-collector.service || true
+  # The collector runs from current, so move it to the new release.
+  # try-restart: if the collector was stopped on purpose, don't start it again.
+  sudo -n systemctl try-restart priceunmask-collector.service || true
 else
   echo "FAILED - Rolling back to $PREV_RELEASE"
   # 6. On the very first deploy there is no previous release to roll back to.
@@ -127,12 +126,12 @@ else
     echo "ERROR: No previous release to rollback to. current is broken, manual fix needed!"
     exit 1
   fi
-    ln -sfn "$PREV_RELEASE" "$CURRENT"
+  ln -sfn "$PREV_RELEASE" "$CURRENT.new"
+  mv -Tf "$CURRENT.new" "$CURRENT"
   if ! sudo -n systemctl restart priceunmask.service; then
     echo "Rollback FAILED - previous release would not restart, manual fix needed!"
     exit 1
   fi
-  sudo -n systemctl restart priceunmask-collector.service || true
   if check_health; then echo "Rollback PASSED"; exit 1; fi
   echo "Rollback FAILED - manual fix needed!"
   exit 1

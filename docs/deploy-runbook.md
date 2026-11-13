@@ -515,7 +515,7 @@ sudo systemctl restart priceunmask.service
 
 HEALTHY=0
 
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 10); do
     if curl --fail --silent --max-time 5 \
         http://127.0.0.1:8000/api/health >/dev/null; then
         echo "API is healthy."
@@ -523,8 +523,8 @@ for attempt in $(seq 1 30); do
         break
     fi
 
-    echo "Waiting for API ($attempt/30)..."
-    sleep 2
+    echo "Waiting for API ($attempt/10)..."
+    sleep 1
 done
 
 if [ "$HEALTHY" -eq 1 ]; then
@@ -569,13 +569,13 @@ if [ "$NEW_PID" = "0" ] || [ "$NEW_PID" = "$OLD_PID" ]; then
     exit 1
 fi
 
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 10); do
     if curl --fail --silent --max-time 5 http://127.0.0.1:8000/api/health; then
         echo
         echo "API restarted and is healthy."
         exit 0
     fi
-    sleep 2
+    sleep 1
 done
 
 echo "STOP: API restarted but the health check failed."

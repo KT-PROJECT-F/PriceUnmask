@@ -1,0 +1,19 @@
+[Unit]
+Description=PriceUnmask APScheduler collector
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=priceunmask
+Group=priceunmask
+WorkingDirectory=/opt/priceunmask/current
+EnvironmentFile=/etc/priceunmask/priceunmask.env
+ExecStart=/opt/priceunmask/current/.venv/bin/python -m backend.scheduler.jobs
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

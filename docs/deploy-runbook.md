@@ -221,7 +221,7 @@ Verify the preserved directory before continuing. Keep it until the new release,
 
 **Important:** Do not paste the commands in Sections 5–8 directly into an interactive Bash shell. They use `set -euo pipefail` and `exit 1` for failure handling.
 
-Until the deployment script in the follow-up PR is available, copy the Bash commands from Sections 5–8, in order, into a temporary script (for example, `/tmp/priceunmask-deploy-manual.sh`). Omit Markdown fences and expected-output examples. Review and replace all placeholder values before running it.
+On a first installation, complete the standalone environment-file setup in Section 6 before preparing the deployment script. Then copy the Bash commands from Sections 5–8, in order, into one temporary script (for example, `/tmp/priceunmask-deploy-manual.sh`). Omit Markdown fences and expected-output examples. Review and replace all placeholder values before running it. Do not include Section 6's first-install setup block in this script; its environment verification block belongs in the deployment script.
 
 Run the temporary script using:
 
@@ -229,7 +229,7 @@ Run the temporary script using:
 bash /tmp/priceunmask-deploy-manual.sh
 ```
 
-For a first installation, create and verify the environment file as described in Section 6 before running the deployment script.
+On an upgrade, preserve and verify the existing environment file. Do not run Section 6's first-install setup block.
 
 This manual procedure does not implement application rollback. If the API does not become healthy after activation, do not start or restart the collector, do not repoint `current` manually, and follow the failure instructions in Section 7. Rollback is deferred to the follow-up deployment script and is not claimed as tested here.
 
@@ -426,7 +426,7 @@ If the API does not become healthy, the Section 7 health check stops the manual 
 
 The application reads these keys from `/etc/priceunmask/priceunmask.env`: `DATABASE_URL`, `SCRAPE_TARGET_URL`, `SCRAPE_INTERVAL_HOURS`, `SCRAPE_USER_AGENT`, `SCRAPE_DELAY_SECONDS`, `SCRAPE_MAX_PAGES`, and `STALE_RUN_MINUTES`. The tracked `.env.example` in `SOURCE_DIR` lists these keys and development defaults.
 
-For an existing installation, preserve the file. Do not recreate, truncate, or overwrite it. Check that it exists and is non-empty before checking its ownership, permissions, and readability:
+Preserve the file on upgrades. Do not recreate, truncate, or overwrite it. Include this verification block in the combined Sections 5–8 deployment script. For a first installation, first create and configure the file by running the separate setup block below; the verification will then pass:
 
 ```bash
 if ! sudo test -s /etc/priceunmask/priceunmask.env; then
@@ -452,32 +452,35 @@ DATABASE_URL=sqlite:////opt/priceunmask/shared/data/priceunmask.db
 
 If the environment file is missing, empty, unreadable, or points to an unexpected database, stop and investigate before proceeding. Do not overwrite an existing environment file to resolve the problem.
 
-For a genuinely new installation, create the file before running the deployment script. Save this block to `/tmp/priceunmask-env-create.sh` and run it with `bash /tmp/priceunmask-env-create.sh`. Do not run it if the destination already exists:
+For a genuinely new installation only, run this standalone setup block before preparing or running the combined deployment script. Set `SOURCE_DIR` to the absolute path of the checked-out repository on the Ubuntu VM. Do not run this block on an upgrade or if the environment file already exists:
 
 ```bash
 set -euo pipefail
+
+SOURCE_DIR="/path/to/priceunmask-release-check"
+
+if ! git -C "$SOURCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "STOP: SOURCE_DIR is not a Git repository."
+    exit 1
+fi
 
 if sudo test -e /etc/priceunmask/priceunmask.env || sudo test -L /etc/priceunmask/priceunmask.env; then
     echo "STOP: Environment file already exists; do not overwrite it."
     exit 1
 fi
 
+if ! test -s "$SOURCE_DIR/.env.example"; then
+    echo "STOP: $SOURCE_DIR/.env.example is missing or empty."
+    exit 1
+fi
+
 sudo install -o root -g priceunmask -m 640 \
     "$SOURCE_DIR/.env.example" \
-    /tmp/priceunmask.env
-sudoedit /tmp/priceunmask.env
-```
-
-In the temporary file, set `DATABASE_URL=sqlite:////opt/priceunmask/shared/data/priceunmask.db` and set `SCRAPE_TARGET_URL` to the URL of an approved, supported source. Set the remaining collection values for the deployment. The default `SCRAPE_TARGET_URL` is empty; if it remains unset, the collector raises `ValueError` because no source adapter matches the URL and records a failed scrape run instead of collecting products.
-
-After reviewing the values, install the new file with the required owner and mode:
-
-```bash
-sudo install -o root -g priceunmask -m 640 \
-    /tmp/priceunmask.env \
     /etc/priceunmask/priceunmask.env
-sudo rm /tmp/priceunmask.env
+sudoedit /etc/priceunmask/priceunmask.env
 ```
+
+In `sudoedit`, set `DATABASE_URL=sqlite:////opt/priceunmask/shared/data/priceunmask.db` and set `SCRAPE_TARGET_URL` to the URL of an approved, supported source. Set the remaining collection values for the deployment. The default `SCRAPE_TARGET_URL` is empty; if it remains unset, the collector raises `ValueError` because no source adapter matches the URL and records a failed scrape run instead of collecting products. The file is edited in place under `/etc/priceunmask`; do not copy it to a temporary path.
 
 Verify it with the ownership, mode, readability, and database checks above. Never replace an existing environment file without backing it up and reviewing its contents.
 
@@ -514,23 +517,36 @@ sudo systemctl enable priceunmask.service
 sudo systemctl restart priceunmask.service
 
 HEALTHY=0
+HEALTH_DEADLINE=$((SECONDS + 60))
+ATTEMPT=0
 
-for attempt in $(seq 1 10); do
-    if curl --fail --silent --max-time 5 \
+while (( SECONDS < HEALTH_DEADLINE )); do
+    ATTEMPT=$((ATTEMPT + 1))
+    REMAINING=$((HEALTH_DEADLINE - SECONDS))
+    CURL_TIMEOUT=5
+    if (( REMAINING < CURL_TIMEOUT )); then
+        CURL_TIMEOUT=$REMAINING
+    fi
+
+    if curl --fail --silent --max-time "$CURL_TIMEOUT" \
         http://127.0.0.1:8000/api/health >/dev/null; then
         echo "API is healthy."
         HEALTHY=1
         break
     fi
 
-    echo "Waiting for API ($attempt/10)..."
+    REMAINING=$((HEALTH_DEADLINE - SECONDS))
+    if (( REMAINING <= 0 )); then
+        break
+    fi
+    echo "Waiting for API (attempt $ATTEMPT; $REMAINING seconds remain)..."
     sleep 1
 done
 
 if [ "$HEALTHY" -eq 1 ]; then
     sudo systemctl status priceunmask.service --no-pager
 else
-    echo "STOP: API did not become healthy within 60 seconds."
+    echo "STOP: API did not become healthy within the 60-second deadline."
     sudo journalctl -u priceunmask.service -n 50 --no-pager
     echo "Do not continue with deployment or start the collector."
     exit 1
@@ -590,7 +606,7 @@ The Nginx configuration is stored in the selected release:
 
 `/opt/priceunmask/current/deploy/nginx/priceunmask.conf`
 
-It matches the loopback host used by the Section 10 health check, so that request selects the PriceUnmask server block even when another site is marked `default_server`. Replace `127.0.0.1` with the intended host name when configuring a real domain.
+The PriceUnmask server is configured as the default for port 80, so requests to the VM's IP address and the loopback health-check address select it. If another enabled site is already configured as `default_server`, disable that site only after confirming it is safe to do so; Nginx will reject two defaults for the same listen address and port. Replace the catch-all configuration with an explicit `server_name` when deploying behind a real domain.
 
 Install it:
 
@@ -614,7 +630,15 @@ Check the enabled sites:
 ls -l /etc/nginx/sites-enabled/
 ```
 
-Inspect any existing default site or other server blocks that may conflict with the PriceUnmask configuration. Do not remove an existing site without confirming it is safe to disable.
+Inspect any existing default site or other server blocks that may conflict with the PriceUnmask configuration. If Ubuntu's stock default site is enabled, disable it only after confirming it is not serving other content. Do not remove an existing site without confirming it is safe to disable.
+
+If you confirmed the stock `/etc/nginx/sites-enabled/default` symlink is safe to disable:
+
+```bash
+sudo unlink /etc/nginx/sites-enabled/default
+```
+
+Do not run this command if that path is not the stock symlink or serves content that must remain available.
 
 Validate the configuration before reloading Nginx:
 
@@ -667,25 +691,37 @@ if sudo systemctl is-active --quiet priceunmask-collector.service; then
     sudo systemctl status priceunmask-collector.service --no-pager
 else
     HEALTHY=0
+    HEALTH_DEADLINE=$((SECONDS + 60))
 
-    for attempt in $(seq 1 30); do
-        if curl --fail --silent --max-time 5 \
+    while (( SECONDS < HEALTH_DEADLINE )); do
+        REMAINING=$((HEALTH_DEADLINE - SECONDS))
+        CURL_TIMEOUT=5
+        if (( REMAINING < CURL_TIMEOUT )); then
+            CURL_TIMEOUT=$REMAINING
+        fi
+
+        if curl --fail --silent --max-time "$CURL_TIMEOUT" \
             http://127.0.0.1:8000/api/health >/dev/null; then
             echo "API is healthy."
             HEALTHY=1
             break
         fi
 
-        echo "Waiting for API ($attempt/30)..."
-        sleep 2
+        REMAINING=$((HEALTH_DEADLINE - SECONDS))
+        if (( REMAINING <= 0 )); then
+            break
+        fi
+        echo "Waiting for API ($REMAINING seconds remain)..."
+        sleep 1
     done
 
     if [ "$HEALTHY" -eq 1 ]; then
         sudo systemctl start priceunmask-collector.service
         sudo systemctl status priceunmask-collector.service --no-pager
     else
-        echo "STOP: API did not become healthy within 60 seconds."
+        echo "STOP: API did not become healthy within the 60-second deadline."
         echo "Do not start the collector."
+        exit 1
     fi
 fi
 ```
@@ -960,21 +996,32 @@ Verify API health:
 ```bash
 # Wait up to 60 seconds for the API to become healthy.
 HEALTHY=0
+HEALTH_DEADLINE=$((SECONDS + 60))
 
-for attempt in $(seq 1 30); do
-    if curl --fail --silent --max-time 5 \
+while (( SECONDS < HEALTH_DEADLINE )); do
+    REMAINING=$((HEALTH_DEADLINE - SECONDS))
+    CURL_TIMEOUT=5
+    if (( REMAINING < CURL_TIMEOUT )); then
+        CURL_TIMEOUT=$REMAINING
+    fi
+
+    if curl --fail --silent --max-time "$CURL_TIMEOUT" \
         http://127.0.0.1:8000/api/health >/dev/null; then
         echo "API is healthy."
         HEALTHY=1
         break
     fi
 
-    echo "Waiting for API ($attempt/30)..."
-    sleep 2
+    REMAINING=$((HEALTH_DEADLINE - SECONDS))
+    if (( REMAINING <= 0 )); then
+        break
+    fi
+    echo "Waiting for API ($REMAINING seconds remain)..."
+    sleep 1
 done
 
 if [ "$HEALTHY" -ne 1 ]; then
-    echo "STOP: API did not become healthy within 60 seconds."
+    echo "STOP: API did not become healthy within the 60-second deadline."
     sudo journalctl -u priceunmask.service -n 50 --no-pager
     exit 1
 fi

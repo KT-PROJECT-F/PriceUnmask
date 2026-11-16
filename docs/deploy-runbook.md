@@ -231,7 +231,7 @@ bash /tmp/priceunmask-deploy-manual.sh
 
 On an upgrade, preserve and verify the existing environment file. Do not run Section 6's first-install setup block.
 
-Automatic rollback is implemented in deploy/deploy.sh. The manual rollback procedure has not yet been tested on the WSL2 VM with a deliberately broken release.
+This manual procedure does not roll back by itself. If the API does not become healthy after activation, do not start or restart the collector, do not repoint `current` by hand, and follow the failure instructions in Section 7. To go back to the previous release, use Section 14.
 
 ## 5. Copy the application and install Python dependencies
 
@@ -420,7 +420,7 @@ if ! sudo mv -Tf "$APP_ROOT/current.new" "$APP_ROOT/current"; then
 fi
 ```
 
-If the API does not become healthy, the Section 7 health check stops the manual deployment and prints the service logs. Do not start or restart the collector. Automatic application rollback is handled by deploy/deploy.sh. Do not switch current back manually during an automated deployment.
+If the API does not become healthy, the Section 7 health check stops the manual deployment and prints the service logs. Do not start or restart the collector, and do not switch `current` back by hand. To return to the previous release, use Section 14.
 
 ## 6. Configure and verify the environment file
 

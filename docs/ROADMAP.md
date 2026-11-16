@@ -33,13 +33,12 @@ Once v1.1's real data and reliability work have landed, grow the product itself.
 - **Shopper-facing features.** Watchlists (save a product), price-drop notifications, category or trend views across products. None of this exists today — the app is currently a read-only dashboard with no accounts.
 - **Production deployment.** Move off local `uvicorn --reload` to a real host with a process supervisor and a CI/CD deploy step. Revisit the SQLite-vs-server-database decision from v1.1 once there is an actual place to deploy to.
 
-**Status (12 November 2026):**
+**Status (16 November 2026):**
 
 - Multi-site scraping: source adapters landed in #241 (PR #249). Collecting every configured source in one run landed in #254 (PR #260). A second source is not approved yet; see `docs/shop-evaluation.md`.
 - ML anomaly detection: #257 turned this into a comparison on synthetic fixtures. The decision (PR #258) is to keep the rolling z-score detector until real price-change data exists.
 - Shopper-facing features: watchlist, price-drop alerts and trend views landed under #243 (PRs #248, #246, #262). The price-position summary is #256 (PR #261, merged on 12 November).
-- Production deployment: on 10 November #244 was rescoped, because the team has no host. v2.0 is made deploy-ready and proven on an Ubuntu 24.04 Linux VM. The SSH deploy workflow stays switched off until a real host exists (PRs #251, #252, in review). v2.0 is not publicly deployed.
-
+- Production deployment: on 10 November #244 was rescoped, because the team has no host. v2.0 is made deploy-ready and proven on Ubuntu 24.04 under WSL2. The SSH deploy workflow stays switched off until a real host exists (PRs #251 and #252 merged). v2.0 is not publicly deployed.
 
 ## Architecture changes needed
 
@@ -81,7 +80,7 @@ Issues filed 2026-11-03. Update the checkboxes as they close — this table is t
 - [ ] #241 — scraper: multi-site source-adapter pattern — @mathango, @Naveen5901 — PR #249 merged; second-site Terms decision pending
 - [x] #242 — analysis: validate anomaly detection against synthetic price fixtures — @sujithareddy-1324 — PR #247
 - [x] #243 — frontend: shopper-facing features (watchlists, price-drop notifications, trend views) — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch — PRs #248, #246, #262 merged
-- [ ] #244 — setup: production deployment (host, process supervisor, CI/CD deploy step) — @Hemalatha1729, @Saidivya-20 — PRs #251, #252 in review
+- [ ] #244 — setup: production deployment (host, process supervisor, CI/CD deploy step) — @Hemalatha1729, @Saidivya-20 — PRs #251, #252 merged; manual rollback, database restore drill, and real-host validation remain outstanding; follow-up issue pending
 - [x] #253 — docs: bring the v2.0 tracking up to date and record the second site's evidence — @mathango — PR #259
 - [x] #254 — scraper: collect every configured source in one run — @Naveen5901 — PR #260
 - [x] #255 — frontend: use the price-drop and trend endpoints instead of the JS copy — @Kanamarlapudipk — PR #262

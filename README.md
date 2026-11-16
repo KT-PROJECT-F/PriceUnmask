@@ -128,6 +128,7 @@ The following limitations were identified during this development cycle:
 
 2. **Stale data during the 31 October demo:** The demo ran using data that was approximately 24 hours old because the collector experienced an undetected outage during the demo day. See [Issue #155 – Scheduler: Run the collector unattended until the demo](https://github.com/KT-PROJECT-F/PriceUnmask/issues/155).
 
+3. **Anomaly detector comparison:** An exploratory comparison tested the rolling z-score detector against IsolationForest using four synthetic price-history fixtures. Rolling z-score classified all four fixtures correctly, while IsolationForest produced inconsistent predictions across random seeds. The project retains rolling z-score as its current detector. This comparison is limited to synthetic data and does not establish real-world detection accuracy. See [Anomaly Detection Findings](docs/design/anomaly_findings.md).
 
 ### Design Notes
 

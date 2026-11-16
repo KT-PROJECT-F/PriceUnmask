@@ -1,0 +1,52 @@
+name: Deploy to VPS
+
+# Switched off until a real host exists (#244). Remove `if: false` to enable.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to deploy or roll back to (40 lowercase hex chars)"
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: false
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ inputs.sha || github.sha }}
+    steps:
+      - name: Validate SHA
+        run: |
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: SHA must be 40 lowercase hex characters"
+            exit 1
+          fi
+
+      - name: Checkout deploy script
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Copy deploy script to host
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: deploy/deploy.sh
+          target: /tmp/
+
+      - name: Run deploy script
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: SHA
+          script: bash /tmp/deploy/deploy.sh "$SHA"

@@ -37,7 +37,7 @@ Once v1.1's real data and reliability work have landed, grow the product itself.
 
 - Multi-site scraping: source adapters landed in #241 (PR #249). Collecting every configured source in one run landed in #254 (PR #260). A second source is not approved yet; see `docs/shop-evaluation.md`.
 - ML anomaly detection: #257 turned this into a comparison on synthetic fixtures. The decision (PR #258) is to keep the rolling z-score detector until real price-change data exists.
-- Shopper-facing features: watchlist, price-drop alerts and trend views landed under #243 (PRs #248, #246, #262). The price-position summary is #256 (PR #261, in review).
+- Shopper-facing features: watchlist, price-drop alerts and trend views landed under #243 (PRs #248, #246, #262). The price-position summary is #256 (PR #261, merged on 12 November).
 - Production deployment: on 10 November #244 was rescoped, because the team has no host. v2.0 is made deploy-ready and proven on an Ubuntu 24.04 Linux VM. The SSH deploy workflow stays switched off until a real host exists (PRs #251, #252, in review). v2.0 is not publicly deployed.
 
 
@@ -46,7 +46,7 @@ Once v1.1's real data and reliability work have landed, grow the product itself.
 - **Source adapter pattern.** Split `scraper/` into per-site submodules that share the existing `ScrapedProduct` dataclass contract, plus a lightweight site registry so the scheduler can run N sources instead of one. No schema change required — `products.source` already exists for exactly this.
 - **Notification channel.** v1.1's automated alerting and v2.0's price-drop notifications both need one delivery mechanism. Start minimal — a GitHub issue/comment bot or plain email — rather than building full infra, consistent with this project's existing "no framework unless needed" approach (see `docs/design/frontend.md`).
 - **DB scaling decision.** Already flagged in `docs/design/database.md`: SQLite write concurrency and database growth as multi-site collection increases volume. Decide server database (e.g. Postgres) vs. staying on SQLite once v1.1's real volume is known — not speculatively now.
-- **Accounts and auth.** Needed only if watchlists ship in v2.0. Leave it out of scope until that feature is actually being built; building it ahead of a concrete need adds complexity with nothing yet to justify it.
+- **Accounts and auth.** Watchlists shipped in #243 without accounts and are stored in browser localStorage. Watchlists are specific to the browser and device. Switching devices does not transfer saved watchlists, and clearing browser data may delete them. Accounts and synchronization remain out of scope.
 
 ## Risks
 
@@ -80,7 +80,7 @@ Issues filed 2026-11-03. Update the checkboxes as they close — this table is t
 - [ ] #229 — backlog tracker — @yaswanthtechie — open; split into the issues below
 - [ ] #241 — scraper: multi-site source-adapter pattern — @mathango, @Naveen5901 — PR #249 merged; second-site Terms decision pending
 - [x] #242 — analysis: validate anomaly detection against synthetic price fixtures — @sujithareddy-1324 — PR #247
-- [ ] #243 — frontend: shopper-facing features (watchlists, price-drop notifications, trend views) — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch — PRs #248, #246, #262 merged
+- [x] #243 — frontend: shopper-facing features (watchlists, price-drop notifications, trend views) — @Kanamarlapudipk, @lakshmiprasanna45, @rajeshkandlapalli-glitch — PRs #248, #246, #262 merged
 - [ ] #244 — setup: production deployment (host, process supervisor, CI/CD deploy step) — @Hemalatha1729, @Saidivya-20 — PRs #251, #252 in review
 - [x] #253 — docs: bring the v2.0 tracking up to date and record the second site's evidence — @mathango — PR #259
 - [x] #254 — scraper: collect every configured source in one run — @Naveen5901 — PR #260

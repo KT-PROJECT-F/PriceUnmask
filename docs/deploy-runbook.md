@@ -231,7 +231,7 @@ bash /tmp/priceunmask-deploy-manual.sh
 
 On an upgrade, preserve and verify the existing environment file. Do not run Section 6's first-install setup block.
 
-This manual procedure does not implement application rollback. If the API does not become healthy after activation, do not start or restart the collector, do not repoint `current` manually, and follow the failure instructions in Section 7. Rollback is deferred to the follow-up deployment script and is not claimed as tested here.
+Automatic rollback is implemented in deploy/deploy.sh. The manual rollback procedure has not yet been tested on the WSL2 VM with a deliberately broken release.
 
 ## 5. Copy the application and install Python dependencies
 
@@ -420,7 +420,7 @@ if ! sudo mv -Tf "$APP_ROOT/current.new" "$APP_ROOT/current"; then
 fi
 ```
 
-If the API does not become healthy, the Section 7 health check stops the manual deployment and prints the service logs. Do not start or restart the collector. Application rollback is deferred to the follow-up deployment script; do not switch `current` back manually.
+If the API does not become healthy, the Section 7 health check stops the manual deployment and prints the service logs. Do not start or restart the collector. Automatic application rollback is handled by deploy/deploy.sh. Do not switch current back manually during an automated deployment.
 
 ## 6. Configure and verify the environment file
 
@@ -1075,7 +1075,7 @@ The database is not rolled back. If the bad release changed data, restore the ma
 - Tested on Ubuntu 24.04 under WSL2, not on a public VPS.
 - WSL2 services depend on the local Windows machine and WSL instance being available.
 - No public-domain, TLS, firewall, or external VPS deployment test has been completed.
-- `deploy/deploy.sh` implements the automated release deployment flow, but it has not yet been tested on the WSL2 VM.
+- `deploy/deploy.sh` was tested on the WSL2 VM: a first deploy, a second deploy, and a deliberately broken release that rolled back automatically.
 - Backup creation and integrity verification were tested. A full restore drill remains to be performed.
-- Automatic rollback is implemented in `deploy/deploy.sh`; the manual rollback procedure has not yet been tested on the WSL2 VM with a deliberately broken release.
+- The manual rollback (redeploying an older SHA, Section 14) has not been tested yet.
 - The runbook describes the intended release-based deployment procedure. Do not treat every documented step as tested merely because the API and collector were previously run successfully on WSL2.

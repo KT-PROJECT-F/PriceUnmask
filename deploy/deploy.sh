@@ -78,7 +78,7 @@ fi
 
 check_health() {
   for i in $(seq 1 30); do
-    if curl --max-time 5 -f http://127.0.0.1:8000/api/health; then
+    if curl -sS --max-time 5 -f http://127.0.0.1:8000/api/health; then
       return 0
     fi
     echo "Waiting... $i/30"
@@ -132,7 +132,7 @@ else
     echo "Rollback FAILED - previous release would not restart, manual fix needed!"
     exit 1
   fi
-  if check_health; then echo "Rollback PASSED"; exit 1; fi
+  if check_health; then echo "Rollback PASSED - the previous release is live, but this deploy FAILED"; exit 1; fi
   echo "Rollback FAILED - manual fix needed!"
   exit 1
 fi
